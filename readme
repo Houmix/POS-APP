@@ -1,0 +1,24 @@
+# Application POS (Point of Sale)
+
+Application de caisse pour borne de commande.
+
+## Description
+
+Cette application permet de gérer les transactions de vente via une interface de caisse interactive. Elle est conçue pour être utilisée sur des bornes de commande en libre-service ou par le personnel.
+
+## Fonctionnalités
+
+- Gestion des commandes
+- Calcul automatique des totaux
+- Gestion des paiements
+- Interface utilisateur intuitive
+- Historique des transactions
+- Gestion du catalogue produits
+
+## Installation
+Créer un répertoire my-desktop-app
+Installer Node.js (depuis le site et bien l'ajouter au PATH s'il y a un problème) et npm aevc : pip install npm
+
+Installer Electron dans my-desktop-app : npm install electron --save-dev
+
+Créer le dosser dist contenant l'executable : npm run build:win

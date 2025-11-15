@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Chargement...</title>
+    <style>
+        body {
+            background-color: #2c3e50; /* Couleur sombre */
+            color: #ecf0f1;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            border-radius: 10px; /* Bordures légèrement arrondies */
+        }
+        .container {
+            text-align: center;
+            padding: 20px;
+        }
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            border-radius: 50%;
+            background-color: #3498db; /* Couleur de fond pour le logo */
+            animation: pulse 1.5s infinite;
+        }
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-top: 15px;
+        }
+        h2 {
+            margin: 0;
+            font-size: 1.2em;
+        }
+        p {
+            font-size: 0.8em;
+            opacity: 0.8;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+             0% { box-shadow: 0 0 0 0 rgba(52, 152, 219, 0.4); }
+             70% { box-shadow: 0 0 0 10px rgba(52, 152, 219, 0); }
+             100% { box-shadow: 0 0 0 0 rgba(52, 152, 219, 0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Remplacez ceci par votre logo ou icône réel -->
+        <div class="logo"></div> 
+        <h2>POS-Desktop</h2>
+        <p>Démarrage en cours...</p>
+        <div class="loader"></div>
+    </div>
+</body>
+</html>

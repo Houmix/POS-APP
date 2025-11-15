@@ -1,0 +1,112 @@
+{
+  "name": "my-desktop-app",
+  "productName": "POS-Desktop",
+  "version": "1.0.0",
+  "description": "My Electron application description",
+  "main": "main.js",
+  "author": {
+    "name": "Houmix",
+    "email": "lachache.houmame@outlook.com"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "prebuild:frontend": "cd ../pos && npx expo export --platform web --output-dir web-build && cd ../my-desktop-app",
+    "prebuild:python": "node ./scripts/pyinstaller_bundle.js",
+    "prebuild": "npm run prebuild:frontend && npm run prebuild:python",
+    "build": "npm run prebuild && electron-builder",
+    "build:mac": "npm run prebuild && electron-builder --mac",
+    "build:win": "npm run prebuild && npx electron-builder --win",
+    "build:all": "npm run prebuild && electron-builder --config.forceArchive=false --win --mac --linux"
+  },
+  "dependencies": {
+    "electron-squirrel-startup": "^1.0.1",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-rpm": "^7.10.2",
+    "@electron-forge/maker-squirrel": "^7.10.2",
+    "@electron-forge/maker-zip": "^7.10.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
+    "@electron-forge/plugin-fuses": "^7.10.2",
+    "@electron/fuses": "^1.8.0",
+    "electron": "^39.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.houmix.pos",
+    "productName": "POS-Desktop",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "node_modules/**/*",
+      "!node_modules/.cache",
+      "scripts/**/*",
+      "splash.html"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/python-build/born_dz",
+        "to": "born_dz",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../pos/web-build",
+        "to": "pos/web-build",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asar": false,
+    "asarUnpack": [
+      "dist/python-build/**/*"
+    ],
+    "icon": "build/icon",
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "icon": "build/icon.icns"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "verifyUpdateCodeSignature": false,
+      "signAndEditExecutable": false,
+      "signtoolOptions": {
+        "sign": false
+      }
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": true,
+      "shortcutName": "POS Desktop"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    }
+  }
+}
