@@ -3,4 +3,8 @@
 
 # Ignorer node_modules et dist dans my-desktop-app
 my-desktop-app/node_modules/
+POS/node_modules/
 my-desktop-app/dist/
+
+born_dz/venv/
+venv/

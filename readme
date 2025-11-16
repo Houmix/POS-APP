@@ -17,8 +17,12 @@ Cette application permet de gérer les transactions de vente via une interface d
 
 ## Installation
 Créer un répertoire my-desktop-app
-Installer Node.js (depuis le site et bien l'ajouter au PATH s'il y a un problème) et npm aevc : pip install npm
+Installer Node.js (depuis le site et bien l'ajouter au PATH s'il y a un problème) et npm avec : pip install npm (le faire dans le dossier principal et POS)
 
 Installer Electron dans my-desktop-app : npm install electron --save-dev
 
-Créer le dosser dist contenant l'executable : npm run build:win
+Créer le venv dans le back : python -m venv venv 
+Activer venv : venv/scripts/activate
+Installer les dépendances : pip install -r requirements.txt
+
+Créer l'executable (dans le dosser dist) : npm run build:win
