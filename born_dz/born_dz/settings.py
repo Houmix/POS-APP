@@ -32,7 +32,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = "django-insecure-y($ou%*05+_g)zspa#n-tol!)2p*l_6zr#@(kgomt1hv4$60eu"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = ["menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app"]
 
@@ -76,7 +76,7 @@ SIMPLE_JWT = {
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',# pour recevoir des requetes
     "django.middleware.security.SecurityMiddleware",
-    'whitenoise.middleware.WhiteNoiseMiddleware',#Pour debug a false et lancer : pip install whitenoise plus gerer les static files comme en bas
+    #'whitenoise.middleware.WhiteNoiseMiddleware',#Pour debug a false et lancer : pip install whitenoise plus gerer les static files comme en bas
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -110,7 +110,7 @@ WSGI_APPLICATION = "born_dz.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
-"""
+
 
 DATABASES = {
     'default': {
@@ -130,7 +130,7 @@ DATABASES = {
         'PORT': '49671',
     }
 }
-
+"""
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
@@ -174,7 +174,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 STATIC_URL = "static/"
 
 
-"""
+
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')] #pour collectstatic
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 """
@@ -182,7 +182,7 @@ if DEBUG:
     STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 else:
     STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-
+"""
 USE_TZ = False
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
@@ -221,7 +221,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:8081",
     "http://menugo-dz.com",
     "http://www.menugo-dz.com",
-    "https://borndz-production.up.railway.app",
+    "https://borndz-production.up.railway.app"
 
 ]
 

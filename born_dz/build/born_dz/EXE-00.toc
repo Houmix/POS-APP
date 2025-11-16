@@ -70,7 +70,7 @@
  [],
  False,
  False,
- 1763251565,
+ 1763328806,
  [('run.exe',
    'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\venv\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\run.exe',
    'EXECUTABLE')],

@@ -8,11 +8,11 @@ const os = require('os'); // 💡 Ajout du module 'os' pour obtenir l'IP
 
 // 🚨 CORRECTION CRUCIALE POUR WINDOWS (Installeurs Squirrel/NSIS)
 // Cette vérification gère la création/suppression des raccourcis par l'installeur.
-// const electronSquirrelStartup = require('electron-squirrel-startup');
-// if (electronSquirrelStartup) {
-//   // Si le programme est lancé par l'installeur, nous devons quitter.
-//   return app.quit(); 
-// }
+const electronSquirrelStartup = require('electron-squirrel-startup');
+if (electronSquirrelStartup) {
+  // Si le programme est lancé par l'installeur, nous devons quitter.
+  return app.quit(); 
+}
 // 🚨 FIN DE LA CORRECTION
 
 let djangoProcess;
@@ -161,7 +161,7 @@ function startDjango(callback) {
   djangoProcess = spawn(exec, args, {
     cwd: backendPath,
     stdio: 'pipe',
-    shell: false,
+    shell: true,
     env: {
       ...process.env,
       // Variables d'environnement pour Django
