@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: "#f4f4f4",
+    backgroundColor: "white",
   },
   orderContainer: {
     padding: 16,

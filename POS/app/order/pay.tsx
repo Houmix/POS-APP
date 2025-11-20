@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
         display:"flex",
         justifyContent: "center",
         alignItems: "center",
-        backgroundColor: "#f4f4f4",
+        backgroundColor: "white",
         
     },
     textBox: {
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         alignItems: "center",
         gap: 20, // Espacement entre les boutons
-        backgroundColor: "#f4f4f4",
+        backgroundColor: "white",
     },
     box: {
         width: "100%",

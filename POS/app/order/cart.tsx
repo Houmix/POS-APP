@@ -227,7 +227,7 @@ export default function CartPage() {
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    backgroundColor: "#f4f4f4", // Couleur de fond plus douce
+    backgroundColor: "white", // Couleur de fond plus douce
     flexGrow: 1,
   },
   orderListContainer: {
