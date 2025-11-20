@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AntDesign from '@expo/vector-icons/AntDesign';
+import { POS_URL, idRestaurant } from "@/config";
 import { useEffect, useState } from "react";export default function IndexScreen() {
     // ✅ Pay.js
 const router = useRouter();
@@ -43,7 +44,7 @@ const card = async () => {
     console.log("Données à envoyer :", dataToSend);
     const accessToken = await AsyncStorage.getItem("token");
     const response = await axios.post(
-      `http://127.0.0.1:8000/order/api/createOrder/1/`,
+      `${POS_URL}/order/api/createOrder/1/`,
       dataToSend,
       {
         headers: {
@@ -77,7 +78,7 @@ const card = async () => {
             console.log("Données à envoyer :", dataToSend);
             const accessToken = await AsyncStorage.getItem("token");
             const response = await axios.post(
-              `http://127.0.0.1:8000/order/api/createOrder/0/`,
+              `${POS_URL}/order/api/createOrder/0/`,
                dataToSend,
                {
                     headers: {

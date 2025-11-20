@@ -3,6 +3,7 @@ import { Text, View, StyleSheet, TextInput,TouchableOpacity } from "react-native
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage'; //AsyncStorage.setItem(clé,valeur) et .getItem(clé) pour stocker ou récupérer des données dans la sessions
 import { useNavigation } from "expo-router";
+import { POS_URL, idRestaurant } from "@/config";
 export default function identificationScreen(){
     const navigation = useNavigation() //Pour la redirection (navigation.navigate("NomDeLaPage"))
     const [errorMessage, setErrorMessage] = useState("") //Pour afficher un message d'erreur
@@ -26,7 +27,7 @@ export default function identificationScreen(){
     }, []);
     const postEmployeeToken = async () => { //Recupération du token du Customer 
         try {
-            const response = await axios.post(`http://127.0.0.1:8000/user/api/employee/token/`,{
+            const response = await axios.post(`${POS_URL}/user/api/employee/token/`,{
               phone : phone,
               password : password,
             }) // Get car dans le back c'est du get + Num dans la requete car ce n'est pas une donnée semsible (dans urls, il y a un slug)
@@ -41,7 +42,7 @@ export default function identificationScreen(){
     const handleSubmit = async () => { //Récupération des données de l'utilisateur
         try {
             const accessToken = await postEmployeeToken() //Récupération du token
-            const response = await axios.get(`http://127.0.0.1:8000/user/api/getEmployee/`, {
+            const response = await axios.get(`${POS_URL}/user/api/getEmployee/`, {
                 headers: {
                     Authorization: `Bearer ${accessToken}`, //Token inséré dans la requête
                     
@@ -50,9 +51,8 @@ export default function identificationScreen(){
                   phone : phone,
                   password : password
                 }
-                
-
             })
+            console.log("Données de l'utilisateur :", response.data); // Affiche les données de l'utilisateur dans la console
             
             if (response.status == 200){ //Enregistrement des données de l'utilisateur dans la session + Redirection
                 AsyncStorage.setItem("token", accessToken)

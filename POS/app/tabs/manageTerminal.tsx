@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { TabView, SceneMap } from "react-native-tab-view";
-
+import { POS_URL, idRestaurant } from "@/config";
 export default function ManageTerminal() {
   const [menuGroups, setMenuGroups] = useState([]);
   const [menus, setMenus] = useState([]);
@@ -25,7 +25,7 @@ export default function ManageTerminal() {
         const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
 
         const menuGroupResponse = await axios.get(
-          `http://127.0.0.1:8000/menu/api/getGroupMenuList/${restaurantId}/`,
+          `${POS_URL}/menu/api/getGroupMenuList/${restaurantId}/`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -34,7 +34,7 @@ export default function ManageTerminal() {
         );
 
         const menuResponse = await axios.get(
-          `http://127.0.0.1:8000/menu/api/getAllMenu/${restaurantId}/`,
+          `${POS_URL}/menu/api/getAllMenu/${restaurantId}/`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -43,7 +43,7 @@ export default function ManageTerminal() {
         );
 
         const optionResponse = await axios.get(
-          `http://127.0.0.1:8000/menu/api/getStepOption/${restaurantId}/`,
+          `${POS_URL}/menu/api/getStepOption/${restaurantId}/`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -67,10 +67,10 @@ export default function ManageTerminal() {
       const accessToken = await AsyncStorage.getItem("token");
       const endpoint =
         type === "menuGroup"
-          ? `http://127.0.0.1:8000/menu/api/updateGroupMenu/`
+          ? `${POS_URL}/menu/api/updateGroupMenu/`
           : type === "menu"
-          ? `http://127.0.0.1:8000/menu/api/updateMenu/`
-          : `http://127.0.0.1:8000/menu/api/updateStepOption/`;
+          ? `${POS_URL}/menu/api/updateMenu/`
+          : `${POS_URL}/menu/api/updateStepOption/`;
 
       const response = await axios.put(
         endpoint,

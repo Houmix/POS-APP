@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity } from "react-native
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ScrollView } from "react-native";
-
+import { POS_URL, idRestaurant } from "@/config";
 export default function OrderScreen() {
   interface Order {
     id: number;
@@ -37,7 +37,7 @@ export default function OrderScreen() {
       try {
         const accessToken = await AsyncStorage.getItem("token");
         const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
-        const response = await axios.get(`http://127.0.0.1:8000/order/api/getPOSorder/${restaurantId}/`, {
+        const response = await axios.get(`${POS_URL}/order/api/getPOSorder/${restaurantId}/`, {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
@@ -56,14 +56,14 @@ export default function OrderScreen() {
     try {
       let updateData;
       if (action === "Valider") {
-        updateData = { paid: 1, status: "confirmed" };
+        updateData = { paid: 1, status: "in_progress" };
       } else if (action === "Annuler") {
         updateData = { cancelled: 1, status: "cancelled" };
       } else if (action === "Rembourser") {
         updateData = { refund: 1, status: "refund" };
       }
 
-      const response = await axios.put(`http://127.0.0.1:8000/order/api/Updateorder/${orderId}/`, updateData);
+      const response = await axios.put(`${POS_URL}/order/api/Updateorder/${orderId}/`, updateData);
       if (response.status === 200) {
         // Met à jour les données localement après une réponse 200
         setOrders((prevOrders) =>
@@ -184,9 +184,9 @@ export default function OrderScreen() {
 
         {/* Colonne des commandes confirmées */}
         <View style={styles.column}>
-          <Text style={styles.columnTitle}>Confirmées</Text>
+          <Text style={styles.columnTitle}>En cours</Text>
           <FlatList
-            data={orders.filter((order) => order.order_status === "confirmed")}
+            data={orders.filter((order) => order.order_status === "in_progress")}
             keyExtractor={(item) => item.order_id.toString()}
             renderItem={renderOrder}
           />
@@ -194,7 +194,7 @@ export default function OrderScreen() {
 
         {/* Colonne des commandes modifiées */}
         <View style={styles.column}>
-          <Text style={styles.columnTitle}>Prêt</Text>
+          <Text style={styles.columnTitle}>Prête</Text>
           <FlatList
             data={orders.filter((order) => order.order_status === "ready")}
             keyExtractor={(item) => item.order_id.toString()}
