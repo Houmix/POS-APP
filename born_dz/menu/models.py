@@ -9,6 +9,7 @@ class GroupMenu(models.Model):
     avalaible = models.BooleanField(default=True)
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name="groupmenus")
     extra = models.BooleanField(default=False)  # Indique si c'est un menu solo ou un extra
+    position = models.IntegerField(default=0)  # Pour ordonner les menus dans un groupe
     def __str__(self):
         return self.name + " " + self.restaurant.name
 
@@ -21,6 +22,7 @@ class Menu(models.Model):
     group_menu = models.ForeignKey("GroupMenu", on_delete=models.SET_NULL, null=True, blank=True, related_name="menus")
     avalaible = models.BooleanField(default=True)
     extra = models.BooleanField(default=False)  # Indique si c'est un menu solo ou un extra
+    position = models.IntegerField(default=0)  # Pour ordonner les menus dans un groupe
     TYPE = [
         ('burger', 'Burger'),
         ('sandwich', 'Sandwich'),

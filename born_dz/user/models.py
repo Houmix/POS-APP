@@ -22,13 +22,16 @@ class User(AbstractUser):
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=256)
     def save(self, *args, **kwargs):
-        # Vérifie si le mot de passe n'est pas déjà hashé pour l'employé
-        if self.role and self.role.role in ["manager", "cashier", "owner"]:
-            if not self.password.startswith('pbkdf2_'):
-                self.password = make_password(self.password)
-        else:
-            self.password = make_password(self.phone)
-            self.email = {self.phone + "@born.dz"}
+        # # Vérifie si le mot de passe n'est pas déjà hashé pour l'employé
+        # if self.role and self.role.role in ["manager", "cashier", "owner"]:
+        #     if not self.password.startswith('pbkdf2_'):
+        #         self.password = make_password(self.password)
+        # else:
+        #     self.password = make_password(self.phone)
+        #     self.email = {self.phone + "@born.dz"}
+        # super().save(*args, **kwargs)
+        if not self.email or self.email == f"{self.phone}@born.dz":
+            self.email = f"{self.phone}@born.dz"
         super().save(*args, **kwargs)
     def __str__(self):
         return self.phone + " " + str(self.role)  # Updated to use ForeignKey

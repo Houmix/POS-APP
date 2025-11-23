@@ -18,13 +18,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // Assurez-vous que ces imports fonctionnent dans votre environnement
 import { POS_URL, idRestaurant } from "@/config"; 
 import Feather from '@expo/vector-icons/Feather'; 
-
+import { useBorneSync } from "@/hooks/useBorneSync.js";
 export default function MenuScreen() {
   const router = useRouter();
-  const [categories, setCategories] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [menus, setMenus] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [cartCount, setCartCount] = useState(0); 
 
   // --- NOUVEAUX ÉTATS POUR LA MODALE (Logique du premier code) ---
@@ -62,59 +59,62 @@ export default function MenuScreen() {
 
 
   // --- USE EFFECT (Logique du premier code avec idRestaurant) ---
-  useEffect(() => {
-    // Met à jour le compteur du panier au montage
-    updateCartCount(); 
 
-    const GetCategorie = async () => {
-      try {
-        setIsLoading(true);
-        const accessToken = await AsyncStorage.getItem("token");
-        // Utilisation de idRestaurant comme dans le premier code
-        const response = await axios.get(`${POS_URL}/menu/api/getGroupMenuList/${idRestaurant}/`, { 
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
+  const { categories, menus, isLoading } = useBorneSync();
+  
+  // useEffect(() => {
+  //   // Met à jour le compteur du panier au montage
+  //   updateCartCount(); 
 
-        const availableCategories = response.data.filter((category) => category.avalaible);
-        setCategories(availableCategories);
+  //   const GetCategorie = async () => {
+  //     try {
+  //       setIsLoading(true);
+  //       const accessToken = await AsyncStorage.getItem("token");
+  //       // Utilisation de idRestaurant comme dans le premier code
+  //       const response = await axios.get(`${POS_URL}/menu/api/getGroupMenuList/${idRestaurant}/`, { 
+  //         headers: {
+  //           Authorization: `Bearer ${accessToken}`,
+  //         },
+  //       });
 
-        if (availableCategories.length > 0) {
-          setSelectedCategory(availableCategories[0]);
-        }
+  //       const availableCategories = response.data.filter((category) => category.avalaible);
+  //       setCategories(availableCategories);
 
-        await AsyncStorage.setItem("GroupMenu", JSON.stringify(availableCategories));
-      } catch (error) {
-        console.error("Erreur lors de la récupération des catégories", error);
-        Alert.alert("Erreur", "Impossible de charger les catégories.");
-      } 
-      // NOTE : setIsLoading(false) est déplacé dans le second useEffect pour s'assurer que les menus sont aussi chargés.
-    };
-    GetCategorie();
-  }, []);
+  //       if (availableCategories.length > 0) {
+  //         setSelectedCategory(availableCategories[0]);
+  //       }
 
-  useEffect(() => {
-    const GetMenu = async () => {
-      try {
-        const accessToken = await AsyncStorage.getItem("token");
-        // Utilisation de idRestaurant comme dans le premier code
-        const response = await axios.get(`${POS_URL}/menu/api/getAllMenu/${idRestaurant}/`, { 
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-        setMenus(response.data);
-        await AsyncStorage.setItem("Menu", JSON.stringify(response.data));
-      } catch (error) {
-        console.error("Erreur lors de la récupération des menus", error);
-        Alert.alert("Erreur", "Impossible de charger les menus.");
-      } finally {
-        setIsLoading(false); // FIN du chargement après les deux appels
-      }
-    };
-    GetMenu();
-  }, []);
+  //       await AsyncStorage.setItem("GroupMenu", JSON.stringify(availableCategories));
+  //     } catch (error) {
+  //       console.error("Erreur lors de la récupération des catégories", error);
+  //       Alert.alert("Erreur", "Impossible de charger les catégories.");
+  //     } 
+  //     // NOTE : setIsLoading(false) est déplacé dans le second useEffect pour s'assurer que les menus sont aussi chargés.
+  //   };
+  //   GetCategorie();
+  // }, []);
+
+  // useEffect(() => {
+  //   const GetMenu = async () => {
+  //     try {
+  //       const accessToken = await AsyncStorage.getItem("token");
+  //       // Utilisation de idRestaurant comme dans le premier code
+  //       const response = await axios.get(`${POS_URL}/menu/api/getAllMenu/${idRestaurant}/`, { 
+  //         headers: {
+  //           Authorization: `Bearer ${accessToken}`,
+  //         },
+  //       });
+  //       setMenus(response.data);
+  //       await AsyncStorage.setItem("Menu", JSON.stringify(response.data));
+  //     } catch (error) {
+  //       console.error("Erreur lors de la récupération des menus", error);
+  //       Alert.alert("Erreur", "Impossible de charger les menus.");
+  //     } finally {
+  //       setIsLoading(false); // FIN du chargement après les deux appels
+  //     }
+  //   };
+  //   GetMenu();
+  // }, []);
   // -----------------------------
 
 

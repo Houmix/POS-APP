@@ -34,7 +34,7 @@ SECRET_KEY = "django-insecure-y($ou%*05+_g)zspa#n-tol!)2p*l_6zr#@(kgomt1hv4$60eu
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app"]
+ALLOWED_HOSTS = ["192.168.1.165","menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app"]
 
 
 # Application definition
@@ -59,15 +59,27 @@ INSTALLED_APPS = [ #Add created app here like customer, kds...
     "menu",
     "user.apps.UserConfig",
     "manager",
-    'corsheaders'#pour pouvoir recevoir des requetes (pas sur)
+    'corsheaders',#pour pouvoir recevoir des requetes (pas sur),
+    "channels", #pour les websockets,
+    "borne_sync"
 ]
+# Configuration Channels
+# NOTE: Remplacez par un broker Redis pour la production !
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer' # Simple pour le dev
+        # 'BACKEND': 'channels_redis.pubsub.RedisChannelLayer', # Mieux pour la prod
+        # 'CONFIG': {"hosts": [('127.0.0.1', 6379)],},
+    },
+}
+ASGI_APPLICATION = 'born_dz.asgi.application'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',  # Authentification par token JWT
     ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',  # Seul un utilisateur authentifié peut accéder aux API
-    ],
+    # 'DEFAULT_PERMISSION_CLASSES': [
+    #     'rest_framework.permissions.IsAuthenticated',  # Seul un utilisateur authentifié peut accéder aux API
+    # ],
 }
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": datetime.timedelta(days=1),  # Change ici la durée du token access
@@ -215,13 +227,16 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8081",
     "http://127.0.0.1:8081",
+    "http://127.0.0.1:8082",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
     "http://localhost:8000",
     "http://localhost:8081",
+    "http://localhost:8082",
     "http://menugo-dz.com",
     "http://www.menugo-dz.com",
-    "https://borndz-production.up.railway.app"
+    "https://borndz-production.up.railway.app",
+    "http://192.168.1.165:8000"
 
 ]
 

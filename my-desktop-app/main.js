@@ -75,43 +75,50 @@ const webBuildPath = path.join(frontendPath, 'web-build');
 // 🔥 Déterminer l'exécutable Django (PyInstaller)
 function getDjangoExecutable() {
   const managePyPath = path.join(backendPath, 'manage.py');
+  const asgiApplication = 'born_dz.asgi:application'; // ⭐ Nom de l'application ASGI
   
   if (isDev) {
     // En DEV: On utilise le venv + manage.py
     const venvPython = path.join(backendPath, 'venv', 'bin', 'python3');
     const venvPythonWin = path.join(backendPath, 'venv', 'Scripts', 'python.exe');
-    let pythonExec = 'python3'; 
+    // ⭐ NOUS CIBLONS MAINTENANT DAPHNE DANS LE VENV
+    const venvDaphne = path.join(backendPath, 'venv', 'bin', 'daphne');
+    const venvDaphneWin = path.join(backendPath, 'venv', 'Scripts', 'daphne.exe');
     
-    // Détection venv
-    if (fs.existsSync(venvPython)) {
-      pythonExec = venvPython;
-    } else if (fs.existsSync(venvPythonWin)) {
-      pythonExec = venvPythonWin;
-    } else {
-        log('Avertissement: venv Python non trouvé, utilisation de la commande système "python3". Assurez-vous que Django est installé globalement.', 'warning');
-    }
+    let exec = 'python3'; // Fallback par défaut
 
-    if (!fs.existsSync(managePyPath)) {
-       log(`❌ manage.py introuvable à: ${managePyPath}`, 'error');
-       app.quit();
-       return null;
+    if (fs.existsSync(venvDaphne)) {
+      // ✅ CAS DAPHNE (Linux/macOS)
+      exec = venvDaphne;
+      return { exec: exec, args: [asgiApplication] }; // Args: [born_dz.asgi:application]
+    } else if (fs.existsSync(venvDaphneWin)) {
+      // ✅ CAS DAPHNE (Windows)
+      exec = venvDaphneWin;
+      return { exec: exec, args: [asgiApplication] }; // Args: [born_dz.asgi:application]
+    } else if (fs.existsSync(venvPython) || fs.existsSync(venvPythonWin)) {
+      // ⚠️ Fallback si Daphne n'est pas trouvé (nécessitera toujours une commande manuelle)
+      log('⚠️ Avertissement: Exécutable Daphne non trouvé dans le venv. Tentative d\'utilisation de python/manage.py. WSockets peuvent échouer.', 'warning');
+      const pythonExec = fs.existsSync(venvPython) ? venvPython : venvPythonWin;
+      return { exec: pythonExec, args: [managePyPath] }; // Args: [manage.py]
     }
     
-    // Retourne l'interpréteur Python et le script manage.py comme arguments
-    return { exec: pythonExec, args: [managePyPath] };
+    log('❌ Exécutable Python/Daphne introuvable.', 'error');
+    app.quit();
+    return null;
+
   } else {
-    // En PROD: On utilise l'exécutable PyInstaller bundlé
-    const executableName = process.platform === 'win32' ? 'django_app.exe' : 'django_app';
+    // En PROD: On utilise l'exécutable PyInstaller (qui doit être Daphne)
+    const executableName = process.platform === 'win32' ? 'django_asgi_app.exe' : 'django_asgi_app'; // ⭐ Changer le nom de l'exécutable PyInstaller
     const bundledExec = path.join(backendPath, executableName); 
     
     if (!fs.existsSync(bundledExec)) {
-        log(`❌ Exécutable PyInstaller manquant ! (Attendu à: ${bundledExec})`, 'error');
-        log('Raison probable: Le script PyInstaller a échoué. Exécutez npm run prebuild:python pour vérifier les erreurs.', 'error');
+        log(`❌ Exécutable ASGI PyInstaller manquant ! (Attendu à: ${bundledExec})`, 'error');
+        log('Raison probable: Le script PyInstaller a échoué. Vérifiez vos scripts de build.', 'error');
         app.quit();
         return null;
     }
-    // Retourne uniquement l'exécutable PyInstaller, sans Python ni manage.py
-    return { exec: bundledExec, args: [] };
+    // Retourne l'exécutable Daphne/ASGI, et l'application ASGI comme argument
+    return { exec: bundledExec, args: [asgiApplication] };
   }
 }
 
@@ -141,21 +148,21 @@ function checkRequirements() {
   return true;
 }
 
-// 🔹 Lancer Django
+// 🔹 Lancer Django (MAIN CHANGE HERE)
 function startDjango(callback) {
-  if (!djangoExecInfo) return; // Sécurité après checkRequirements
+  if (!djangoExecInfo) return; 
   
-  log('Démarrage Django...', 'info');
+  log('Démarrage Django (ASGI/Daphne)...', 'info');
   
-  // Arguments communs pour runserver
-  // 💡 On garde 0.0.0.0 pour écouter toutes les interfaces (y compris Ethernet)
-  const runserverArgs = ['runserver', '0.0.0.0:8000', '--noreload']; 
+  // ⭐ ARGUMENTS POUR DAPHNE
+  // Arguments de Daphne : [nom_app:application, --bind, 0.0.0.0, --port, 8000]
+  const daphneArgs = ['--bind', '0.0.0.0', '--port', '8000']; 
   
   // L'exécutable et les arguments sont déterminés par getDjangoExecutable()
   const exec = djangoExecInfo.exec;
-  const args = [...djangoExecInfo.args, ...runserverArgs]; // Concaténer manage.py (si dev) + runserver
+  // ⭐ L'argument principal (born_dz.asgi:application) est déjà dans djangoExecInfo.args
+  const args = [...djangoExecInfo.args, ...daphneArgs]; 
 
-  // Ajout du log de la commande exacte pour le débogage
   log(`Commande exécutée: ${exec} ${args.join(' ')}`, 'info'); 
 
   djangoProcess = spawn(exec, args, {
@@ -164,7 +171,6 @@ function startDjango(callback) {
     shell: true,
     env: {
       ...process.env,
-      // Variables d'environnement pour Django
       PYTHONUNBUFFERED: '1',
       PYTHONIOENCODING: 'utf-8', 
       DJANGO_SETTINGS_MODULE: 'born_dz.settings' 
@@ -172,10 +178,10 @@ function startDjango(callback) {
   });
 
   djangoProcess.stdout.on('data', (data) => {
-    // Afficher uniquement les messages importants de Django
     const dataStr = data.toString().trim();
-    if (dataStr.includes('Starting development server') || dataStr.includes('Quit the server')) {
-        console.log(`[Django] ${dataStr}`);
+    // ⭐ Adapter le log pour le démarrage de Daphne
+    if (dataStr.includes('Starting server at') || dataStr.includes('Listening on TCP address')) {
+        console.log(`[Daphne] ${dataStr}`);
     }
   });
 
@@ -196,8 +202,8 @@ function startDjango(callback) {
 
   // Utiliser /admin/ pour le check de santé
   waitForServer('http://127.0.0.1:8000/admin/', 30, 2000, () => {
-    log('Django prêt', 'success');
-    log(`URL du serveur pour les clients distants : http://${localIp}:8000`, 'info'); // 💡 Affiche l'IP réelle
+    log('Django (ASGI) prêt', 'success');
+    log(`URL du serveur pour les clients distants : http://${localIp}:8000`, 'info'); 
     callback();
   });
 }
@@ -241,10 +247,14 @@ function startExpo(callback) {
   log('Démarrage Expo web (dev)...', 'warning');
   
   // 💡 On force l'interface 127.0.0.1 (localhost) pour Expo CLI
-  const expoProcess = spawn('npx', ['expo', 'start', '--web', '--port', '8081', '--non-interactive', '--host', '127.0.0.1'], {
+  const expoProcess = spawn('npx', ['expo', 'start', '--web', '--port', '8081'], {
     cwd: frontendPath,
     shell: true,
-    env: { ...process.env, BROWSER: 'none' },
+    env: { 
+      ...process.env, 
+      BROWSER: 'none',
+      CI: '1', // ⭐ Utiliser CI=1 pour le mode sans interaction
+    },
     stdio: 'pipe'
   });
 

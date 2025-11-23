@@ -6,6 +6,18 @@ from .serializers import GroupMenuSerializer, MenuSerializer, OptionSerializer, 
 from .models import GroupMenu, Menu, Option, Step, StepOption
 from rest_framework.permissions import IsAuthenticated
 from django.db import models
+
+
+
+# borne_sync/views.py
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+from datetime import datetime
+from borne_sync.consumers import SYNC_GROUP_NAME # Importez le nom du groupe
+
+
 # Create your views here.
 class GroupMenuCreate(APIView):
     permission_classes = [IsAuthenticated]
@@ -37,6 +49,7 @@ class GroupMenuList(APIView):
     permission_classes = []
     
     def get(self, request,id_restaurant, *args, **kwargs):
+        print("apellééééééééééééé")
         group_menus = GroupMenu.objects.filter(restaurant=id_restaurant)
         serializer = GroupMenuSerializer(group_menus, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -56,6 +69,23 @@ class GroupMenuUpdate(APIView):
         serializer = GroupMenuSerializer(group_menu, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            # Obtient le channel layer
+            channel_layer = get_channel_layer()
+            # Prépare les données à envoyer
+            message_data = {
+                'type': 'menu_update', # Type de l'événement (utilisé côté front)
+                'status': 'full_sync_required',
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Envoi du message au groupe de bornes
+            async_to_sync(channel_layer.group_send)(
+                SYNC_GROUP_NAME, # Le groupe
+                {
+                    'type': 'sync.message', # Nom de la méthode dans le Consumer (sync_message)
+                    'data': message_data
+                }
+            )
             return Response({"message": "GroupMenu mis à jour", "data": serializer.data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -123,6 +153,23 @@ class MenuUpdate(APIView):
         serializer = MenuSerializer(menu, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            # Obtient le channel layer
+            channel_layer = get_channel_layer()
+            # Prépare les données à envoyer
+            message_data = {
+                'type': 'menu_update', # Type de l'événement (utilisé côté front)
+                'status': 'full_sync_required',
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Envoi du message au groupe de bornes
+            async_to_sync(channel_layer.group_send)(
+                SYNC_GROUP_NAME, # Le groupe
+                {
+                    'type': 'sync.message', # Nom de la méthode dans le Consumer (sync_message)
+                    'data': message_data
+                }
+            )
             return Response({"message": "Menu mis à jour", "data": serializer.data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -315,6 +362,23 @@ class StepOptionUpdate(APIView):
         serializer = StepOptionSerializer(step_option, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            # Obtient le channel layer
+            channel_layer = get_channel_layer()
+            # Prépare les données à envoyer
+            message_data = {
+                'type': 'menu_update', # Type de l'événement (utilisé côté front)
+                'status': 'full_sync_required',
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Envoi du message au groupe de bornes
+            async_to_sync(channel_layer.group_send)(
+                SYNC_GROUP_NAME, # Le groupe
+                {
+                    'type': 'sync.message', # Nom de la méthode dans le Consumer (sync_message)
+                    'data': message_data
+                }
+            )
             return Response({"message": "StepOption mis à jour", "data": serializer.data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 

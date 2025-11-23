@@ -86,12 +86,31 @@ class UserTokenView(APIView):
             token = get_tokens_for_user(user)
             return Response(token, status=status.HTTP_200_OK)
         except User.DoesNotExist:
-            user = User.objects.create(
-                phone=phone,
-                role_id=1,  # Assigner un rôle par défaut, par exemple 'customer'
-                password=phone,  # Utiliser le téléphone comme mot de passe par défaut
-            )
-            user.save()
+            if phone is None:
+                # Cas 1: Invité/Anonyme
+                user_phone = "0000000000"
+                user_password = "0000000000"
+                
+                user, created = User.objects.get_or_create(
+                    phone=user_phone,
+                    defaults={'role_id': 2}
+                )
+                
+                # Hacher le mot de passe de l'invité si c'est une nouvelle création ou s'il n'est pas haché
+                if created or not user.password.startswith('pbkdf2_'):
+                    user.set_password(user_password)
+                    user.save()
+                    
+            else:
+                # Cas 2: Nouvel Employé (Téléphone fourni)
+                user = User.objects.create(
+                    phone=phone,
+                    role_id=2,  
+                )
+                
+                # ⭐ CRITIQUE : Hacher le mot de passe pour le nouvel utilisateur
+                user.set_password(phone)
+                user.save()
             token = get_tokens_for_user(user)
             return Response(token, status=status.HTTP_201_CREATED)
         except Exception as e:
