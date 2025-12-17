@@ -292,7 +292,7 @@ export default function MenuScreen() {
       {/* Barre du haut (Identique au premier code) */}
       <View style={styles.header}>
         <Text style={styles.title}>NomResto</Text>
-        <TouchableOpacity style={styles.cartButton} onPress={() => router.push("/cart")}> {/* Chemin vers le panier corrigé */}
+        <TouchableOpacity style={styles.cartButton} onPress={() => router.push("/order/cart")}> {/* Chemin vers le panier corrigé */}
           <Feather name="shopping-cart" size={45} color="black" />
           {cartCount > 0 && (
             <View style={styles.cartBadge}>

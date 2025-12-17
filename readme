@@ -26,3 +26,20 @@ Activer venv : venv/scripts/activate
 Installer les dépendances : pip install -r requirements.txt
 
 Créer l'executable (dans le dosser dist) : npm run build:win
+
+
+
+
+
+
+npm install node-thermal-printer
+
+
+
+
+netstat -ano | findstr :8000
+
+taskkill /PID 5996 /F
+
+
+0712467202

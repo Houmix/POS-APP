@@ -1,70 +1,103 @@
-const { app, BrowserWindow } = require('electron');
-const { spawn } = require('child_process');
+const { app, BrowserWindow, ipcMain } = require('electron');
+const { spawn, execSync } = require('child_process'); // ⭐ AJOUT execSync ICI
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
 const express = require('express');
-const os = require('os'); // 💡 Ajout du module 'os' pour obtenir l'IP
+const os = require('os');
 
 // 🚨 CORRECTION CRUCIALE POUR WINDOWS (Installeurs Squirrel/NSIS)
-// Cette vérification gère la création/suppression des raccourcis par l'installeur.
 const electronSquirrelStartup = require('electron-squirrel-startup');
 if (electronSquirrelStartup) {
-  // Si le programme est lancé par l'installeur, nous devons quitter.
   return app.quit(); 
 }
-// 🚨 FIN DE LA CORRECTION
 
 let djangoProcess;
 let staticServer;
 let mainWindow;
 let splashWindow; 
 
-// 🔹 Détection mode dev/prod
 const isDev = !app.isPackaged;
 
-// 🔹 Logs
 function log(message, type = 'info') {
   const emoji = { info: '🔹', success: '✅', error: '❌', warning: '⚠️' }[type] || '•';
   console.log(`${emoji} ${message}`);
 }
 
-// 💡 Nouvelle fonction : trouver l'adresse IP locale
+const POS_PRINTER_NAME = "POS-80"; // ⬅️ AJUSTEZ CE NOM EXACTEMENT
+
+// ==========================================
+// 🖨️ HANDLER D'IMPRESSION (TEXTE BRUT)
+// ==========================================
+ipcMain.handle("print-ticket", async (event, ticketText) => {
+    try {
+        log(`[Impression] Tentative RAW sur "${POS_PRINTER_NAME}"`, 'info');
+
+        // 1️⃣ On prépare la commande PowerShell
+        // On utilise 'Print.exe' qui est l'ancien outil DOS, très efficace pour le texte brut
+        // OU une commande PowerShell qui définit explicitement le type de contenu
+        
+        // Créer un fichier temporaire avec encodage OEM (important pour les imprimantes DOS/POS)
+        const tempFilePath = path.join(os.tmpdir(), `ticket.txt`);
+        fs.writeFileSync(tempFilePath, ticketText, { encoding: 'latin1' });
+
+        // 2️⃣ Commande d'envoi direct au spooler (Mode texte brut)
+        // On utilise Notepad /P qui est une astuce Windows pour imprimer proprement du brut
+        // ou Print.exe si l'imprimante est sur un port USB local.
+        
+        // On définit une police fixe et très petite (FontA de l'imprimante ou Consolas taille 6)
+        const command = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${POS_PRINTER_NAME}'"`;
+
+        // Alternative si vous avez installé le pilote 'Generic / Text Only' :
+        // La commande 'type' devient ultra-performante car elle ignore tout formatage
+        const commandRaw = `cmd /c "type ${tempFilePath} > prn"`; // 'prn' cible l'imprimante par défaut
+
+        // 💡 SI NOTEPAD NE MARCHE PAS, UTILISONS CETTE LIGNE (La plus précise pour POS-80) :
+        // const command = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${POS_PRINTER_NAME}'"`;
+
+        log('[Impression] Envoi via processus système...', 'info');
+        
+         execSync(commandRaw, { windowsHide: true });
+
+        log('[Impression] ✅ Commande envoyée', 'success');
+        return { success: true };
+
+    } catch (error) {
+        log(`[Impression] ❌ Erreur: ${error.message}`, 'error');
+        return { success: false, error: error.message };
+    }
+});
+// ==========================================
+// RESTE DU CODE (INCHANGÉ)
+// ==========================================
+
 function getLocalIpAddress() {
     const interfaces = os.networkInterfaces();
     for (const name in interfaces) {
         for (const iface of interfaces[name]) {
-            // Filtrer IPv4, non interne (pas 127.0.0.1) et souvent lié à Ethernet/Wi-Fi
             if (iface.family === 'IPv4' && !iface.internal) {
-                // On privilégie souvent les connexions qui ne sont pas des boucles locales
-                // Si l'interface a un nom standard (eth, en), on la prend
-                if (name.toLowerCase().startsWith('eth') || name.toLowerCase().startsWith('en') || name.toLowerCase().startsWith('wi')) {
+                if (name.toLowerCase().startsWith('eth') || 
+                    name.toLowerCase().startsWith('en') || 
+                    name.toLowerCase().startsWith('wi')) {
                     return iface.address;
                 }
-                // Fallback: prendre la première IP publique trouvée
                 return iface.address; 
             }
         }
     }
-    return '127.0.0.1'; // IP de secours
+    return '127.0.0.1';
 }
 
-const localIp = getLocalIpAddress(); // 💡 IP de la machine
-log(`Adresse IP locale (Ethernet/WiFi) du serveur de caisse: ${localIp}`, 'info');
+const localIp = getLocalIpAddress();
+log(`Adresse IP locale: ${localIp}`, 'info');
 
-
-// 🔹 Chemins adaptés au mode
 function getResourcePath(relativePath) {
   if (isDev) {
-    // Mode dev : dossiers à côté de main.js
     return path.join(__dirname, '..', relativePath);
   }
-  // Mode prod : dans app.asar.unpacked ou Resources
   if (process.platform === 'darwin') {
-    // macOS : MyApp.app/Contents/Resources/
     return path.join(process.resourcesPath, relativePath);
   }
-  // Windows/Linux
   return path.join(process.resourcesPath, relativePath);
 }
 
@@ -72,52 +105,39 @@ const backendPath = getResourcePath('born_dz');
 const frontendPath = getResourcePath('pos');
 const webBuildPath = path.join(frontendPath, 'web-build');
 
-// 🔥 Déterminer l'exécutable Django (PyInstaller)
 function getDjangoExecutable() {
   const managePyPath = path.join(backendPath, 'manage.py');
-  const asgiApplication = 'born_dz.asgi:application'; // ⭐ Nom de l'application ASGI
+  const asgiApplication = 'born_dz.asgi:application';
   
   if (isDev) {
-    // En DEV: On utilise le venv + manage.py
     const venvPython = path.join(backendPath, 'venv', 'bin', 'python3');
     const venvPythonWin = path.join(backendPath, 'venv', 'Scripts', 'python.exe');
-    // ⭐ NOUS CIBLONS MAINTENANT DAPHNE DANS LE VENV
     const venvDaphne = path.join(backendPath, 'venv', 'bin', 'daphne');
     const venvDaphneWin = path.join(backendPath, 'venv', 'Scripts', 'daphne.exe');
     
-    let exec = 'python3'; // Fallback par défaut
-
     if (fs.existsSync(venvDaphne)) {
-      // ✅ CAS DAPHNE (Linux/macOS)
-      exec = venvDaphne;
-      return { exec: exec, args: [asgiApplication] }; // Args: [born_dz.asgi:application]
+      return { exec: venvDaphne, args: [asgiApplication] };
     } else if (fs.existsSync(venvDaphneWin)) {
-      // ✅ CAS DAPHNE (Windows)
-      exec = venvDaphneWin;
-      return { exec: exec, args: [asgiApplication] }; // Args: [born_dz.asgi:application]
+      return { exec: venvDaphneWin, args: [asgiApplication] };
     } else if (fs.existsSync(venvPython) || fs.existsSync(venvPythonWin)) {
-      // ⚠️ Fallback si Daphne n'est pas trouvé (nécessitera toujours une commande manuelle)
-      log('⚠️ Avertissement: Exécutable Daphne non trouvé dans le venv. Tentative d\'utilisation de python/manage.py. WSockets peuvent échouer.', 'warning');
+      log('⚠️ Daphne non trouvé, fallback manage.py', 'warning');
       const pythonExec = fs.existsSync(venvPython) ? venvPython : venvPythonWin;
-      return { exec: pythonExec, args: [managePyPath] }; // Args: [manage.py]
+      return { exec: pythonExec, args: [managePyPath] };
     }
     
-    log('❌ Exécutable Python/Daphne introuvable.', 'error');
+    log('❌ Python/Daphne introuvable', 'error');
     app.quit();
     return null;
 
   } else {
-    // En PROD: On utilise l'exécutable PyInstaller (qui doit être Daphne)
-    const executableName = process.platform === 'win32' ? 'django_asgi_app.exe' : 'django_asgi_app'; // ⭐ Changer le nom de l'exécutable PyInstaller
+    const executableName = process.platform === 'win32' ? 'django_asgi_app.exe' : 'django_asgi_app';
     const bundledExec = path.join(backendPath, executableName); 
     
     if (!fs.existsSync(bundledExec)) {
-        log(`❌ Exécutable ASGI PyInstaller manquant ! (Attendu à: ${bundledExec})`, 'error');
-        log('Raison probable: Le script PyInstaller a échoué. Vérifiez vos scripts de build.', 'error');
+        log(`❌ Exécutable ASGI manquant: ${bundledExec}`, 'error');
         app.quit();
         return null;
     }
-    // Retourne l'exécutable Daphne/ASGI, et l'application ASGI comme argument
     return { exec: bundledExec, args: [asgiApplication] };
   }
 }
@@ -125,45 +145,35 @@ function getDjangoExecutable() {
 const djangoExecInfo = getDjangoExecutable();
 
 log(`Mode: ${isDev ? 'DEV' : 'PROD'}`, 'info');
-log(`Backend Path: ${backendPath}`, 'info');
-log(`Frontend Path: ${frontendPath}`, 'info');
+log(`Backend: ${backendPath}`, 'info');
+log(`Frontend: ${frontendPath}`, 'info');
 
-// 🔹 Vérifications
 function checkRequirements() {
   if (!djangoExecInfo) return false;
   
-  // En prod, web-build DOIT exister
   if (!isDev && !fs.existsSync(webBuildPath)) {
     log('ERREUR: web-build manquant !', 'error');
-    log('Build le frontend: cd pos && npx expo export --platform web --output-dir web-build', 'error');
     app.quit();
     return false;
   }
   
-  // En dev, prévenir si web-build manque
   if (isDev && !fs.existsSync(webBuildPath)) {
-    log('web-build manquant, Expo sera utilisé (plus lent)', 'warning');
+    log('web-build manquant, Expo sera utilisé', 'warning');
   }
   
   return true;
 }
 
-// 🔹 Lancer Django (MAIN CHANGE HERE)
 function startDjango(callback) {
   if (!djangoExecInfo) return; 
   
-  log('Démarrage Django (ASGI/Daphne)...', 'info');
+  log('Démarrage Django (ASGI)...', 'info');
   
-  // ⭐ ARGUMENTS POUR DAPHNE
-  // Arguments de Daphne : [nom_app:application, --bind, 0.0.0.0, --port, 8000]
   const daphneArgs = ['--bind', '0.0.0.0', '--port', '8000']; 
-  
-  // L'exécutable et les arguments sont déterminés par getDjangoExecutable()
   const exec = djangoExecInfo.exec;
-  // ⭐ L'argument principal (born_dz.asgi:application) est déjà dans djangoExecInfo.args
   const args = [...djangoExecInfo.args, ...daphneArgs]; 
 
-  log(`Commande exécutée: ${exec} ${args.join(' ')}`, 'info'); 
+  log(`Commande: ${exec} ${args.join(' ')}`, 'info'); 
 
   djangoProcess = spawn(exec, args, {
     cwd: backendPath,
@@ -179,8 +189,7 @@ function startDjango(callback) {
 
   djangoProcess.stdout.on('data', (data) => {
     const dataStr = data.toString().trim();
-    // ⭐ Adapter le log pour le démarrage de Daphne
-    if (dataStr.includes('Starting server at') || dataStr.includes('Listening on TCP address')) {
+    if (dataStr.includes('Starting server') || dataStr.includes('Listening on')) {
         console.log(`[Daphne] ${dataStr}`);
     }
   });
@@ -190,47 +199,40 @@ function startDjango(callback) {
   });
 
   djangoProcess.on('error', (err) => {
-    log(`Erreur Django (spawn): ${err.message}`, 'error');
+    log(`Erreur Django: ${err.message}`, 'error');
     app.quit();
   });
 
   djangoProcess.on('close', (code) => {
     if (code !== 0 && code !== null) {
-      log(`Django arrêté de manière inattendue (code ${code})`, 'error');
+      log(`Django arrêté (code ${code})`, 'error');
     }
   });
 
-  // Utiliser /admin/ pour le check de santé
   waitForServer('http://127.0.0.1:8000/admin/', 30, 2000, () => {
-    log('Django (ASGI) prêt', 'success');
-    log(`URL du serveur pour les clients distants : http://${localIp}:8000`, 'info'); 
+    log('Django prêt', 'success');
+    log(`URL externe: http://${localIp}:8000`, 'info'); 
     callback();
   });
 }
 
-// 🔹 Serveur statique (PRODUCTION ou si web-build existe)
 function startStaticServer(callback) {
-  log('Démarrage serveur frontend statique...', 'info');
+  log('Démarrage serveur statique...', 'info');
   
   const app = express();
   
-  // CORS pour Django
   app.use((req, res, next) => {
-    // Permet à Django (8000) d'accéder au serveur statique (8081)
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
     next();
   });
   
-  // Servir les fichiers
   app.use(express.static(webBuildPath));
   
-  // SPA fallback (pour les routes Expo/React)
   app.get('*', (req, res) => {
     res.sendFile(path.join(webBuildPath, 'index.html'));
   });
   
-  // 💡 L'Electron front-end s'ouvre toujours sur localhost:8081
   staticServer = app.listen(8081, '127.0.0.1', (err) => {
     if (err) {
       log(`Erreur serveur: ${err.message}`, 'error');
@@ -242,24 +244,21 @@ function startStaticServer(callback) {
   });
 }
 
-// 🔹 Expo (DEV uniquement si web-build manque)
 function startExpo(callback) {
-  log('Démarrage Expo web (dev)...', 'warning');
+  log('Démarrage Expo (dev)...', 'warning');
   
-  // 💡 On force l'interface 127.0.0.1 (localhost) pour Expo CLI
   const expoProcess = spawn('npx', ['expo', 'start', '--web', '--port', '8081'], {
     cwd: frontendPath,
     shell: true,
     env: { 
       ...process.env, 
       BROWSER: 'none',
-      CI: '1', // ⭐ Utiliser CI=1 pour le mode sans interaction
+      CI: '1',
     },
     stdio: 'pipe'
   });
 
   expoProcess.stdout.on('data', (data) => {
-    // On filtre les messages pour ne garder que ceux pertinents pour le démarrage
     const dataStr = data.toString().trim();
     if (dataStr.includes('http://127.0.0.1:8081')) {
        console.log(`[Expo] ${dataStr}`);
@@ -271,25 +270,21 @@ function startExpo(callback) {
   });
 
   expoProcess.on('error', (err) => {
-    log(`Erreur Expo (spawn): ${err.message}`, 'error');
+    log(`Erreur Expo: ${err.message}`, 'error');
     app.quit();
   });
 
-  // Expo est parfois très lent à se lancer
   waitForServer('http://127.0.0.1:8081', 90, 2000, () => {
     log('Expo prêt', 'success');
     callback();
   });
 }
 
-// 🔹 Attente serveur
 function waitForServer(url, retries = 30, interval = 2000, callback) {
   let attempts = 0;
   
   const check = () => {
     http.get(url, (res) => {
-      // 200: OK; 301/302: Redirection
-      // 404/500/etc. signifie que le serveur répond, c'est suffisant pour Electron.
       if (res.statusCode >= 200 && res.statusCode < 510) { 
         callback();
       } else {
@@ -301,14 +296,11 @@ function waitForServer(url, retries = 30, interval = 2000, callback) {
   const retry = () => {
     attempts++;
     if (attempts < retries) {
-      log(`Attente de ${url} (${attempts}/${retries})...`, 'info');
+      log(`Attente ${url} (${attempts}/${retries})...`, 'info');
       setTimeout(check, interval);
     } else {
-      log(`Timeout: ${url} non accessible après ${retries} tentatives`, 'error');
-      // Ferme l'écran d'attente avant de quitter l'application
-      if (splashWindow) {
-        splashWindow.close();
-      }
+      log(`Timeout: ${url}`, 'error');
+      if (splashWindow) splashWindow.close();
       app.quit();
     }
   };
@@ -316,7 +308,6 @@ function waitForServer(url, retries = 30, interval = 2000, callback) {
   check();
 }
 
-// 🔹 Créer la fenêtre principale
 function createMainWindow() {
   if (mainWindow) return;
 
@@ -326,22 +317,37 @@ function createMainWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
-    show: false, // Ne pas montrer tant que le chargement n'est pas fini
+    show: false,
     backgroundColor: '#ffffff',
   });
 
-  mainWindow.once('ready-to-show', () => {
-    // Fermer l'écran d'attente et afficher la fenêtre principale
+  mainWindow.once('ready-to-show', async () => {
     if (splashWindow) {
       splashWindow.close();
       splashWindow = null;
     }
     mainWindow.show();
+    
+    // 🖨️ Lister les imprimantes disponibles
+    try {
+      const printers = await mainWindow.webContents.getPrintersAsync();
+      console.log('\n🖨️ === IMPRIMANTES DISPONIBLES ===');
+      printers.forEach((p, i) => {
+        console.log(`[${i+1}] "${p.name}" ${p.isDefault ? '⭐ (Par défaut)' : ''}`);
+        if (p.name === POS_PRINTER_NAME) {
+          console.log('    ✅ IMPRIMANTE POS TROUVÉE !');
+        }
+      });
+      console.log('===================================\n');
+    } catch (err) {
+      console.error('❌ Erreur récupération imprimantes:', err);
+    }
+    
     log('Application prête', 'success');
   });
 
-  // On charge le frontend (Express/Expo)
   mainWindow.loadURL('http://127.0.0.1:8081'); 
 
   if (isDev) {
@@ -353,22 +359,18 @@ function createMainWindow() {
   });
 }
 
-
-// 🔹 Créer la fenêtre d'attente (Splash Screen)
 function createSplashWindow(callback) {
   splashWindow = new BrowserWindow({
     width: 400,
     height: 300,
-    frame: false, // Pas de bordure, style propre
-    transparent: true, // Fond transparent si votre image est ronde
+    frame: false,
+    transparent: true,
     alwaysOnTop: true,
     center: true,
     resizable: false,
     show: false,
   });
 
-  // Pour un écran de chargement simple, nous utilisons un fichier HTML statique.
-  // Ce fichier doit être créé dans le dossier racine de votre projet Electron.
   splashWindow.loadFile(path.join(__dirname, 'splash.html')); 
   
   splashWindow.once('ready-to-show', () => {
@@ -377,11 +379,9 @@ function createSplashWindow(callback) {
   });
 }
 
-// 🔹 Nettoyage
 function cleanup() {
   log('Arrêt des processus...', 'info');
   
-  // Utiliser SIGTERM ou SIGKILL pour tuer les processus enfants
   if (djangoProcess && !djangoProcess.killed) {
     djangoProcess.kill('SIGTERM');
   }
@@ -391,42 +391,33 @@ function cleanup() {
   }
 }
 
-// 🔹 Démarrage
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!checkRequirements()) return;
-  
-  // 1. Créer la fenêtre d'attente
+
   createSplashWindow(() => {
-    // 2. Lancer Django
     startDjango(() => {
-      // 3. Déterminer la source du frontend
       if (fs.existsSync(webBuildPath)) {
-        startStaticServer(createMainWindow); // Utiliser createMainWindow ici
+        startStaticServer(() => createMainWindow());
       } else if (isDev) {
-        // Seulement en dev si web-build manque
-        startExpo(createMainWindow); // Utiliser createMainWindow ici
+        startExpo(() => createMainWindow());
       } else {
-        log('Pas de frontend disponible en prod !', 'error');
-        if (splashWindow) {
-          splashWindow.close();
-        }
+        log('Pas de frontend en prod !', 'error');
+        if (splashWindow) splashWindow.close();
         app.quit();
       }
     });
   });
 });
 
-// 🔹 Fermeture
 app.on('window-all-closed', () => {
   cleanup();
-  // Sur macOS, on ne quitte pas l'application tant que l'utilisateur n'a pas fait Cmd+Q
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('before-quit', cleanup);
 
 process.on('uncaughtException', (error) => {
-  log(`Erreur non gérée: ${error.message}`, 'error');
+  log(`Erreur: ${error.message}`, 'error');
   console.error(error.stack);
   cleanup();
   app.quit();

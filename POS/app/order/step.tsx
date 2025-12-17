@@ -141,7 +141,7 @@ export default function MenuStepsScreen() {
               // Note: buildOrder appelle déjà addOrderToCart, donc 'order' n'est pas la commande elle-même.
               // La logique ci-dessous doit être revue si vous voulez stocker l'objet 'order' ici.
               // En supposant que buildOrder a déjà mis à jour la liste dans AsyncStorage via addOrderToCart:
-              router.push("/(tabs)/cart"); 
+              router.push("/(order)/cart"); 
             } catch (error) {
               console.error("Erreur en enregistrant la commande :", error);
             }
@@ -182,7 +182,7 @@ export default function MenuStepsScreen() {
         return (
             <View style={styles.loadingContainer}>
                 <Text style={styles.loadingText}>Aucune étape trouvée pour ce menu.</Text>
-                <TouchableOpacity onPress={() => router.push("/(tabs)/menu")} style={{marginTop: 20}}>
+                <TouchableOpacity onPress={() => router.push("/(tabs)/terminal")} style={{marginTop: 20}}>
                     <Text style={{color: '#007bff'}}>Retour au menu</Text>
                 </TouchableOpacity>
             </View>
@@ -200,7 +200,7 @@ export default function MenuStepsScreen() {
                 marginRight: 10,
                 
               }}
-              onPress={() => router.push("/(tabs)/menu")}
+              onPress={() => router.push("/(tabs)/terminal")}
             >
             <AntDesign name="home" size={45} color="black" />
             </TouchableOpacity>

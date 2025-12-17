@@ -55,6 +55,8 @@ const card = async () => {
     );
 
     if (response.status === 200 || response.status === 201) {
+      AsyncStorage.removeItem("pendingOrder");
+      AsyncStorage.setItem("lastOrderId", response.data.order_id.toString());
       router.push("/order/confirmation");
     } else {
       setErrorMessage("Commande non envoyée");
@@ -88,6 +90,8 @@ const card = async () => {
                 }
             );
             if (response.status === 200 || response.status === 201) {
+                AsyncStorage.removeItem("pendingOrder");
+                AsyncStorage.setItem("lastOrderId", response.data.order_id.toString());
                 router.push("/order/confirmation");
             } else {
                 setErrorMessage("Commande non envoyée");

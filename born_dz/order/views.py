@@ -11,6 +11,8 @@ from menu.models import Menu, Step, Option, StepOption
 from rest_framework.permissions import IsAuthenticated
 from datetime import timedelta
 from django.utils.timezone import now, timedelta
+from django.shortcuts import get_object_or_404
+from datetime import datetime
 # Create your views here.
 
 class OrderCreate(APIView):
@@ -50,7 +52,7 @@ class OrderCreate(APIView):
                     step = Step.objects.get(id=opt["step"])
                     option = StepOption.objects.get(id=opt["option"])
                     OrderItemOption.objects.create(order_item=order_item, option=option)
-
+        #generate_ticket_content(request, order.id)
         return Response({"message": "Commande créée avec succès", "order_id": order.id}, status=201)
 
 
@@ -154,4 +156,251 @@ class OrderUpdate(APIView):
             serializer.save()
             return Response({"message": "Commande mis à jour", "data": serializer.data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+# order/views.py
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import get_object_or_404
+from datetime import datetime
+from .models import Order
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def generate_ticket_content(request, order_id):
+    """
+    Récupère une commande par son ID, génère le contenu du ticket
+    et le retourne à la borne.
+    """
+    print(f"📡 [API] Génération du ticket pour la commande ID: {order_id}")
+    
+    try:
+        # Récupérer la commande
+        order = get_object_or_404(Order, id=order_id)
+        print(f"✅ [API] Commande trouvée: #{order.id}")
+        
+    except Exception as e:
+        print(f"❌ [API] Erreur récupération commande: {e}")
+        return Response(
+            {"detail": f"Commande introuvable: {e}"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # Génération du contenu
+    try:
+        print(f"🎨 [API] Formatage du ticket...")
+        
+        ticket_data = format_order_as_ticket(order.id)
+        
+        print(f"✅ [API] Ticket généré ({len(ticket_data['content'])} caractères)")
+        
+        # Retourner le contenu formaté
+        return Response({
+            "order_id": order.id,
+            "created_at": datetime.now().isoformat(),
+            "ticket_content": ticket_data['content'],
+            "total": float(order.total_price()),
+            "format": ticket_data['format']
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"❌ [API] Erreur génération ticket: {e}")
+        import traceback
+        traceback.print_exc()  # Afficher la stack trace complète
+        
+        return Response(
+            {"detail": f"Erreur génération ticket: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def format_order_as_ticket(order_id):
+    """
+    Formate une commande en ticket texte brut pour imprimante POS 80mm
+    Largeur : 42 caractères max
+    """
+    order = get_object_or_404(Order, id=order_id)
+    lines = []
+    
+    WIDTH = 42  # Largeur pour POS 80mm
+    
+    # ==========================================
+    # EN-TÊTE
+    # ==========================================
+    lines.append("=" * WIDTH)
+    lines.append("       RESTAURANT LA BELLE VIE".center(WIDTH))
+    lines.append("=" * WIDTH)
+    lines.append("")
+    
+    # ==========================================
+    # INFORMATIONS COMMANDE
+    # ==========================================
+    lines.append(f"Commande N° {order.id}")
+    lines.append(f"Date: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    
+    # Table (si disponible)
+    if hasattr(order, 'table') and order.table:
+        lines.append(f"Table: {order.table.number}")
+    
+    # Serveur (si disponible)
+    if hasattr(order, 'user') and order.user:
+        serveur = order.user.first_name or order.user.username
+        lines.append(f"Serveur: {serveur}")
+    
+    lines.append("")
+    lines.append("-" * WIDTH)
+    lines.append("ARTICLES".center(WIDTH))
+    lines.append("-" * WIDTH)
+    lines.append("")
+    
+    # ==========================================
+    # ARTICLES
+    # ==========================================
+    subtotal = 0
+    
+    for item in order.items.all():
+        if item.menu:
+            # Ligne principale du menu
+            quantity = item.quantity
+            menu_name = item.menu.name[:25]  # Tronquer si trop long
+            menu_price = float(item.menu.price)
+            item_total = quantity * menu_price
+            
+            # Format: "2x Pizza Margherita        24.00 DA"
+            left_part = f"{quantity}x {menu_name}"
+            right_part = f"{item_total:.2f} DA"
+            spaces = WIDTH - len(left_part) - len(right_part)
+            
+            lines.append(left_part + " " * max(1, spaces) + right_part)
+            
+            # Options/Suppléments
+            for option_item in item.options.all():
+                option_name = "Option"
+                extra_price = 0
+                
+                # Récupérer le nom et prix de l'option
+                if hasattr(option_item, 'option'):
+                    if hasattr(option_item.option, 'option'):
+                        option_name = getattr(option_item.option.option, 'name', 'Option')
+                    
+                    extra_price = float(getattr(option_item.option, 'extra_price', 0) or 0)
+                
+                # Format: "  + Fromage                  2.00 DA"
+                option_line = f"  + {option_name[:25]}"
+                option_price = f"{extra_price:.2f} DA"
+                spaces = WIDTH - len(option_line) - len(option_price)
+                
+                lines.append(option_line + " " * max(1, spaces) + option_price)
+                
+                item_total += extra_price
+            
+            subtotal += item_total
+    
+    lines.append("")
+    lines.append("-" * WIDTH)
+    
+    # ==========================================
+    # TOTAUX
+    # ==========================================
+    
+    # Sous-total
+    left_part = "SOUS-TOTAL:"
+    right_part = f"{subtotal:.2f} DA"
+    spaces = WIDTH - len(left_part) - len(right_part)
+    lines.append(left_part + " " * max(1, spaces) + right_part)
+    
+    # TVA (si applicable)
+    # Décommentez si vous avez de la TVA
+    # tax_rate = 0.19  # 19%
+    # tax_amount = subtotal * tax_rate
+    # left_part = "TVA (19%):"
+    # right_part = f"{tax_amount:.2f} DA"
+    # spaces = WIDTH - len(left_part) - len(right_part)
+    # lines.append(left_part + " " * max(1, spaces) + right_part)
+    
+    lines.append("-" * WIDTH)
+    
+    # Total final
+    total = float(order.total_price())
+    left_part = "TOTAL À PAYER:"
+    right_part = f"{total:.2f} DA"
+    spaces = WIDTH - len(left_part) - len(right_part)
+    lines.append(left_part + " " * max(1, spaces) + right_part)
+    
+    lines.append("=" * WIDTH)
+    
+    # ==========================================
+    # PIED DE PAGE
+    # ==========================================
+    lines.append("")
+    lines.append("Merci de votre visite !".center(WIDTH))
+    lines.append("À bientôt !".center(WIDTH))
+    lines.append("")
+    lines.append("=" * WIDTH)
+    lines.append("")
+    lines.append("")  # Espace pour coupe papier
+    
+    # Joindre toutes les lignes
+    content = "\n".join(lines)
+    
+    print(f"📄 [FORMAT] Ticket généré: {len(lines)} lignes, {len(content)} caractères")
+    
+    return {
+        "content": content,
+        "format": "TEXT"
+    }
+
+
+# ==========================================
+# 🧪 FONCTION DE TEST (OPTIONNELLE)
+# ==========================================
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def test_ticket_format(request):
+    """
+    Endpoint de test pour vérifier le formatage sans commande réelle
+    URL: /order/api/test-ticket/
+    """
+    lines = []
+    WIDTH = 42
+    
+    lines.append("=" * WIDTH)
+    lines.append("TEST IMPRESSION".center(WIDTH))
+    lines.append("=" * WIDTH)
+    lines.append("")
+    lines.append(f"Date: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    lines.append("")
+    lines.append("-" * WIDTH)
+    
+    # Exemple d'articles
+    left = "1x Pizza Margherita"
+    right = "12.00 DA"
+    spaces = WIDTH - len(left) - len(right)
+    lines.append(left + " " * spaces + right)
+    
+    left = "2x Coca-Cola"
+    right = "5.00 DA"
+    spaces = WIDTH - len(left) - len(right)
+    lines.append(left + " " * spaces + right)
+    
+    lines.append("")
+    lines.append("-" * WIDTH)
+    
+    left = "TOTAL:"
+    right = "17.00 DA"
+    spaces = WIDTH - len(left) - len(right)
+    lines.append(left + " " * spaces + right)
+    
+    lines.append("=" * WIDTH)
+    lines.append("")
+    lines.append("Merci !".center(WIDTH))
+    lines.append("")
+    
+    content = "\n".join(lines)
+    
+    return Response({
+        "ticket_content": content,
+        "format": "TEXT",
+        "line_count": len(lines),
+        "char_count": len(content)
+    })

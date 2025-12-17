@@ -9,6 +9,7 @@ urlpatterns = [
     path('api/ListOrder/', OrderList.as_view(), name='order-list'),
     path('api/GetOrder/<int:pk>/', OrderDetail.as_view(), name='order-detail'),
     #path('api/Deleteorder/<int:order_id>/', OrderDelete.as_view(), name='order-delete'),
+    path('api/generateTicket/<int:order_id>/', generate_ticket_content, name='generate_ticket'),
     path('api/Updateorder/<int:order_id>/', OrderUpdate.as_view(), name='order-update')
 ]
 

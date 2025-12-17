@@ -70,7 +70,7 @@ export function useBorneSync() {
     const loadDataFromCache = useCallback(async () => {
         setIsLoading(true);
         
-        const currentRestaurantId = await AsyncStorage.getItem(idRestaurantKey);
+        const currentRestaurantId = await AsyncStorage.getItem(idRestaurant);
         if (currentRestaurantId) {
             setRestaurantId(currentRestaurantId);
         }

@@ -34,7 +34,7 @@ SECRET_KEY = "django-insecure-y($ou%*05+_g)zspa#n-tol!)2p*l_6zr#@(kgomt1hv4$60eu
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["192.168.1.165","menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app"]
+ALLOWED_HOSTS = ["192.168.1.165","menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app","192.168.1.123"]
 
 
 # Application definition
