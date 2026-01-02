@@ -25,51 +25,58 @@ function log(message, type = 'info') {
 }
 
 const POS_PRINTER_NAME = "POS-80"; // ⬅️ AJUSTEZ CE NOM EXACTEMENT
-
 // ==========================================
-// 🖨️ HANDLER D'IMPRESSION (TEXTE BRUT)
+// 🖨️ HANDLER D'IMPRESSION (TEXTE BRUT RAW)
 // ==========================================
 ipcMain.handle("print-ticket", async (event, ticketText) => {
+    // Utiliser un nom de fichier unique pour éviter les erreurs d'accès concurrents
+    const tempFilePath = path.join(os.tmpdir(), `ticket-${Date.now()}.txt`);
+
     try {
         log(`[Impression] Tentative RAW sur "${POS_PRINTER_NAME}"`, 'info');
 
-        // 1️⃣ On prépare la commande PowerShell
-        // On utilise 'Print.exe' qui est l'ancien outil DOS, très efficace pour le texte brut
-        // OU une commande PowerShell qui définit explicitement le type de contenu
-        
-        // Créer un fichier temporaire avec encodage OEM (important pour les imprimantes DOS/POS)
-        const tempFilePath = path.join(os.tmpdir(), `ticket.txt`);
+        // 1️⃣ Écriture du fichier en encodage 'latin1' (ou 'cp437')
+        // Cela garantit que les caractères spéciaux de l'imprimante (lignes, euros) passent bien
         fs.writeFileSync(tempFilePath, ticketText, { encoding: 'latin1' });
 
-        // 2️⃣ Commande d'envoi direct au spooler (Mode texte brut)
-        // On utilise Notepad /P qui est une astuce Windows pour imprimer proprement du brut
-        // ou Print.exe si l'imprimante est sur un port USB local.
+        // 2️⃣ Commande d'envoi direct (Mode RAW)
+        // Note: Pour que '\\127.0.0.1\POS-80' fonctionne, l'imprimante DOIT être partagée dans Windows.
+        const printerPath = `\\\\127.0.0.1\\${POS_PRINTER_NAME}`;
         
-        // On définit une police fixe et très petite (FontA de l'imprimante ou Consolas taille 6)
-        const command = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${POS_PRINTER_NAME}'"`;
+        // On utilise la commande 'type' vers le chemin réseau local du spooler
+        const commandRaw = `cmd /c "type ${tempFilePath} > ${printerPath}"`;
 
-        // Alternative si vous avez installé le pilote 'Generic / Text Only' :
-        // La commande 'type' devient ultra-performante car elle ignore tout formatage
-        const commandRaw = `cmd /c "type ${tempFilePath} > prn"`; // 'prn' cible l'imprimante par défaut
-
-        // 💡 SI NOTEPAD NE MARCHE PAS, UTILISONS CETTE LIGNE (La plus précise pour POS-80) :
-        // const command = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${POS_PRINTER_NAME}'"`;
-
-        log('[Impression] Envoi via processus système...', 'info');
+        log('[Impression] Envoi direct au spooler (0 marges)...', 'info');
         
-         execSync(commandRaw, { windowsHide: true });
+        // Exécution de la commande
+        execSync(commandRaw, { windowsHide: true });
 
-        log('[Impression] ✅ Commande envoyée', 'success');
+        log('[Impression] ✅ Ticket envoyé avec succès lalalala', 'success');
+
+        // 3️⃣ Nettoyage asynchrone pour ne pas ralentir le retour UI
+        setTimeout(() => {
+            if (fs.existsSync(tempFilePath)) {
+                try { fs.unlinkSync(tempFilePath); } catch (e) {}
+            }
+        }, 1000);
+
         return { success: true };
 
     } catch (error) {
         log(`[Impression] ❌ Erreur: ${error.message}`, 'error');
-        return { success: false, error: error.message };
+        
+        // Tentative de secours automatique si le partage réseau n'est pas actif
+        try {
+            log('[Impression] ⚠️ Repli sur PowerShell (Out-Printer)...', 'warning');
+            const commandAlt = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${POS_PRINTER_NAME}'"`;
+            execSync(commandAlt, { windowsHide: true });
+            return { success: true, warning: "Repli PowerShell utilisé" };
+        } catch (altError) {
+            log(`[Impression] ❌ Échec total: ${altError.message}`, 'error');
+            return { success: false, error: altError.message };
+        }
     }
 });
-// ==========================================
-// RESTE DU CODE (INCHANGÉ)
-// ==========================================
 
 function getLocalIpAddress() {
     const interfaces = os.networkInterfaces();
@@ -165,55 +172,74 @@ function checkRequirements() {
 }
 
 function startDjango(callback) {
-  if (!djangoExecInfo) return; 
-  
-  log('Démarrage Django (ASGI)...', 'info');
-  
-  const daphneArgs = ['--bind', '0.0.0.0', '--port', '8000']; 
-  const exec = djangoExecInfo.exec;
-  const args = [...djangoExecInfo.args, ...daphneArgs]; 
+  if (!djangoExecInfo) return;
 
-  log(`Commande: ${exec} ${args.join(' ')}`, 'info'); 
+  log('Vérification et nettoyage du port 8000...', 'info');
 
-  djangoProcess = spawn(exec, args, {
-    cwd: backendPath,
-    stdio: 'pipe',
-    shell: true,
-    env: {
-      ...process.env,
-      PYTHONUNBUFFERED: '1',
-      PYTHONIOENCODING: 'utf-8', 
-      DJANGO_SETTINGS_MODULE: 'born_dz.settings' 
-    }
-  });
+  // Définition de la logique de démarrage
+  const proceedWithStart = () => {
+    log('Démarrage Django (ASGI/Daphne)...', 'info');
 
-  djangoProcess.stdout.on('data', (data) => {
-    const dataStr = data.toString().trim();
-    if (dataStr.includes('Starting server') || dataStr.includes('Listening on')) {
+    const daphneArgs = ['--bind', '0.0.0.0', '--port', '8000'];
+    const execPath = djangoExecInfo.exec;
+    const args = [...djangoExecInfo.args, ...daphneArgs];
+
+    log(`Commande exécutée: ${execPath} ${args.join(' ')}`, 'info');
+
+    djangoProcess = spawn(execPath, args, {
+      cwd: backendPath,
+      stdio: 'pipe',
+      shell: true,
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: '1',
+        PYTHONIOENCODING: 'utf-8',
+        DJANGO_SETTINGS_MODULE: 'born_dz.settings'
+      }
+    });
+
+    djangoProcess.stdout.on('data', (data) => {
+      const dataStr = data.toString().trim();
+      if (dataStr.includes('Starting server') || dataStr.includes('Listening on')) {
         console.log(`[Daphne] ${dataStr}`);
-    }
-  });
+      }
+    });
 
-  djangoProcess.stderr.on('data', (data) => {
-    console.error(`[Django] ${data.toString().trim()}`);
-  });
+    djangoProcess.stderr.on('data', (data) => {
+      console.error(`[Django] ${data.toString().trim()}`);
+    });
 
-  djangoProcess.on('error', (err) => {
-    log(`Erreur Django: ${err.message}`, 'error');
-    app.quit();
-  });
+    djangoProcess.on('error', (err) => {
+      log(`Erreur Django (spawn): ${err.message}`, 'error');
+      app.quit();
+    });
 
-  djangoProcess.on('close', (code) => {
-    if (code !== 0 && code !== null) {
-      log(`Django arrêté (code ${code})`, 'error');
-    }
-  });
+    djangoProcess.on('close', (code) => {
+      if (code !== 0 && code !== null) {
+        log(`Django arrêté de manière inattendue (code ${code})`, 'error');
+      }
+    });
 
-  waitForServer('http://127.0.0.1:8000/admin/', 30, 2000, () => {
-    log('Django prêt', 'success');
-    log(`URL externe: http://${localIp}:8000`, 'info'); 
-    callback();
-  });
+    // Utiliser /admin/ pour le check de santé
+    waitForServer('http://127.0.0.1:8000/admin/', 30, 2000, () => {
+      log('Django (ASGI) prêt', 'success');
+      log(`URL du serveur pour les clients distants : http://${localIp}:8000`, 'info');
+      callback();
+    });
+  };
+
+  // 🛡️ Nettoyage préventif AVANT de lancer proceedWithStart
+  if (process.platform === 'win32') {
+    // On force l'arrêt de tout processus daphne.exe existant
+    // /f = force, /im = image name, /t = arbre de processus (enfants)
+    exec('taskkill /f /im daphne.exe /t', () => {
+      // On attend 500ms que Windows libère réellement le port réseau
+      setTimeout(proceedWithStart, 500);
+    });
+  } else {
+    // Sur macOS/Linux, le signal SIGTERM suffit généralement
+    proceedWithStart();
+  }
 }
 
 function startStaticServer(callback) {
@@ -378,16 +404,31 @@ function createSplashWindow(callback) {
     callback();
   });
 }
-
+const { exec } = require('child_process');
 function cleanup() {
-  log('Arrêt des processus...', 'info');
-  
-  if (djangoProcess && !djangoProcess.killed) {
-    djangoProcess.kill('SIGTERM');
+  log('Arrêt des processus et libération des ports...', 'info');
+
+  // 1️⃣ Tuer Django/Daphne proprement ou par la force
+  if (djangoProcess) {
+    if (process.platform === 'win32') {
+      // Sous Windows, on utilise taskkill avec /F (force) et /T (tree/enfants)
+      // On utilise le PID du processus que nous avons spawn
+      exec(`taskkill /pid ${djangoProcess.pid} /f /t`, (err) => {
+        if (err) {
+          log(`Note: Impossible de tuer le PID ${djangoProcess.pid} (déjà fermé ?)`, 'info');
+        } else {
+          log('✅ Django et ses processus enfants ont été terminés.', 'success');
+        }
+      });
+    } else {
+      // Unix (macOS/Linux)
+      djangoProcess.kill('SIGTERM');
+    }
   }
-  
+
+  // 2️⃣ Fermer le serveur Express
   if (staticServer) {
-    staticServer.close(() => log('Serveur statique arrêté', 'info'));
+    staticServer.close(() => log('✅ Serveur statique arrêté', 'success'));
   }
 }
 
