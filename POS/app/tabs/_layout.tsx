@@ -16,6 +16,11 @@ export default function TabLayout() {
             iconName = 'person-outline';
           } else if (route.name === 'manageTerminal') {
             iconName = 'person-outline';
+          } else if (route.name === 'kpi') {
+            iconName = 'attach-money-outline';
+          }
+          else if (route.name === 'MenuAdminPage') {
+            iconName = 'restaurant-outline';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;

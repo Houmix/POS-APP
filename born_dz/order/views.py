@@ -165,6 +165,7 @@ from django.shortcuts import get_object_or_404
 from datetime import datetime
 from .models import Order
 
+<<<<<<< Updated upstream
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def generate_ticket_content(request, order_id):
@@ -404,3 +405,30 @@ def test_ticket_format(request):
         "line_count": len(lines),
         "char_count": len(content)
     })
+=======
+
+
+from django.db.models import Sum, Count, F
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from .models import Order
+
+class KpiView(APIView):
+    def get(self, request, restaurantId):
+        orders = Order.objects.filter(id=restaurantId) # Filtre par resto
+        
+        # On calcule le CA manuellement ou via une annotation complexe
+        # Ici une boucle simple (optimisable avec Sum sur les OrderItems)
+        total_revenue = sum(order.total_price() for order in orders.filter(paid=True))
+        total_orders = orders.count()
+        
+        context = {
+            "total_revenue": total_revenue,
+            "total_orders": total_orders,
+            "average_cart": total_revenue / total_orders if total_orders > 0 else 0,
+            "completed_orders": orders.filter(status='completed').count(),
+            "cancelled_orders": orders.filter(status='cancelled').count(),
+            "take_away_count": orders.filter(take_away=True).count(),
+        }
+        return Response(context)
+>>>>>>> Stashed changes

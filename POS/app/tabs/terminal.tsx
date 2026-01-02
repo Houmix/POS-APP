@@ -62,61 +62,11 @@ export default function MenuScreen() {
 
   const { categories, menus, isLoading } = useBorneSync();
   
-  // useEffect(() => {
-  //   // Met à jour le compteur du panier au montage
-  //   updateCartCount(); 
-
-  //   const GetCategorie = async () => {
-  //     try {
-  //       setIsLoading(true);
-  //       const accessToken = await AsyncStorage.getItem("token");
-  //       // Utilisation de idRestaurant comme dans le premier code
-  //       const response = await axios.get(`${POS_URL}/menu/api/getGroupMenuList/${idRestaurant}/`, { 
-  //         headers: {
-  //           Authorization: `Bearer ${accessToken}`,
-  //         },
-  //       });
-
-  //       const availableCategories = response.data.filter((category) => category.avalaible);
-  //       setCategories(availableCategories);
-
-  //       if (availableCategories.length > 0) {
-  //         setSelectedCategory(availableCategories[0]);
-  //       }
-
-  //       await AsyncStorage.setItem("GroupMenu", JSON.stringify(availableCategories));
-  //     } catch (error) {
-  //       console.error("Erreur lors de la récupération des catégories", error);
-  //       Alert.alert("Erreur", "Impossible de charger les catégories.");
-  //     } 
-  //     // NOTE : setIsLoading(false) est déplacé dans le second useEffect pour s'assurer que les menus sont aussi chargés.
-  //   };
-  //   GetCategorie();
-  // }, []);
-
-  // useEffect(() => {
-  //   const GetMenu = async () => {
-  //     try {
-  //       const accessToken = await AsyncStorage.getItem("token");
-  //       // Utilisation de idRestaurant comme dans le premier code
-  //       const response = await axios.get(`${POS_URL}/menu/api/getAllMenu/${idRestaurant}/`, { 
-  //         headers: {
-  //           Authorization: `Bearer ${accessToken}`,
-  //         },
-  //       });
-  //       setMenus(response.data);
-  //       await AsyncStorage.setItem("Menu", JSON.stringify(response.data));
-  //     } catch (error) {
-  //       console.error("Erreur lors de la récupération des menus", error);
-  //       Alert.alert("Erreur", "Impossible de charger les menus.");
-  //     } finally {
-  //       setIsLoading(false); // FIN du chargement après les deux appels
-  //     }
-  //   };
-  //   GetMenu();
-  // }, []);
-  // -----------------------------
-
+  useEffect(() => {
+    if (categories.length > 0 && !selectedCategory) {
+      setSelectedCategory(categories[0]); // Sélectionne la première catégorie
+    }
+  }, [categories]);
 
   // --- LOGIQUE MODALE (Identique au premier code) ---
 

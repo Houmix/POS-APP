@@ -141,7 +141,11 @@ export default function MenuStepsScreen() {
               // Note: buildOrder appelle déjà addOrderToCart, donc 'order' n'est pas la commande elle-même.
               // La logique ci-dessous doit être revue si vous voulez stocker l'objet 'order' ici.
               // En supposant que buildOrder a déjà mis à jour la liste dans AsyncStorage via addOrderToCart:
+<<<<<<< Updated upstream
               router.push("/(order)/cart"); 
+=======
+              router.push("/order/cart"); 
+>>>>>>> Stashed changes
             } catch (error) {
               console.error("Erreur en enregistrant la commande :", error);
             }

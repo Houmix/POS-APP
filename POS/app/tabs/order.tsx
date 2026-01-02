@@ -168,7 +168,7 @@ export default function OrderScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <View style={{ flex: 1 }}>
 
       
       <View style={styles.columnsContainer}>
@@ -202,7 +202,7 @@ export default function OrderScreen() {
           />
         </View>
       </View>
-      </ScrollView>
+      </View>
     </View>
   );
 }
