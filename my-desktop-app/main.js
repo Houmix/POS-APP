@@ -348,7 +348,7 @@ function createMainWindow() {
     show: false,
     backgroundColor: '#ffffff',
   });
-
+  mainWindow.maximize();
   mainWindow.once('ready-to-show', async () => {
     if (splashWindow) {
       splashWindow.close();

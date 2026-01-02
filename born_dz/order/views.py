@@ -165,7 +165,6 @@ from django.shortcuts import get_object_or_404
 from datetime import datetime
 from .models import Order
 
-<<<<<<< Updated upstream
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def generate_ticket_content(request, order_id):
@@ -405,7 +404,6 @@ def test_ticket_format(request):
         "line_count": len(lines),
         "char_count": len(content)
     })
-=======
 
 
 from django.db.models import Sum, Count, F
@@ -431,4 +429,3 @@ class KpiView(APIView):
             "take_away_count": orders.filter(take_away=True).count(),
         }
         return Response(context)
->>>>>>> Stashed changes

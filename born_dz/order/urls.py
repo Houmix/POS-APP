@@ -9,13 +9,9 @@ urlpatterns = [
     path('api/ListOrder/', OrderList.as_view(), name='order-list'),
     path('api/GetOrder/<int:pk>/', OrderDetail.as_view(), name='order-detail'),
     #path('api/Deleteorder/<int:order_id>/', OrderDelete.as_view(), name='order-delete'),
-<<<<<<< Updated upstream
     path('api/generateTicket/<int:order_id>/', generate_ticket_content, name='generate_ticket'),
-    path('api/Updateorder/<int:order_id>/', OrderUpdate.as_view(), name='order-update')
-=======
     path('api/Updateorder/<int:order_id>/', OrderUpdate.as_view(), name='order-update'),
     path('api/kpi/<int:restaurantId>', KpiView.as_view(), name='api_get_kpi'),
->>>>>>> Stashed changes
 ]
 
 """ urlpatterns = [
