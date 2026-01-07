@@ -49,6 +49,7 @@ class OrderCreate(APIView):
                 order_item.save()
             else:
                 for opt in item_data.get("options", []):
+                    print(opt)
                     step = Step.objects.get(id=opt["step"])
                     option = StepOption.objects.get(id=opt["option"])
                     OrderItemOption.objects.create(order_item=order_item, option=option)

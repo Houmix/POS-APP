@@ -313,7 +313,7 @@ export default function MenuScreen() {
                   <View style={styles.menuInfo}>
                     <Text style={styles.menuText} numberOfLines={2}>{item.name}</Text>
                     <Text style={styles.menuPrice}>
-                      {item.extra ? `+${item.price}` : item.solo_price ? `${item.solo_price} DA` : `${item.price} DA`}
+                      {item.extra == 1 ? `+${item.price}` : item.solo_price == 1 ? `${item.solo_price} ${item.price} DA` : `${item.price} DA`}
                     </Text>
                   </View>
                 </TouchableOpacity>

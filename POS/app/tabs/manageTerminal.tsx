@@ -1,178 +1,181 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Dimensions } from "react-native";
-import { useRouter } from "expo-router";
+import React, { useEffect, useState, useCallback } from "react";
+import { 
+  View, Text, StyleSheet, FlatList, TouchableOpacity, 
+  Dimensions, ActivityIndicator, Switch, SafeAreaView 
+} from "react-native";
+import { TabView, TabBar } from "react-native-tab-view";
+import { LayoutGrid, Utensils, Settings2, RefreshCcw } from "lucide-react-native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { TabView, SceneMap } from "react-native-tab-view";
-import { POS_URL, idRestaurant } from "@/config";
+import { POS_URL } from "@/config";
+
+// --- Styles Constants ---
+const COLORS = {
+  primary: "#756fbf", // Orange Fast-food
+  success: "#2ECC71",
+  danger: "#E74C3C",
+  background: "#F8F9FA",
+  card: "#FFFFFF",
+  text: "#2C3E50",
+  muted: "#756fbf"
+};
+
 export default function ManageTerminal() {
-  const [menuGroups, setMenuGroups] = useState([]);
-  const [menus, setMenus] = useState([]);
-  const [options, setOptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [updatingId, setUpdatingId] = useState(null);
+  const [data, setData] = useState({ menuGroups: [], menus: [], options: [] });
   const [index, setIndex] = useState(0);
   const [routes] = useState([
-    { key: "menuGroups", title: "Groupes de menus" },
-    { key: "menus", title: "Menus" },
-    { key: "options", title: "Options" },
+    { key: "menuGroups", title: "Groupes", icon: <LayoutGrid size={18} color="white" /> },
+    { key: "menus", title: "Menus", icon: <Utensils size={18} color="white" /> },
+    { key: "options", title: "Options", icon: <Settings2 size={18} color="white" /> },
   ]);
 
-  const router = useRouter();
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const accessToken = await AsyncStorage.getItem("token");
-        const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
-
-        const menuGroupResponse = await axios.get(
-          `${POS_URL}/menu/api/getGroupMenuList/${restaurantId}/`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-
-        const menuResponse = await axios.get(
-          `${POS_URL}/menu/api/getAllMenu/${restaurantId}/`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-
-        const optionResponse = await axios.get(
-          `${POS_URL}/menu/api/getStepOption/${restaurantId}/`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          }
-        );
-
-        setMenuGroups(menuGroupResponse.data);
-        setMenus(menuResponse.data);
-        setOptions(optionResponse.data);
-      } catch (error) {
-        console.error("Erreur lors de la récupération des données :", error);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  const toggleAvalaible = async (type, id, currentValue) => {
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const accessToken = await AsyncStorage.getItem("token");
-      const endpoint =
-        type === "menuGroup"
-          ? `${POS_URL}/menu/api/updateGroupMenu/`
-          : type === "menu"
-          ? `${POS_URL}/menu/api/updateMenu/`
-          : `${POS_URL}/menu/api/updateStepOption/`;
+      const token = await AsyncStorage.getItem("token");
+      const resId = await AsyncStorage.getItem("Employee_restaurant_id");
+      const headers = { Authorization: `Bearer ${token}` };
 
-      const response = await axios.put(
-        endpoint,
-        { id, avalaible: !currentValue },
-        {
-          headers: {
-        Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
+      const [groups, menus, opts] = await Promise.all([
+        axios.get(`${POS_URL}/menu/api/getGroupMenuList/${resId}/`, { headers }),
+        axios.get(`${POS_URL}/menu/api/getAllMenu/${resId}/`, { headers }),
+        axios.get(`${POS_URL}/menu/api/getStepOption/${resId}/`, { headers }),
+      ]);
 
-      if (response.status === 200) {
-        if (type === "menuGroup") {
-          setMenuGroups((prev) =>
-            prev.map((item) =>
-              item.id === id ? { ...item, avalaible: !currentValue } : item
-            )
-          );
-        } else if (type === "menu") {
-          setMenus((prev) =>
-            prev.map((item) =>
-              item.id === id ? { ...item, avalaible: !currentValue } : item
-            )
-          );
-        } else if (type === "option") {
-          setOptions((prev) =>
-            prev.map((item) =>
-              item.id === id ? { ...item, avalaible: !currentValue } : item
-            )
-          );
-        }
-      }
+      setData({ menuGroups: groups.data, menus: menus.data, options: opts.data });
     } catch (error) {
-      console.error("Erreur lors de la mise à jour :", error);
+      console.error("Fetch Error:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const renderList = (data, type) => (
-    <FlatList
-      data={data}
-      keyExtractor={(item) => item.id.toString()}
-      renderItem={({ item }) => (
-        <View style={styles.itemContainer}>
-          <Text style={styles.itemText}>{item.name}</Text>
-          <TouchableOpacity
-            style={[
-              styles.toggleButton,
-              item.avalaible ? styles.buttonOn : styles.buttonOff,
-            ]}
-            onPress={() => toggleAvalaible(type, item.id, item.avalaible)}
-          >
-            <Text style={styles.buttonText}>
-              {item.avalaible ? "On" : "Off"}
-            </Text>
-          </TouchableOpacity>
-        </View>
+  useEffect(() => { fetchData(); }, []);
+
+  const toggleStatus = async (type, id, currentValue) => {
+    setUpdatingId(id);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const endpoints = {
+        menuGroup: "updateGroupMenu",
+        menu: "updateMenu",
+        option: "updateStepOption"
+      };
+
+      await axios.put(
+        `${POS_URL}/menu/api/${endpoints[type]}/`,
+        { id, avalaible: !currentValue },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Mise à jour locale optimiste
+      setData(prev => ({
+        ...prev,
+        [type + "s"]: prev[type + "s"].map(item => 
+          item.id === id ? { ...item, avalaible: !currentValue } : item
+        )
+      }));
+    } catch (error) {
+      alert("Erreur de mise à jour");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const renderItem = ({ item }, type) => (
+    <View style={styles.card}>
+      <View style={styles.cardInfo}>
+        <Text style={styles.itemName}>{item.name}</Text>
+        <Text style={[styles.statusTag, { color: item.avalaible ? COLORS.success : COLORS.danger }]}>
+          {item.avalaible ? "En stock" : "Épuisé"}
+        </Text>
+      </View>
+      
+      {updatingId === item.id ? (
+        <ActivityIndicator color={COLORS.primary} />
+      ) : (
+        <Switch
+          value={item.avalaible}
+          onValueChange={() => toggleStatus(type, item.id, item.avalaible)}
+          trackColor={{ false: "#D1D1D1", true: "#FFD5B8" }}
+          thumbColor={item.avalaible ? COLORS.primary : "#f4f3f4"}
+        />
       )}
-    />
+    </View>
   );
 
-  const renderScene = SceneMap({
-    menuGroups: () => renderList(menuGroups, "menuGroup"),
-    menus: () => renderList(menus, "menu"),
-    options: () => renderList(options, "option"),
-  });
+  const renderScene = ({ route }) => {
+    const dataSource = route.key === "menuGroups" ? data.menuGroups : route.key === "menus" ? data.menus : data.options;
+    const type = route.key.slice(0, -1); // retire le 's' pour matcher le type de toggleStatus
+
+    return (
+      <FlatList
+        data={dataSource}
+        renderItem={(props) => renderItem(props, type)}
+        keyExtractor={item => item.id.toString()}
+        contentContainerStyle={styles.listContent}
+        refreshing={loading}
+        onRefresh={fetchData}
+      />
+    );
+  };
 
   return (
-    <TabView
-      navigationState={{ index, routes }}
-      renderScene={renderScene}
-      onIndexChange={setIndex}
-      initialLayout={{ width: Dimensions.get("window").width }}
-    />
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Gestion du Stock</Text>
+        <TouchableOpacity onPress={fetchData}><RefreshCcw size={24} color={COLORS.text} /></TouchableOpacity>
+      </View>
+
+      <TabView
+        navigationState={{ index, routes }}
+        renderScene={renderScene}
+        onIndexChange={setIndex}
+        initialLayout={{ width: Dimensions.get("window").width }}
+        renderTabBar={props => (
+          <TabBar
+            {...props}
+            indicatorStyle={{ backgroundColor: COLORS.primary, height: 3 }}
+            style={{ backgroundColor: 'white' }}
+            labelStyle={{ color: COLORS.text, fontWeight: '700', fontSize: 12 }}
+            activeColor={COLORS.primary}
+            inactiveColor={COLORS.muted}
+          />
+        )}
+      />
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  itemContainer: {
+  container: { flex: 1, backgroundColor: COLORS.background },
+  header: {
+    padding: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'white'
+  },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: COLORS.text },
+  listContent: { padding: 16 },
+  card: {
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ccc",
+    // Shadow pour iOS/Android
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  itemText: {
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  toggleButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  buttonOn: {
-    backgroundColor: "#28a745",
-  },
-  buttonOff: {
-    backgroundColor: "#dc3545",
-  },
-  buttonText: {
-    color: "#fff",
-    fontWeight: "bold",
-  },
+  cardInfo: { flex: 1 },
+  itemName: { fontSize: 17, fontWeight: "600", color: COLORS.text, marginBottom: 4 },
+  statusTag: { fontSize: 13, fontWeight: "700", textTransform: 'uppercase' }
 });

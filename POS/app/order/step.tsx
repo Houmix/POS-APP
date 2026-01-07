@@ -1,371 +1,262 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { View, Text, FlatList, StyleSheet,TouchableOpacity, Image, ActivityIndicator } from "react-native";
-import { useEffect, useState } from "react";
-import axios from "axios"; // Gardé uniquement pour d'autres fonctions si nécessaire (mais non utilisé ici)
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image, ActivityIndicator, SafeAreaView, Dimensions } from "react-native";
+import { useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import AntDesign from '@expo/vector-icons/AntDesign';
+import { AntDesign, Ionicons } from '@expo/vector-icons';
 import { POS_URL } from "@/config";
-
-// ⭐ IMPORTATION DU HOOK DE SYNCHRONISATION
 import { useBorneSync } from '@/hooks/useBorneSync';
 
+const { width } = Dimensions.get('window');
+
+const COLORS = {
+  primary: "#FF6B00",
+  success: "#28a745",
+  bg: "#F8F9FA",
+  text: "#1A1A1A",
+  muted: "#666"
+};
+
 export default function MenuStepsScreen() {
-    const {menuId} = useLocalSearchParams(); 
-    const {menuName} = useLocalSearchParams(); 
-    const {price} = useLocalSearchParams(); 
-    
-    const [steps, setSteps] = useState([]); // Initialisé à []
+    const { menuId, menuName, price } = useLocalSearchParams(); 
+    const [steps, setSteps] = useState([]);
     const [selectedOptions, setSelectedOptions] = useState({});
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [isLoading, setIsLoading] = useState(true); 
-    
-    // ⭐ Utilisation du hook et récupération de la fonction de cache des étapes
     const { getStepsForMenu } = useBorneSync(); 
 
     const currentStep = steps?.[currentStepIndex] ?? null;
 
-
-    // Remplacement de la fonction locale par celle du hook (qui gère cache/API/token)
-    useEffect( () => {
+    useEffect(() => {
         const loadSteps = async () => {
             setIsLoading(true);
             try {
-                // ⭐ APPEL DU HOOK : getStepsForMenu gère la logique complexe (cache, invalidation, API, token)
                 const data = await getStepsForMenu(menuId);
                 setSteps(data);
-                console.log("Étapes récupérées via Hook:", data);
             } catch (error) {
-                console.error("Erreur lors du chargement des étapes via Hook:", error);
+                console.error(error);
             } finally {
                 setIsLoading(false); 
             }
         };
-        // Assurez-vous que menuId est défini avant de charger
-        if (menuId) {
-            loadSteps();
-        } else {
-            setIsLoading(false);
-        }
-    // Dépendance à getStepsForMenu garantit le rechargement si la cache est invalidée
-    }, [menuId, getStepsForMenu]); 
+        if (menuId) loadSteps();
+    }, [menuId, getStepsForMenu]);
 
-    // --- Reste du code inchangé (handleNext, handlePrevious, toggleOption, buildOrder, etc.) ---
-    
+    // Calcul du prix total en temps réel (Base + Extras)
+    const totalPrice = useMemo(() => {
+        let extras = 0;
+        steps.forEach(step => {
+            const selectedIds = selectedOptions[step.id] || [];
+            step.stepoptions.forEach(opt => {
+                if (selectedIds.includes(opt.id)) {
+                    extras += parseFloat(opt.option.extra_price || 0);
+                }
+            });
+        });
+        return parseFloat(price) + extras;
+    }, [selectedOptions, steps, price]);
+
     const handleNext = () => {
-        // ⭐ CORRECTION 4: Incrémenter l'index
-        if (currentStepIndex < steps.length - 1) {
-          setCurrentStepIndex(currentStepIndex + 1) // Ajout de + 1
-        }
-      };
-    
-    const handlePrevious = () => {
-        if (currentStepIndex > 0) {
-            setCurrentStepIndex(currentStepIndex - 1);
-        }
+        if (currentStepIndex < steps.length - 1) setCurrentStepIndex(currentStepIndex + 1);
     };
+
+    const handlePrevious = () => {
+        if (currentStepIndex > 0) setCurrentStepIndex(currentStepIndex - 1);
+    };
+
     const toggleOption = (stepId, optionId, isSingle, maxOptions) => {
         setSelectedOptions((prev) => {
           const current = prev[stepId] || [];
-    
-          if (isSingle) {
-            return {
-              ...prev,
-              [stepId]: [optionId],
-            };
-          } else {
-            if (current.includes(optionId)) {
-              return {
-                ...prev,
-                [stepId]: current.filter((id) => id !== optionId),
-              };
-            } else {
-              if (maxOptions && current.length >= maxOptions) {
-                // Limite atteinte, on ne fait rien
-                return prev;
-              }
-              return {
-                ...prev,
-                [stepId]: [...current, optionId],
-              };
-            }
-          }
+          if (isSingle) return { ...prev, [stepId]: [optionId] };
+          if (current.includes(optionId)) return { ...prev, [stepId]: current.filter(id => id !== optionId) };
+          if (maxOptions && current.length >= maxOptions) return prev;
+          return { ...prev, [stepId]: [...current, optionId] };
         });
     };
-    
-    // ... (addOrderToCart, buildOrder, goToCart, isStepValid, areAllStepsValid restent inchangés) ...
+
     const addOrderToCart = async (newOrder) => {
-      try {
-        const existingOrders = await AsyncStorage.getItem("orderList");
-        const orderList = existingOrders ? JSON.parse(existingOrders) : [];
-      
-        const updatedOrderList = [...orderList, newOrder];
-      
-        await AsyncStorage.setItem("orderList", JSON.stringify(updatedOrderList));
-        console.log("Commande ajoutée avec succès !");
-        console.log("Liste des commandes mise à jour :", updatedOrderList);
-      } catch (error) {
-        console.error("Erreur lors de l'ajout de la commande :", error);
-      }
+        const existing = await AsyncStorage.getItem("orderList");
+        const list = existing ? JSON.parse(existing) : [];
+        await AsyncStorage.setItem("orderList", JSON.stringify([...list, newOrder]));
     };
-    const buildOrder = () => {
-      // Assurez-vous que steps est un tableau avant d'appeler .map
-      if (!steps || steps.length === 0) return null; 
 
-      const order = {
-        menuName: menuName,
-        menuId: menuId,
-        price : price,
-        quantity: 1,
-        steps: steps.map((step) => ({
-        stepName: step.name,
-        stepId: step.id,
-        solo: false,
-        extra: false,
-        selectedOptions: step.stepoptions.filter((opt) =>
-          selectedOptions[step.id]?.includes(opt.id)
-        ).map((opt) => ({
-          optionId: opt.id,
-          optionName: opt.option.name,
-          optionPrice: opt.option.extra_price || 0, 
-        })),
-        })),
-      };
-      
-        return addOrderToCart(order);
-    };
-      
     const goToCart = async () => {
-        const order = buildOrder();
-        if (order) {
-            try {
-              // Note: buildOrder appelle déjà addOrderToCart, donc 'order' n'est pas la commande elle-même.
-              // La logique ci-dessous doit être revue si vous voulez stocker l'objet 'order' ici.
-              // En supposant que buildOrder a déjà mis à jour la liste dans AsyncStorage via addOrderToCart:
-<<<<<<< Updated upstream
-              router.push("/(order)/cart"); 
-=======
-              router.push("/order/cart"); 
->>>>>>> Stashed changes
-            } catch (error) {
-              console.error("Erreur en enregistrant la commande :", error);
-            }
-        } else {
-            console.warn("Impossible de construire la commande.");
-        }
-    };
-    
-    const isStepValid = (step) => {
-        const selected = selectedOptions[step?.id] || [];
-        // Ceci valide que l'utilisateur a sélectionné au moins une option
-        return selected.length > 0;
-    };
+      const order = {
+          menuName,
+          menuId,
+          price: totalPrice,
+          quantity: 1,
+          // On s'assure que la structure correspond au backend
+          steps: steps.map(step => ({
+              stepId: step.id, // Ajout de l'ID de l'étape
+              stepName: step.name,
+              selectedOptions: step.stepoptions
+                  .filter(opt => selectedOptions[step.id]?.includes(opt.id))
+                  .map(opt => ({ 
+                      optionId: opt.id, // On garde optionId pour le front (affichage)
+                      option: opt.id,   // On AJOUTE 'option' pour le backend (Django)
+                      optionName: opt.option.name, 
+                      optionPrice: opt.option.extra_price 
+                  }))
+          }))
+      };
+      await addOrderToCart(order);
+      router.push("/order/cart");
+  };
 
-    const areAllStepsValid = () => {
-      // S'assurer que steps est défini avant d'appeler .every
-      return steps && steps.every((step) => {
-        const selected = selectedOptions[step.id] || [];
-        return selected.length > 0;
-      });
-    };
-    
-    
-    // --- RENDU ---
-    
-    // ⭐ GESTION DU CHARGEMENT (CORRECTION 5)
-    if (isLoading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#007bff" />
-                <Text style={styles.loadingText}>Chargement des étapes...</Text>
-            </View>
-        );
-    }
-    
-    // Gérer le cas où la liste steps est vide après le chargement
-    if (!currentStep || steps.length === 0) {
-        return (
-            <View style={styles.loadingContainer}>
-                <Text style={styles.loadingText}>Aucune étape trouvée pour ce menu.</Text>
-                <TouchableOpacity onPress={() => router.push("/(tabs)/terminal")} style={{marginTop: 20}}>
-                    <Text style={{color: '#007bff'}}>Retour au menu</Text>
-                </TouchableOpacity>
-            </View>
-        );
-    }
+    if (isLoading) return (
+        <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.loadingText}>Préparation des options...</Text>
+        </View>
+    );
 
     return (
-        <View style={styles.container}>
-          {/* Barre du haut avec le bouton Home */}
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={{
-                padding: 12,
-                borderRadius: 8,
-                marginRight: 10,
-                
-              }}
-              onPress={() => router.push("/(tabs)/terminal")}
-            >
-            <AntDesign name="home" size={45} color="black" />
-            </TouchableOpacity>
-            <Text style={{ flex: 1, textAlign: "center", fontSize: 30, fontWeight: "bold" }}>
-              Étapes
-            </Text>
-          </View>
-    
-          <>
-            {/* Le reste du rendu est inclus ici car nous avons géré le cas isLoading ci-dessus */}
-            <FlatList
-              data={currentStep.stepoptions}
-              keyExtractor={(item) => item.id.toString()}
-              numColumns={4}
-              renderItem={({ item }) => {
-                const isSelected = selectedOptions[currentStep.id]?.includes(item.id);
-                const isSingleChoice = currentStep.max_options === 1; 
-                const maxOptions = currentStep.max_options; 
-    
-                return (
-                  <TouchableOpacity
-                    style={[
-                      styles.OptionItem,
-                      isSelected && styles.OptionItemSelected,
-                    ]}
-                    onPress={() => toggleOption(currentStep.id, item.id, isSingleChoice, maxOptions)}
-                  >
-                    {item.option.photo && (
-                      <Image
-                        source={{ uri: `${POS_URL}${item.option.photo}` }} 
-                        style={styles.optionImage}
-                      />
-                    )}
-                    <Text style={{fontSize:20}}>{item.option.name}</Text>
-                    {typeof parseFloat(item.option.extra_price) === "number" && item.option.extra_price > 0 && (
-                      <Text style={styles.optionPrice}>+ {item.option.extra_price} DA</Text>
-                    )}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-    
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 20 }}>
-              <TouchableOpacity
-                onPress={handlePrevious}
-                disabled={currentStepIndex === 0}
-                style={{
-                  padding: 12,
-                  backgroundColor: currentStepIndex === 0 ? "#ccc" : "#007bff",
-                  borderRadius: 8,
-                  
-                }}
-              >
-                <Text style={{ color: "#fff",fontSize:30, padding:20, borderRadius:8 }}>Précédent</Text>
-              </TouchableOpacity>
-              
-              <Text style={{ fontSize: 45, fontWeight: "bold", marginBottom: 8, padding:20 }}>
-                {currentStep.name}
-              </Text>
-
-              {currentStepIndex < steps.length - 1 ? (
-                <TouchableOpacity
-                  onPress={handleNext} // Utilisation de la fonction handleNext
-                  disabled={!isStepValid(currentStep)}
-                  style={[
-                    {
-                      padding:12,
-                      backgroundColor: !isStepValid(currentStep) ? "#ccc" : "#28a745",
-                      borderRadius: 8,
-                      
-                    },
-                  ]}
-                >
-                  <Text style={{ padding: 20, color: "#fff", borderRadius: 8, fontSize:30 }}>Suivant</Text>
+        <SafeAreaView style={styles.container}>
+            {/* Header avec progression */}
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => router.push("/tabs/terminal")} style={styles.homeButton}>
+                    <AntDesign name="arrowleft" size={28} color="black" />
                 </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  onPress={goToCart}
-                  disabled={!areAllStepsValid()} 
-                  style={[
-                    styles.goToCartButton,
-                    {
-                      backgroundColor: !areAllStepsValid() ? "#ccc" : "green", 
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      padding: 12,
-                      borderRadius: 8,
-                      color: !areAllStepsValid() ? "#666" : "white", 
-                      fontSize: 30, // Assurez-vous que le style goToCartButtonText est inclus ou défini
-                    }}
-                  >
-                    Aller au panier
-                  </Text>
-                </TouchableOpacity>
-              )}
+                <View style={styles.headerInfo}>
+                    <Text style={styles.menuTitle}>{menuName}</Text>
+                    <Text style={styles.stepIndicator}>Étape {currentStepIndex + 1} sur {steps.length}</Text>
+                </View>
+                <View style={styles.priceBadge}>
+                    <Text style={styles.priceText}>{totalPrice} DA</Text>
+                </View>
             </View>
-          </>
-        </View>
-      );
-    }
 
-    const styles = StyleSheet.create({
-      container: {
-        flex: 1,
-        padding: 16,
-        backgroundColor: "white",
-      },
-      // ⭐ NOUVEAU STYLE POUR CENTRER LE CHARGEMENT
-      loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
+            {/* Barre de progression visuelle */}
+            <View style={styles.progressContainer}>
+                {steps.map((_, i) => (
+                    <View key={i} style={[styles.progressBar, i <= currentStepIndex ? styles.progressActive : styles.progressInactive]} />
+                ))}
+            </View>
+
+            <View style={styles.stepTitleContainer}>
+                <Text style={styles.stepTitle}>{currentStep.name}</Text>
+                <Text style={styles.stepSubtitle}>
+                    {currentStep.max_options === 1 ? "Choisissez 1 option" : `Choisissez jusqu'à ${currentStep.max_options} options`}
+                </Text>
+            </View>
+
+            <FlatList
+                data={currentStep.stepoptions}
+                keyExtractor={(item) => item.id.toString()}
+                numColumns={3}
+                contentContainerStyle={styles.listContent}
+                renderItem={({ item }) => {
+                    const isSelected = selectedOptions[currentStep.id]?.includes(item.id);
+                    return (
+                        <TouchableOpacity
+                            activeOpacity={0.8}
+                            style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                            onPress={() => toggleOption(currentStep.id, item.id, currentStep.max_options === 1, currentStep.max_options)}
+                        >
+                            {isSelected && (
+                                <View style={styles.checkBadge}>
+                                    <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                                </View>
+                            )}
+                            <Image
+                                source={{ uri: `${POS_URL}${item.option.photo}` }} 
+                                style={styles.optionImage}
+                                resizeMode="contain"
+                            />
+                            <Text style={styles.optionName}>{item.option.name}</Text>
+                            {item.option.extra_price > 0 && (
+                                <Text style={styles.optionExtra}>+{item.option.extra_price} DA</Text>
+                            )}
+                        </TouchableOpacity>
+                    );
+                }}
+            />
+
+            {/* Barre de navigation basse */}
+            <View style={styles.footer}>
+                <TouchableOpacity 
+                    onPress={handlePrevious} 
+                    style={[styles.navButton, styles.backButton, currentStepIndex === 0 && { opacity: 0 }]}
+                    disabled={currentStepIndex === 0}
+                >
+                    <Text style={styles.backButtonText}>Retour</Text>
+                </TouchableOpacity>
+
+                {currentStepIndex < steps.length - 1 ? (
+                    <TouchableOpacity
+                        onPress={handleNext}
+                        disabled={(selectedOptions[currentStep.id]?.length || 0) === 0}
+                        style={[styles.navButton, styles.nextButton, (selectedOptions[currentStep.id]?.length || 0) === 0 && styles.disabledButton]}
+                    >
+                        <Text style={styles.nextButtonText}>Suivant</Text>
+                        <AntDesign name="arrowright" size={20} color="white" />
+                    </TouchableOpacity>
+                ) : (
+                    <TouchableOpacity
+                        onPress={goToCart}
+                        disabled={(selectedOptions[currentStep.id]?.length || 0) === 0}
+                        style={[styles.navButton, styles.confirmButton, (selectedOptions[currentStep.id]?.length || 0) === 0 && styles.disabledButton]}
+                    >
+                        <Text style={styles.nextButtonText}>Terminer la commande</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        </SafeAreaView>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: { flex: 1, backgroundColor: COLORS.bg },
+    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    loadingText: { marginTop: 15, fontSize: 18, color: COLORS.muted },
+    
+    header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: 'white' },
+    homeButton: { padding: 10, backgroundColor: '#F1F5F9', borderRadius: 12 },
+    headerInfo: { flex: 1, marginLeft: 15 },
+    menuTitle: { fontSize: 18, fontWeight: '700', color: COLORS.text },
+    stepIndicator: { fontSize: 14, color: COLORS.muted, marginTop: 2 },
+    priceBadge: { backgroundColor: '#FFF0E6', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
+    priceText: { color: COLORS.primary, fontWeight: '800', fontSize: 18 },
+
+    progressContainer: { flexDirection: 'row', paddingHorizontal: 20, gap: 8, marginBottom: 10 },
+    progressBar: { flex: 1, height: 6, borderRadius: 3 },
+    progressActive: { backgroundColor: COLORS.primary },
+    progressInactive: { backgroundColor: '#E2E8F0' },
+
+    stepTitleContainer: { paddingHorizontal: 20, marginVertical: 15 },
+    stepTitle: { fontSize: 26, fontWeight: '800', color: COLORS.text },
+    stepSubtitle: { fontSize: 16, color: COLORS.muted, marginTop: 4 },
+
+    listContent: { padding: 12 },
+    optionCard: {
+        backgroundColor: 'white',
+        width: (width - 60) / 3,
+        margin: 8,
+        borderRadius: 20,
+        padding: 15,
         alignItems: 'center',
-        backgroundColor: "white", // Correspond au fond du container
-      },
-      loadingText: {
-        marginTop: 10,
-        fontSize: 20,
-        color: '#333',
-      },
-      // ... (Autres styles restent inchangés)
-      header: {
-        height: 60,
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        paddingHorizontal: 20,
-      },
-      OptionItem: {
-        width: "22%", 
-        height: 300, 
-        backgroundColor: "white",
-        margin: 15,
-        borderRadius: 10,
-        justifyContent: "center",
-        alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-        elevation: 5,
-        borderWidth: 2,
-        borderColor: "#ccc",
-      },
-      OptionItemSelected: {
-        borderColor: "green",
-      },
-      optionImage: {
-        width: 160, 
-        height: 120, 
-        marginBottom: 10,
-        borderRadius: 8, 
-      },
-      optionPrice: {
-        fontSize: 16, 
-        color: "#888",
-        marginTop: 5,
-      },
-      goToCartButton: {
-        padding: 20, borderRadius: 8, fontSize:35
-      },
-    });
+        elevation: 3, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10,
+        borderWidth: 2, borderColor: 'transparent'
+    },
+    optionCardSelected: { borderColor: COLORS.primary, backgroundColor: '#FFF9F5' },
+    checkBadge: { position: 'absolute', top: 10, right: 10, zIndex: 1 },
+    optionImage: { width: '80%', height: 100, marginBottom: 10 },
+    optionName: { fontSize: 16, fontWeight: '700', textAlign: 'center', color: COLORS.text },
+    optionExtra: { fontSize: 14, color: COLORS.primary, fontWeight: '600', marginTop: 5 },
+
+    footer: {
+        flexDirection: 'row', 
+        padding: 25, 
+        backgroundColor: 'white', 
+        borderTopWidth: 1, 
+        borderTopColor: '#E2E8F0',
+        gap: 15
+    },
+    navButton: { height: 70, borderRadius: 18, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 10 },
+    backButton: { flex: 1, backgroundColor: '#F1F5F9' },
+    nextButton: { flex: 2, backgroundColor: COLORS.primary },
+    confirmButton: { flex: 2, backgroundColor: COLORS.success },
+    disabledButton: { backgroundColor: '#CBD5E1' },
+    backButtonText: { fontSize: 20, fontWeight: '700', color: COLORS.text },
+    nextButtonText: { fontSize: 20, fontWeight: '700', color: 'white' }
+});

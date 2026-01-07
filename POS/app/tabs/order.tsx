@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, Dimensions, RefreshControl } from "react-native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ScrollView } from "react-native";
 import { POS_URL, idRestaurant } from "@/config";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+
 export default function OrderScreen() {
   interface Order {
     id: number;
@@ -30,27 +31,35 @@ export default function OrderScreen() {
   }
 
   const [orders, setOrders] = useState<Order[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
+  const screenWidth = Dimensions.get("window").width;
 
   useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        const accessToken = await AsyncStorage.getItem("token");
-        const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
-        const response = await axios.get(`${POS_URL}/order/api/getPOSorder/${restaurantId}/`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-        console.log("Commandes récupérées :", response.data.orders);
-        setOrders(response.data.orders);
-      } catch (error) {
-        console.error("Erreur lors de la récupération des commandes :", error);
-      }
-    };
-
     fetchOrders();
   }, []);
+
+  const fetchOrders = async () => {
+    try {
+      const accessToken = await AsyncStorage.getItem("token");
+      const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
+      const response = await axios.get(`${POS_URL}/order/api/getPOSorder/${restaurantId}/`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      console.log("Commandes récupérées :", response.data.orders);
+      setOrders(response.data.orders);
+    } catch (error) {
+      console.error("Erreur lors de la récupération des commandes :", error);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchOrders();
+    setRefreshing(false);
+  };
 
   const handleAction = async (orderId: number, action: string) => {
     try {
@@ -65,17 +74,41 @@ export default function OrderScreen() {
 
       const response = await axios.put(`${POS_URL}/order/api/Updateorder/${orderId}/`, updateData);
       if (response.status === 200) {
-        // Met à jour les données localement après une réponse 200
         setOrders((prevOrders) =>
           prevOrders.map((order) =>
             order.id === orderId ? { ...order, ...updateData } : order
           )
         );
         console.log(`Commande mise à jour avec succès : ${action}`);
-        window.location.reload(); // Recharger la page pour voir les changements
       }
     } catch (error) {
       console.error(`Erreur lors de l'action ${action} :`, error);
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "clock-outline";
+      case "in_progress":
+        return "chef-hat";
+      case "ready":
+        return "check-circle";
+      default:
+        return "information";
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "#ff9900";
+      case "in_progress":
+        return "#007bff";
+      case "ready":
+        return "#28a745";
+      default:
+        return "#6c757d";
     }
   };
 
@@ -83,81 +116,107 @@ export default function OrderScreen() {
     const isPaid = item.paid;
     const isRefunded = item.refund;
     const isCancelled = item.cancelled;
-
-    const containerStyle = isCancelled || isRefunded
-      ? styles.greyOrder
-      : item.order_status === "pending"
-      ? styles.orangeOrder
-      : isPaid
-      ? styles.greenOrder
-      : styles.unpaidOrder;
+    const statusColor = getStatusColor(item.order_status);
 
     return (
-      <View style={[styles.orderContainer, containerStyle]}>
-        <Text style={styles.orderNumber}>Commande #{item.order_id}</Text>
-        <Text style={styles.orderContent}>
-          Statut : {item.order_status.charAt(0).toUpperCase() + item.order_status.slice(1)}
-        </Text>
-        <Text style={styles.orderPrice}>Paiement : {item.cash ? "Cash" : "Carte"}</Text>
-        <Text style={styles.orderDate}>Créée le : {new Date(item.created_at).toLocaleString()}</Text>
-        <Text style={styles.orderPrice}>Prix total : {item.total_price} DA</Text>
+      <View style={[styles.orderCard, { borderLeftColor: statusColor }]}>
+        {/* Header de la commande */}
+        <View style={styles.orderHeader}>
+          <View style={styles.orderHeaderLeft}>
+            <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+              <MaterialCommunityIcons name={getStatusIcon(item.order_status)} size={16} color="#fff" />
+            </View>
+            <View>
+              <Text style={styles.orderNumber}>#{item.order_id}</Text>
+              <Text style={styles.orderTime}>
+                {new Date(item.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.priceContainer}>
+            <Text style={styles.orderPrice}>{item.total_price} DA</Text>
+          </View>
+        </View>
+
+        {/* Infos de la commande */}
+        <View style={styles.orderInfo}>
+          <View style={styles.infoRow}>
+            <MaterialCommunityIcons name={item.cash ? "cash" : "credit-card"} size={16} color="#666" />
+            <Text style={styles.infoText}>{item.cash ? "Cash" : "Carte"}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <MaterialCommunityIcons name="package-multiple" size={16} color="#666" />
+            <Text style={styles.infoText}>{item.items.length} article(s)</Text>
+          </View>
+        </View>
+
+        {/* Contenu de la commande */}
         <TouchableOpacity
-          style={styles.orderItem}
+          style={styles.contentButton}
           onPress={() => {
             const details = item.items
               .map((orderItem, index) => {
-          return (
-            `${index + 1}. ${(orderItem.solo || orderItem.extra ? "Solo" : "Menu")} ${orderItem.menu_name}\n` +
-            `Quantité: ${orderItem.quantity}\n` +
-            (orderItem.composition.length > 0
-              ? `Composition:\n${orderItem.composition
-            .map(
-              (option) =>
-                `• ${option.step_name}: ${option.option_name} (+${option.option_price} DA)`
-            )
-            .join("\n")}`
-              : "")
-          );
+                return (
+                  `${index + 1}. ${orderItem.solo || orderItem.extra ? "Solo" : "Menu"} ${orderItem.menu_name}\n` +
+                  `   Quantité: ${orderItem.quantity}\n` +
+                  (orderItem.composition.length > 0
+                    ? `   Composition:\n${orderItem.composition
+                        .map((option) => `   • ${option.step_name}: ${option.option_name}`)
+                        .join("\n")}`
+                    : "")
+                );
               })
               .join("\n\n");
 
             alert(`Détails de la commande:\n\n${details}`);
           }}
         >
-          <Text style={[styles.badge, styles.menuBadge,{fontSize:"14"}]}>Afficher le contenu de la commande</Text>
+          <MaterialCommunityIcons name="eye" size={18} color="#007bff" />
+          <Text style={styles.contentButtonText}>Voir les détails</Text>
         </TouchableOpacity>
-        <View style={styles.buttonContainer}>
+
+        {/* Actions */}
+        <View style={styles.actionsContainer}>
           {isPaid ? (
             isRefunded ? (
-              <Text style={styles.button}>Commande remboursée</Text>
+              <View style={[styles.statusText, { backgroundColor: "#e0e0e0" }]}>
+                <MaterialCommunityIcons name="undo" size={16} color="#666" />
+                <Text style={{ color: "#666", fontWeight: "600", marginLeft: 8 }}>Remboursée</Text>
+              </View>
             ) : isCancelled ? (
-              <Text style={styles.button}>Commande annulée</Text>
+              <View style={[styles.statusText, { backgroundColor: "#f8d7da" }]}>
+                <MaterialCommunityIcons name="close-circle" size={16} color="#dc3545" />
+                <Text style={{ color: "#dc3545", fontWeight: "600", marginLeft: 8 }}>Annulée</Text>
+              </View>
             ) : (
-              <>
-                <TouchableOpacity
-                  style={[styles.button, styles.refundButton]}
-                  onPress={() => handleAction(item.order_id, "Rembourser")}
-                >
-                  <Text style={styles.buttonText}>Rembourser</Text>
-                </TouchableOpacity>
-                <Text style={styles.buttonText}>Commande validée</Text>
-              </>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.refundButton]}
+                onPress={() => handleAction(item.id, "Rembourser")}
+              >
+                <MaterialCommunityIcons name="undo" size={18} color="#fff" />
+                <Text style={styles.actionButtonText}>Rembourser</Text>
+              </TouchableOpacity>
             )
           ) : isCancelled ? (
-            <Text style={styles.button}>Commande annulée</Text>
+            <View style={[styles.statusText, { backgroundColor: "#f8d7da" }]}>
+              <MaterialCommunityIcons name="close-circle" size={16} color="#dc3545" />
+              <Text style={{ color: "#dc3545", fontWeight: "600", marginLeft: 8 }}>Annulée</Text>
+            </View>
           ) : (
             <>
               <TouchableOpacity
-                style={[styles.button, styles.validateButton]}
-                onPress={() => handleAction(item.order_id, "Valider")}
+                style={[styles.actionButton, styles.validateButton]}
+                onPress={() => handleAction(item.id, "Valider")}
               >
-                <Text style={styles.buttonText}>Valider</Text>
+                <MaterialCommunityIcons name="check-circle" size={18} color="#fff" />
+                <Text style={styles.actionButtonText}>Valider</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.button, styles.cancelButton]}
-                onPress={() => handleAction(item.order_id, "Annuler")}
+                style={[styles.actionButton, styles.cancelButton]}
+                onPress={() => handleAction(item.id, "Annuler")}
               >
-                <Text style={styles.buttonText}>Annuler</Text>
+                <MaterialCommunityIcons name="close-circle" size={18} color="#fff" />
+                <Text style={styles.actionButtonText}>Annuler</Text>
               </TouchableOpacity>
             </>
           )}
@@ -166,193 +225,283 @@ export default function OrderScreen() {
     );
   };
 
+  const renderColumn = (title: string, status: string, icon: string) => {
+    const filteredOrders = orders.filter((order) => order.order_status === status);
+    const statusColor = getStatusColor(status);
+
+    return (
+      <View style={styles.columnWrapper}>
+        {/* Titre de la colonne */}
+        <View style={[styles.columnHeader, { borderBottomColor: statusColor }]}>
+          <MaterialCommunityIcons name={icon} size={24} color={statusColor} />
+          <Text style={[styles.columnTitle, { color: statusColor }]}>{title}</Text>
+          <View style={[styles.countBadge, { backgroundColor: statusColor }]}>
+            <Text style={styles.countText}>{filteredOrders.length}</Text>
+          </View>
+        </View>
+
+        {/* Liste des commandes */}
+        <ScrollView
+          style={styles.scrollColumn}
+          scrollEnabled={filteredOrders.length > 0}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
+          {filteredOrders.length === 0 ? (
+            <View style={styles.emptyColumn}>
+              <MaterialCommunityIcons name="inbox-outline" size={48} color="#ccc" />
+              <Text style={styles.emptyText}>Aucune commande</Text>
+            </View>
+          ) : (
+            filteredOrders.map((order) => (
+              <View key={order.order_id}>
+                {renderOrder({ item: order })}
+              </View>
+            ))
+          )}
+        </ScrollView>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      <View style={{ flex: 1 }}>
-
-      
-      <View style={styles.columnsContainer}>
-        {/* Colonne des commandes à confirmer */}
-        <View style={styles.column}>
-          <Text style={styles.columnTitle}>À confirmer</Text>
-          <FlatList
-            data={orders.filter((order) => order.order_status === "pending")}
-            keyExtractor={(item) => item.order_id.toString()}
-            renderItem={renderOrder}
-          />
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Gestion des Commandes</Text>
+          <Text style={styles.headerSubtitle}>
+            {orders.length} commande{orders.length > 1 ? "s" : ""} en total
+          </Text>
         </View>
-
-        {/* Colonne des commandes confirmées */}
-        <View style={styles.column}>
-          <Text style={styles.columnTitle}>En cours</Text>
-          <FlatList
-            data={orders.filter((order) => order.order_status === "in_progress")}
-            keyExtractor={(item) => item.order_id.toString()}
-            renderItem={renderOrder}
-          />
-        </View>
-
-        {/* Colonne des commandes modifiées */}
-        <View style={styles.column}>
-          <Text style={styles.columnTitle}>Prête</Text>
-          <FlatList
-            data={orders.filter((order) => order.order_status === "ready")}
-            keyExtractor={(item) => item.order_id.toString()}
-            renderItem={renderOrder}
-          />
-        </View>
+        <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
+          <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
+        </TouchableOpacity>
       </View>
+
+      {/* Colonnes */}
+      <View style={styles.columnsContainer}>
+        {renderColumn("À confirmer", "pending", "clock-outline")}
+        {renderColumn("En cours", "in_progress", "chef-hat")}
+        {renderColumn("Prête", "ready", "check-circle")}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    flexGrow: 1,
-  }
-,  
   container: {
     flex: 1,
-    padding: 16,
-    backgroundColor: "white",
+    backgroundColor: "#f5f5f5",
   },
-  orderContainer: {
-    padding: 16,
-    marginBottom: 16,
-    borderRadius: 8,
+  header: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  greyOrder: {
-    backgroundColor: "#e0e0e0", // Gris pour les commandes annulées ou remboursées
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: "900",
+    color: "#333",
   },
-  orangeOrder: {
-    backgroundColor: "#fff3cd", // Orange pour les commandes en attente de validation
+  headerSubtitle: {
+    fontSize: 14,
+    color: "#999",
+    marginTop: 4,
   },
-  greenOrder: {
-    backgroundColor: "#d4edda", // Vert pour les commandes validées
+  refreshButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#ff9900",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#ff9900",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  unpaidOrder: {
-    backgroundColor: "#f8d7da", // Rouge clair pour les commandes non payées
+  columnsContainer: {
+    flex: 1,
+    flexDirection: "row",
+    padding: 12,
+  },
+  columnWrapper: {
+    flex: 1,
+    marginHorizontal: 8,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  columnHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 3,
+  },
+  columnTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginLeft: 12,
+    flex: 1,
+  },
+  countBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  countText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  scrollColumn: {
+    flex: 1,
+  },
+  emptyColumn: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  emptyText: {
+    marginTop: 12,
+    color: "#999",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  orderCard: {
+    marginHorizontal: 12,
+    marginVertical: 8,
+    backgroundColor: "#fafafa",
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  orderHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  orderHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  statusBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
   },
   orderNumber: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 8,
-  },
-  orderContent: {
     fontSize: 16,
-    marginBottom: 8,
+    fontWeight: "800",
+    color: "#333",
+  },
+  orderTime: {
+    fontSize: 12,
+    color: "#999",
+    marginTop: 2,
+  },
+  priceContainer: {
+    backgroundColor: "#f0f0f0",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
   orderPrice: {
     fontSize: 16,
-    marginBottom: 8,
+    fontWeight: "700",
+    color: "#ff6b35",
   },
-  orderDate: {
-    fontSize: 14,
-    marginBottom: 8,
-    color: "#666",
-  },
-  orderItemsTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 8,
-  },
-  orderItem: {
-    marginBottom: 4,
-  },
-  orderItemText: {
-    fontSize: 14,
-    color: "#444",
-  },
-  buttonContainer: {
+  orderInfo: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 12,
+    marginBottom: 12,
+    gap: 12,
   },
-  button: {
-    padding: 12,
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  infoText: {
+    fontSize: 12,
+    color: "#666",
+    fontWeight: "500",
+  },
+  contentButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: "#e7f3ff",
     borderRadius: 8,
+    marginBottom: 12,
+    justifyContent: "center",
+    gap: 8,
   },
-  refundButton: {
-    backgroundColor: "#dc3545", // Rouge pour le remboursement
+  contentButtonText: {
+    color: "#007bff",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  actionsContainer: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: "row",
+    paddingVertical: 10,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
   },
   validateButton: {
-    backgroundColor: "#28a745", // Vert pour valider
+    backgroundColor: "#28a745",
+  },
+  refundButton: {
+    backgroundColor: "#dc3545",
   },
   cancelButton: {
-    backgroundColor: "#ffc107", // Orange pour annuler
+    backgroundColor: "#ffc107",
   },
-  buttonText: {
+  actionButtonText: {
     color: "#fff",
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  columnsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  column: {
-    flex: 1,
-    marginHorizontal: 8,
-    maxHeight: 1000, // ou Dimensions.get("window").height - marge
-  },
-  
-  columnTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  menuTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 4,
-    color: "#333",
-  },
-  
-  orderDetail: {
-    fontSize: 14,
-    marginBottom: 4,
-    color: "#555",
-  },
-  
-  badge: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginBottom: 6,
-    color: "#fff",
-    fontWeight: "bold",
+    fontWeight: "700",
     fontSize: 12,
   },
-  
-  soloBadge: {
-    backgroundColor: "#6c757d", // gris
+  statusText: {
+    flex: 1,
+    flexDirection: "row",
+    paddingVertical: 10,
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  
-  menuBadge: {
-    backgroundColor: "#17a2b8", // bleu
-  },
-  
-  compositionBlock: {
-    marginTop: 6,
-    paddingLeft: 8,
-    borderLeftWidth: 2,
-    borderLeftColor: "#ccc",
-  },
-  
-  compositionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 2,
-    color: "#333",
-  },
-  
-  compositionItem: {
-    fontSize: 13,
-    color: "#444",
-    marginBottom: 2,
-  },
-  
 });

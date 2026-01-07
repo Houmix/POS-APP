@@ -1,8 +1,20 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useRouter } from "expo-router";
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, FlatList } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Dimensions } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import AntDesign from "@expo/vector-icons/AntDesign";
+import { AntDesign, Feather, Ionicons } from "@expo/vector-icons";
+
+const { width } = Dimensions.get("window");
+
+const COLORS = {
+  primary: "#FF6B00",
+  success: "#22C55E",
+  danger: "#EF4444",
+  bg: "#F8F9FA",
+  card: "#FFFFFF",
+  text: "#1E293B",
+  muted: "#64748B"
+};
 
 export default function CartPage() {
   const [orderList, setOrderList] = useState([]);
@@ -10,387 +22,204 @@ export default function CartPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const fetchCart = async () => {
-      try {
-        setIsLoading(true);
-        const storedOrders = await AsyncStorage.getItem("orderList");
-        if (storedOrders) {
-          setOrderList(JSON.parse(storedOrders));
-        }
-        console.log("Commandes récupérées :", orderList);
-      } catch (error) {
-        console.error("Erreur en récupérant les commandes :", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchCart();
   }, []);
 
-  const handlePay = async () => {
+  const fetchCart = async () => {
     try {
-      console.log("Contenu de orderList :", orderList);
-  
-      const formattedOrder = orderList.map((order) => ({
-        user: 0,
-        menu: order.menuId,
-        quantity: order.quantity || 1,
-        options: Array.isArray(order.steps)
-          ? order.steps.flatMap((step) =>
-              step.selectedOptions.map((option) => ({
-                step: step.stepId,
-                option: option.optionId,
-              }))
-            )
-          : [],
-      }));
-  
-      await AsyncStorage.setItem("pendingOrder", JSON.stringify(formattedOrder));
-      router.push("/order/location");
+      setIsLoading(true);
+      const stored = await AsyncStorage.getItem("orderList");
+      if (stored) setOrderList(JSON.parse(stored));
     } catch (error) {
-      console.error("Erreur lors du paiement :", error);
+      console.error(error);
+    } finally {
+      setIsLoading(false);
     }
   };
-  
-  const updateCart = async (updatedOrderList) => {
-    try {
-      await AsyncStorage.setItem("orderList", JSON.stringify(updatedOrderList));
-      const fetchCart = async () => {
-        try {
-          setIsLoading(true);
-          const storedOrders = await AsyncStorage.getItem("orderList");
-          if (storedOrders) {
-            setOrderList(JSON.parse(storedOrders));
-          }
-          console.log("Commandes récupérées :", orderList);
-        } catch (error) {
-          console.error("Erreur en récupérant les commandes :", error);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      fetchCart(); // Recharge les données après mise à jour
-    } catch (error) {
-      console.error("Erreur lors de la mise à jour du panier :", error);
+
+  const updateCart = async (newList) => {
+    setOrderList(newList);
+    await AsyncStorage.setItem("orderList", JSON.stringify(newList));
+  };
+
+  const changeQuantity = (index, delta) => {
+    const newList = [...orderList];
+    const newQty = newList[index].quantity + delta;
+    if (newQty > 0) {
+      newList[index].quantity = newQty;
+      updateCart(newList);
+    } else {
+      removeMenu(index);
     }
   };
+
   const removeMenu = (index) => {
-    const updatedOrderList = [...orderList];
-    updatedOrderList.splice(index, 1); // Supprime l'élément à l'index donné
-    updateCart(updatedOrderList);
-  };
-
-  const increaseQuantity = (index) => {
-    const updatedOrderList = [...orderList];
-    updatedOrderList[index].quantity += 1; // Augmente la quantité de l'élément à l'index donné
-    updateCart(updatedOrderList);
-  };
-
-  const decreaseQuantity = (index) => {
-    const updatedOrderList = [...orderList];
-    if (updatedOrderList[index].quantity > 1) {
-      updatedOrderList[index].quantity -= 1; // Diminue la quantité de l'élément à l'index donné
-      updateCart(updatedOrderList);
-    }
+    const newList = orderList.filter((_, i) => i !== index);
+    updateCart(newList);
   };
 
   const calculateMenuPrice = (menu) => {
-    console.log("prix du menu:", menu);
-    let basePrice = parseFloat(menu.price) || 0; // Convertit le prix de base en nombre
-    let optionsPrice = 0;
-  
-    if (menu.steps && menu.steps.length > 0) {
-      menu.steps.forEach((step) => {
-        step.selectedOptions.forEach((option) => {
-          optionsPrice += parseFloat(option.optionPrice) || 0; // Ajoute le prix des options sélectionnéess en nombre
-        });
-      });
-    }
-  
-    return basePrice + optionsPrice; // Retourne le prix total du menu
-  };
-  
-  const calculateTotalPrice = () => {
-    return orderList.reduce((total, menu) => {
-      const menuPrice = calculateMenuPrice(menu);
-      return total + menuPrice * menu.quantity; // Multiplie par la quantité
-    }, 0);
+    const base = parseFloat(menu.price) || 0;
+    const extras = menu.steps?.reduce((sum, step) => 
+      sum + step.selectedOptions.reduce((optSum, opt) => optSum + (parseFloat(opt.optionPrice) || 0), 0)
+    , 0) || 0;
+    return base + extras;
   };
 
-  if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.loading}>Chargement du panier...</Text>
-      </View>
-    );
-  }
+  const totalPrice = useMemo(() => {
+    return orderList.reduce((acc, item) => acc + (calculateMenuPrice(item) * item.quantity), 0);
+  }, [orderList]);
 
-  if (orderList.length === 0) {
+  const handlePay = async () => {
+    const formattedOrder = orderList.map(order => ({
+      menu: order.menuId,
+      quantity: order.quantity,
+      options: order.steps?.flatMap(s => s.selectedOptions.map(o => ({ step: s.stepId, option: o.optionId }))) || []
+    }));
+    await AsyncStorage.setItem("pendingOrder", JSON.stringify(formattedOrder));
+    router.push("/order/location");
+  };
+
+  if (orderList.length === 0 && !isLoading) {
     return (
       <View style={styles.emptyContainer}>
-        <Text style={styles.emptyCart}>Votre panier est vide.</Text>
-        <TouchableOpacity
-          style={styles.addMoreButton}
-          onPress={() => router.push("/tabs/terminal")}
-        >
-          <Text style={styles.addMoreText}>Ajouter des articles</Text>
+        <Ionicons name="cart-outline" size={100} color={COLORS.muted} />
+        <Text style={styles.emptyTitle}>Votre panier est vide</Text>
+        <TouchableOpacity style={styles.startOrderButton} onPress={() => router.push("/tabs/terminal")}>
+          <Text style={styles.startOrderText}>Commencer ma commande</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push("/tabs/terminal")}>
-          <AntDesign name="home" size={50} color="black" />
+        <TouchableOpacity style={styles.backButton} onPress={() => router.push("/tabs/terminal")}>
+          <AntDesign name="arrowleft" size={28} color="black" />
         </TouchableOpacity>
-        <Text style={styles.title}>Panier  <AntDesign name="shoppingcart" size={40} color="black" /></Text>
+        <Text style={styles.headerTitle}>Panier</Text>
+        <View style={{ width: 50 }} />
       </View>
-      <View style={styles.orderListContainer}>
-        <FlatList
-          data={orderList}
-          numColumns={2} // Affiche les commandes en deux colonnes
-          columnWrapperStyle={{ justifyContent: "flex-start" }} // Aligne les colonnes correctement
-          keyExtractor={(item) => item.menuId.toString()}
-          renderItem={({ item, index }) => {
-            const menuPrice = calculateMenuPrice(item); // Calcule le prix du menu
 
-            return (
-              <View style={styles.orderBlock}>
-                <View style={styles.titleContainer}>
-                  <Text style={styles.menuName}>{item.menuName}</Text>
-                  <View style={styles.quantityContainer}>
-                    <TouchableOpacity
-                      style={styles.quantityButton}
-                      onPress={() => decreaseQuantity(index)}
-                    >
-                      <Text style={styles.quantityText}>-</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.quantityValue}>{item.quantity}</Text>
-                    <TouchableOpacity
-                      style={styles.quantityButton}
-                      onPress={() => increaseQuantity(index)}
-                    >
-                      <Text style={styles.quantityText}>+</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                <Text style={styles.menuPrice}>Prix : {menuPrice} DA</Text>
-                <View style={styles.bottomContainer}>
-                  {item.solo || item.extra ? (
-                    <Text style={styles.soloText}>Solo</Text>
-                  ) : (
-                    item.steps.map((step, j) => (
-                      <View key={j} style={styles.stepBlock}>
-                        <Text style={styles.stepTitle}>{step.stepName}</Text>
-                        {step.selectedOptions.length > 0 ? (
-                          step.selectedOptions.map((opt, k) => (
-                            <Text key={k} style={styles.option}>
-                              • {opt.optionName} {parseFloat(opt.optionPrice) > 0 ? `(+${opt.optionPrice} DA)` : ""}
-                            </Text>
-                          ))
-                        ) : (
-                          <Text style={styles.option}>Aucune option sélectionnée</Text>
-                        )}
-                        
-                      </View>
-                    ))
-                    )}
-                  
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => removeMenu(index)}
-                  >
-                    <Text style={styles.removeText}>Supprimer</Text>
-                  </TouchableOpacity>
-                </View>
+      <FlatList
+        data={orderList}
+        keyExtractor={(_, index) => index.toString()}
+        contentContainerStyle={styles.listContent}
+        renderItem={({ item, index }) => (
+          <View style={styles.cartItem}>
+            <View style={styles.itemHeader}>
+              <View style={{flex: 1}}>
+                <Text style={styles.itemName}>{item.menuName}</Text>
+                <Text style={styles.itemPriceUnit}>{calculateMenuPrice(item)} DA / unité</Text>
               </View>
-            );
-          }}
-        />
-      </View>
+              <TouchableOpacity onPress={() => removeMenu(index)} style={styles.deleteIcon}>
+                <Feather name="trash-2" size={22} color={COLORS.danger} />
+              </TouchableOpacity>
+            </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.totalPrice}>Total : {calculateTotalPrice()} DA</Text>
-        <TouchableOpacity
-          style={styles.payButton}
-          onPress={handlePay}
-        >
-          <Text style={styles.payText}>Payer</Text>
+            <View style={styles.optionsList}>
+              {item.steps?.map((step, i) => (
+                <View key={i} style={styles.stepRow}>
+                  <Text style={styles.stepName}>{step.stepName} : </Text>
+                  <Text style={styles.optionNames}>
+                    {step.selectedOptions.map(o => o.optionName).join(", ")}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.itemFooter}>
+              <View style={styles.qtyControls}>
+                <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQuantity(index, -1)}>
+                  <AntDesign name="minus" size={20} color={COLORS.text} />
+                </TouchableOpacity>
+                <Text style={styles.qtyValue}>{item.quantity}</Text>
+                <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQuantity(index, 1)}>
+                  <AntDesign name="plus" size={20} color={COLORS.text} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.itemTotalPrice}>
+                {(calculateMenuPrice(item) * item.quantity).toLocaleString()} DA
+              </Text>
+            </View>
+          </View>
+        )}
+      />
+
+      <View style={styles.footerCard}>
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>Total à payer</Text>
+          <Text style={styles.totalAmount}>{totalPrice.toLocaleString()} DA</Text>
+        </View>
+        <TouchableOpacity style={styles.payButton} onPress={handlePay}>
+          <Text style={styles.payButtonText}>Valider la commande</Text>
+          <AntDesign name="arrowright" size={24} color="white" />
         </TouchableOpacity>
       </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    backgroundColor: "white", // Couleur de fond plus douce
-    flexGrow: 1,
+  safeArea: { flex: 1, backgroundColor: COLORS.bg },
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'space-between', 
+    padding: 20, 
+    backgroundColor: 'white' 
   },
-  orderListContainer: {
-    flex: 1,
-    marginTop: 20,
+  backButton: { padding: 10, backgroundColor: '#F1F5F9', borderRadius: 12 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: COLORS.text },
+  
+  listContent: { padding: 16 },
+  cartItem: { 
+    backgroundColor: 'white', 
+    borderRadius: 20, 
+    padding: 20, 
+    marginBottom: 15,
+    elevation: 3, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10
   },
-  orderBlock: {
-    flexDirection: "column",
-    margin: 10,
-    padding: 15,
-    width: "48%", // Chaque bloc occupe 48% de la largeur pour deux colonnes
-    backgroundColor: "#ffffff", // Couleur de fond blanche
-    borderRadius: 10,
-    elevation: 3, // Ombre légère
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    justifyContent: "space-between", // Positionne les éléments correctement
+  itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  itemName: { fontSize: 20, fontWeight: '700', color: COLORS.text },
+  itemPriceUnit: { fontSize: 14, color: COLORS.muted, marginTop: 2 },
+  deleteIcon: { padding: 8, backgroundColor: '#FEF2F2', borderRadius: 10 },
+  
+  optionsList: { marginVertical: 15, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: '#E2E8F0' },
+  stepRow: { flexDirection: 'row', marginBottom: 4, flexWrap: 'wrap' },
+  stepName: { fontSize: 13, fontWeight: '700', color: COLORS.muted },
+  optionNames: { fontSize: 13, color: COLORS.text, flex: 1 },
+  
+  itemFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  qtyControls: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F5F9', borderRadius: 12, padding: 4 },
+  qtyBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  qtyValue: { fontSize: 18, fontWeight: '700', marginHorizontal: 15 },
+  itemTotalPrice: { fontSize: 20, fontWeight: '800', color: COLORS.primary },
+
+  footerCard: { 
+    backgroundColor: 'white', 
+    padding: 25, 
+    borderTopLeftRadius: 30, 
+    borderTopRightRadius: 30,
+    elevation: 20, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20
   },
-  titleContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  totalLabel: { fontSize: 16, color: COLORS.muted, fontWeight: '600' },
+  totalAmount: { fontSize: 28, fontWeight: '900', color: COLORS.text },
+  payButton: { 
+    backgroundColor: COLORS.success, 
+    height: 70, 
+    borderRadius: 20, 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    gap: 12 
   },
-  menuName: {
-    fontSize: 30,
-    fontWeight: "bold",
-    color: "#333", // Couleur du texte
-  },
-  quantityContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  quantityButton: {
-    padding: 10,
-    backgroundColor: "#e0e0e0", // Boutons gris clair
-    borderRadius: 5,
-    marginHorizontal: 5,
-  },
-  quantityText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#333", // Couleur du texte
-  },
-  quantityValue: {
-    fontSize: 20,
-    color: "#444",
-    marginHorizontal: 5,
-  },
-  stepBlock: {
-    marginBottom: 10,
-  },
-  stepTitle: {
-    fontWeight: "bold",
-    fontSize: 25,
-    marginBottom: 4,
-    color: "#555", // Couleur du texte
-  },
-  option: {
-    fontSize: 25,
-    marginLeft: 10,
-    color: "#666", // Couleur du texte
-  },
-  removeButton: {
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: "#ff4d4d", // Rouge vif pour le bouton de suppression
-    borderRadius: 5,
-  },
-  removeText: {
-    color: "white",
-    fontSize: 30,
-    textAlign: "center",
-    fontWeight: "bold",
-  },
-  bottomContainer: {
-    flex: 2,
-    
-    justifyContent: "flex-end", // Positionne "Supprimer" et "Commande Solo" en bas
-    marginTop: 10,
-  },
-  loading: {
-    fontSize: 30,
-    textAlign: "center",
-    marginTop: 50,
-    color: "#888", // Couleur du texte
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f4f4f4", // Couleur de fond douce
-  },
-  emptyCart: {
-    fontSize: 30,
-    textAlign: "center",
-    marginBottom: 20,
-    color: "#888", // Couleur du texte
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 50,
-    fontWeight: "bold",
-    flex: 1,
-    textAlign: "center",
-    color: "black", // Couleur bleue pour le titre
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 20,
-    backgroundColor: "#ffffff", // Fond blanc pour le footer
-    padding: 10,
-    borderRadius: 10,
-    elevation: 2,
-  },
-  addMoreButton: {
-    padding: 12,
-    width: "48%",
-    backgroundColor: "#007bff", // Bleu vif pour le bouton "Ajouter"
-    borderRadius: 8,
-  },
-  addMoreText: {
-    color: "white",
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  payButton: {
-    padding: 12,
-    width: "48%",
-    backgroundColor: "#28a745", // Vert vif pour le bouton "Payer"
-    borderRadius: 8,
-  },
-  payText: {
-    color: "white",
-    fontSize:40,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  soloText: {
-    fontSize: 25,
-    fontWeight: "bold",
-    color: "#444",
-    marginTop: 10,
-    textAlign: "center",
-  },
-  menuPrice: {
-    fontSize: 25,
-    fontWeight: "bold",
-    color: "#444",
-    marginTop: 5,
-  },
-  totalPrice: {
-    fontSize: 40,
-    fontWeight: "bold",
-    color: "#000",
-    marginBottom: 10,
-    textAlign: "center",
-  },
+  payButtonText: { color: 'white', fontSize: 22, fontWeight: '800' },
+
+  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
+  emptyTitle: { fontSize: 22, fontWeight: '700', color: COLORS.muted, marginTop: 20 },
+  startOrderButton: { marginTop: 30, backgroundColor: COLORS.primary, paddingVertical: 15, paddingHorizontal: 30, borderRadius: 15 },
+  startOrderText: { color: 'white', fontWeight: '700', fontSize: 16 }
 });
