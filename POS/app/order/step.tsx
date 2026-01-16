@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AntDesign, Ionicons } from '@expo/vector-icons';
 import { POS_URL } from "@/config";
 import { useBorneSync } from '@/hooks/useBorneSync';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const { width } = Dimensions.get('window');
 
@@ -23,6 +24,7 @@ export default function MenuStepsScreen() {
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [isLoading, setIsLoading] = useState(true); 
     const { getStepsForMenu } = useBorneSync(); 
+    const { t, isRTL } = useLanguage();
 
     const currentStep = steps?.[currentStepIndex] ?? null;
 
@@ -85,15 +87,14 @@ export default function MenuStepsScreen() {
           menuId,
           price: totalPrice,
           quantity: 1,
-          // On s'assure que la structure correspond au backend
           steps: steps.map(step => ({
-              stepId: step.id, // Ajout de l'ID de l'étape
+              stepId: step.id,
               stepName: step.name,
               selectedOptions: step.stepoptions
                   .filter(opt => selectedOptions[step.id]?.includes(opt.id))
                   .map(opt => ({ 
-                      optionId: opt.id, // On garde optionId pour le front (affichage)
-                      option: opt.id,   // On AJOUTE 'option' pour le backend (Django)
+                      optionId: opt.id,
+                      option: opt.id,
                       optionName: opt.option.name, 
                       optionPrice: opt.option.extra_price 
                   }))
@@ -101,25 +102,34 @@ export default function MenuStepsScreen() {
       };
       await addOrderToCart(order);
       router.push("/order/cart");
-  };
+    };
 
     if (isLoading) return (
         <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.loadingText}>Préparation des options...</Text>
+            <Text style={styles.loadingText}>{t('step.preparation')}</Text>
         </View>
     );
 
+    const getStepSubtitle = () => {
+        if (currentStep.max_options === 1) {
+            return t('step.choose_one');
+        }
+        return `${t('step.choose_up_to')} ${currentStep.max_options} ${t('step.options')}`;
+    };
+
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, isRTL && { direction: 'rtl' }]}>
             {/* Header avec progression */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.push("/tabs/terminal")} style={styles.homeButton}>
-                    <AntDesign name="arrowleft" size={28} color="black" />
+                    <AntDesign name={isRTL ? "arrowright" : "arrowleft"} size={28} color="black" />
                 </TouchableOpacity>
                 <View style={styles.headerInfo}>
                     <Text style={styles.menuTitle}>{menuName}</Text>
-                    <Text style={styles.stepIndicator}>Étape {currentStepIndex + 1} sur {steps.length}</Text>
+                    <Text style={styles.stepIndicator}>
+                        {t('step.title')} {currentStepIndex + 1} {t('step.of')} {steps.length}
+                    </Text>
                 </View>
                 <View style={styles.priceBadge}>
                     <Text style={styles.priceText}>{totalPrice} DA</Text>
@@ -136,7 +146,7 @@ export default function MenuStepsScreen() {
             <View style={styles.stepTitleContainer}>
                 <Text style={styles.stepTitle}>{currentStep.name}</Text>
                 <Text style={styles.stepSubtitle}>
-                    {currentStep.max_options === 1 ? "Choisissez 1 option" : `Choisissez jusqu'à ${currentStep.max_options} options`}
+                    {getStepSubtitle()}
                 </Text>
             </View>
 
@@ -173,13 +183,13 @@ export default function MenuStepsScreen() {
             />
 
             {/* Barre de navigation basse */}
-            <View style={styles.footer}>
+            <View style={[styles.footer, isRTL && { flexDirection: 'row-reverse' }]}>
                 <TouchableOpacity 
                     onPress={handlePrevious} 
                     style={[styles.navButton, styles.backButton, currentStepIndex === 0 && { opacity: 0 }]}
                     disabled={currentStepIndex === 0}
                 >
-                    <Text style={styles.backButtonText}>Retour</Text>
+                    <Text style={styles.backButtonText}>{t('back')}</Text>
                 </TouchableOpacity>
 
                 {currentStepIndex < steps.length - 1 ? (
@@ -188,8 +198,8 @@ export default function MenuStepsScreen() {
                         disabled={(selectedOptions[currentStep.id]?.length || 0) === 0}
                         style={[styles.navButton, styles.nextButton, (selectedOptions[currentStep.id]?.length || 0) === 0 && styles.disabledButton]}
                     >
-                        <Text style={styles.nextButtonText}>Suivant</Text>
-                        <AntDesign name="arrowright" size={20} color="white" />
+                        <Text style={styles.nextButtonText}>{t('next')}</Text>
+                        <AntDesign name={isRTL ? "arrowleft" : "arrowright"} size={20} color="white" />
                     </TouchableOpacity>
                 ) : (
                     <TouchableOpacity
@@ -197,7 +207,7 @@ export default function MenuStepsScreen() {
                         disabled={(selectedOptions[currentStep.id]?.length || 0) === 0}
                         style={[styles.navButton, styles.confirmButton, (selectedOptions[currentStep.id]?.length || 0) === 0 && styles.disabledButton]}
                     >
-                        <Text style={styles.nextButtonText}>Terminer la commande</Text>
+                        <Text style={styles.nextButtonText}>{t('step.finish_order')}</Text>
                     </TouchableOpacity>
                 )}
             </View>

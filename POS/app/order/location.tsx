@@ -1,148 +1,174 @@
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import axios from "axios";
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
+import { useEffect, useState } from "react";
+import { useLanguage } from '@/contexts/LanguageContext';
 
-import { useEffect, useState } from "react";export default function IndexScreen() {
-    // ✅ Pay.js
-const router = useRouter();
-const [order, setOrder] = useState([]);
-const [errorMessage, setErrorMessage] = useState("");
+export default function LocationScreen() {
+    const router = useRouter();
+    const { t, isRTL } = useLanguage();
+    const [order, setOrder] = useState([]);
+    const [errorMessage, setErrorMessage] = useState("");
 
-useEffect(() => {
-  const loadOrder = async () => {
-    const allKeys = await AsyncStorage.getAllKeys();
-    const allItems = await AsyncStorage.multiGet(allKeys);
-    console.log("Stored items in session:", allItems);
-    try {
-      const stored = await AsyncStorage.getItem("pendingOrder");
-      if (stored) {
-        setOrder(JSON.parse(stored));
-      } else {
-        setErrorMessage("Aucune commande trouvée.");
-      }
-    } catch (err) {
-      setErrorMessage("Erreur de lecture de la commande.");
-    }
-  };
-  loadOrder();
-}, []);
+    useEffect(() => {
+        const loadOrder = async () => {
+            const allKeys = await AsyncStorage.getAllKeys();
+            const allItems = await AsyncStorage.multiGet(allKeys);
+            console.log("Stored items in session:", allItems);
+            try {
+                const stored = await AsyncStorage.getItem("pendingOrder");
+                if (stored) {
+                    setOrder(JSON.parse(stored));
+                } else {
+                    setErrorMessage(t('errors.no_order'));
+                }
+            } catch (err) {
+                setErrorMessage(t('errors.loading_data'));
+            }
+        };
+        loadOrder();
+    }, []);
 
-const eatin = async () => {
-  try {
-    const stored = await AsyncStorage.getItem("pendingOrder");
-    if (stored) {
-      const orderData = JSON.parse(stored);
-      orderData.takeaway = false; // Ajoute ou met à jour le champ takeaway à false
-      await AsyncStorage.setItem("pendingOrder", JSON.stringify(orderData)); // Met à jour la commande dans AsyncStorage
-      console.log("Commande mise à jour pour Sur Place :", orderData);
-      router.push("/order/pay"); // Redirection vers la page de paiement
-    } else {
-      setErrorMessage("Aucune commande trouvée.");
-    }
-  } catch (err) {
-    console.error("Erreur lors de la mise à jour de la commande :", err);
-    setErrorMessage("Erreur lors de la mise à jour de la commande.");
-  }
-};
+    const eatin = async () => {
+        try {
+            const stored = await AsyncStorage.getItem("pendingOrder");
+            if (stored) {
+                const orderData = JSON.parse(stored);
+                orderData.takeaway = false;
+                await AsyncStorage.setItem("pendingOrder", JSON.stringify(orderData));
+                console.log("Commande mise à jour pour Sur Place :", orderData);
+                router.push("/order/pay");
+            } else {
+                setErrorMessage(t('errors.no_order'));
+                Alert.alert(t('error'), t('errors.no_order'));
+            }
+        } catch (err) {
+            console.error("Erreur lors de la mise à jour de la commande :", err);
+            setErrorMessage(t('errors.loading_data'));
+            Alert.alert(t('error'), t('errors.loading_data'));
+        }
+    };
 
-const takeaway = async () => {
-  try {
-    const stored = await AsyncStorage.getItem("pendingOrder");
-    if (stored) {
-      const orderData = JSON.parse(stored);
-      orderData.takeaway = true; // Ajoute ou met à jour le champ takeaway à true
-      await AsyncStorage.setItem("pendingOrder", JSON.stringify(orderData)); // Met à jour la commande dans AsyncStorage
-      console.log("Commande mise à jour pour A Emporter :", orderData);
-      router.push("/order/pay"); // Redirection vers la page de paiement
-    } else {
-      setErrorMessage("Aucune commande trouvée.");
-    }
-  } catch (err) {
-    console.error("Erreur lors de la mise à jour de la commande :", err);
-    setErrorMessage("Erreur lors de la mise à jour de la commande.");
-  }
-};
+    const takeaway = async () => {
+        try {
+            const stored = await AsyncStorage.getItem("pendingOrder");
+            if (stored) {
+                const orderData = JSON.parse(stored);
+                orderData.takeaway = true;
+                await AsyncStorage.setItem("pendingOrder", JSON.stringify(orderData));
+                console.log("Commande mise à jour pour A Emporter :", orderData);
+                router.push("/order/pay");
+            } else {
+                setErrorMessage(t('errors.no_order'));
+                Alert.alert(t('error'), t('errors.no_order'));
+            }
+        } catch (err) {
+            console.error("Erreur lors de la mise à jour de la commande :", err);
+            setErrorMessage(t('errors.loading_data'));
+            Alert.alert(t('error'), t('errors.loading_data'));
+        }
+    };
 
     return (
-    <View style={styles.main}>
+        <View style={[styles.main, isRTL && { direction: 'rtl' }]}>
+            <View style={styles.titleBox}>
+                <Text style={styles.title}>{t('location.title')}</Text>
+            </View>
 
-        <View style={styles.container}>
-        <TouchableOpacity 
-            style={styles.box} 
-            onPress={() => eatin()}
-        >
-            <Text style={styles.text}>Sur Place</Text>
-            <MaterialIcons name="table-restaurant" size={400} color="black" />
-      
-        </TouchableOpacity>
+            <View style={styles.container}>
+                <TouchableOpacity 
+                    style={styles.box} 
+                    onPress={() => eatin()}
+                >
+                    <Text style={styles.text}>{t('location.eat_in')}</Text>
+                    <MaterialIcons name="table-restaurant" size={400} color="black" />
+                </TouchableOpacity>
 
-        <TouchableOpacity 
-            style={styles.box} 
-            onPress={() => takeaway()}
-        >
-            <Text style={styles.text}>A Emporter</Text>
-            <MaterialIcons name="food-bank" size={400} color="black" />
-        </TouchableOpacity>
+                <TouchableOpacity 
+                    style={styles.box} 
+                    onPress={() => takeaway()}
+                >
+                    <Text style={styles.text}>{t('location.takeaway')}</Text>
+                    <MaterialIcons name="food-bank" size={400} color="black" />
+                </TouchableOpacity>
+            </View>
+
+            {errorMessage ? (
+                <View style={styles.errorContainer}>
+                    <Text style={styles.errorText}>{errorMessage}</Text>
+                </View>
+            ) : null}
         </View>
-    </View>
     );
 }
 
-
 const styles = StyleSheet.create({
-
     main: {
-        flex:1,
-        flexDirection:'column',
-        display:"flex",
+        flex: 1,
+        flexDirection: 'column',
+        display: "flex",
         justifyContent: "center",
         alignItems: "center",
         backgroundColor: "white",
-        
     },
-    textBox: {
-        height:"20%",
-        flexDirection:"row",
-        display:"flex",
+    titleBox: {
+        height: "20%",
+        flexDirection: "row",
+        display: "flex",
         justifyContent: "center",
         alignItems: 'center',
+        paddingHorizontal: 20,
     },
     container: {
-        height:"70%",
-        width:"45%",
-        flexDirection:"row",
-        display:"flex",
+        height: "70%",
+        width: "85%",
+        flexDirection: "row",
+        display: "flex",
         justifyContent: "center",
         alignItems: "center",
-        gap: 20, // Espacement entre les boutons
+        gap: 20,
         backgroundColor: "white",
     },
     box: {
-        width: "100%",
-        height: "100%",
+        width: "48%",
+        height: "90%",
         backgroundColor: "white",
         borderRadius: 15,
-        display:"flex",
+        display: "flex",
         justifyContent: "center",
         alignItems: "center",
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 5,
-        elevation: 5, // Ombre pour Android
+        elevation: 5,
     },
     title: {
         color: "black",
-        fontSize: 30,
+        fontSize: 38,
         fontWeight: "bold",
-        textDecorationLine:"underline",
+        textAlign: "center",
     },
     text: {
         color: "black",
-        fontSize: 30,
+        fontSize: 36,
         fontWeight: "bold",
-        textDecorationLine: "none", // Supprime le soulignement du lien
+        textDecorationLine: "none",
+        marginBottom: 20,
+    },
+    errorContainer: {
+        position: 'absolute',
+        bottom: 40,
+        backgroundColor: '#ffebee',
+        padding: 15,
+        borderRadius: 10,
+        borderLeftWidth: 4,
+        borderLeftColor: '#f44336',
+    },
+    errorText: {
+        color: '#c62828',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });

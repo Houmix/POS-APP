@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Dimensions } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AntDesign, Feather, Ionicons } from "@expo/vector-icons";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const { width } = Dimensions.get("window");
 
@@ -20,6 +21,7 @@ export default function CartPage() {
   const [orderList, setOrderList] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { t, isRTL } = useLanguage();
 
   useEffect(() => {
     fetchCart();
@@ -82,23 +84,24 @@ export default function CartPage() {
 
   if (orderList.length === 0 && !isLoading) {
     return (
-      <View style={styles.emptyContainer}>
+      <View style={[styles.emptyContainer, isRTL && { direction: 'rtl' }]}>
         <Ionicons name="cart-outline" size={100} color={COLORS.muted} />
-        <Text style={styles.emptyTitle}>Votre panier est vide</Text>
+        <Text style={styles.emptyTitle}>{t('cart.empty')}</Text>
+        <Text style={styles.emptyMessage}>{t('cart.empty_message')}</Text>
         <TouchableOpacity style={styles.startOrderButton} onPress={() => router.push("/tabs/terminal")}>
-          <Text style={styles.startOrderText}>Commencer ma commande</Text>
+          <Text style={styles.startOrderText}>{t('cart.start_order')}</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, isRTL && { direction: 'rtl' }]}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.push("/tabs/terminal")}>
-          <AntDesign name="arrowleft" size={28} color="black" />
+          <AntDesign name={isRTL ? "arrowright" : "arrowleft"} size={28} color="black" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Panier</Text>
+        <Text style={styles.headerTitle}>{t('cart.title')}</Text>
         <View style={{ width: 50 }} />
       </View>
 
@@ -111,7 +114,9 @@ export default function CartPage() {
             <View style={styles.itemHeader}>
               <View style={{flex: 1}}>
                 <Text style={styles.itemName}>{item.menuName}</Text>
-                <Text style={styles.itemPriceUnit}>{calculateMenuPrice(item)} DA / unité</Text>
+                <Text style={styles.itemPriceUnit}>
+                  {calculateMenuPrice(item)} DA {t('cart.unit_price')}
+                </Text>
               </View>
               <TouchableOpacity onPress={() => removeMenu(index)} style={styles.deleteIcon}>
                 <Feather name="trash-2" size={22} color={COLORS.danger} />
@@ -149,12 +154,12 @@ export default function CartPage() {
 
       <View style={styles.footerCard}>
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total à payer</Text>
+          <Text style={styles.totalLabel}>{t('cart.total')}</Text>
           <Text style={styles.totalAmount}>{totalPrice.toLocaleString()} DA</Text>
         </View>
         <TouchableOpacity style={styles.payButton} onPress={handlePay}>
-          <Text style={styles.payButtonText}>Valider la commande</Text>
-          <AntDesign name="arrowright" size={24} color="white" />
+          <Text style={styles.payButtonText}>{t('cart.validate')}</Text>
+          <AntDesign name={isRTL ? "arrowleft" : "arrowright"} size={24} color="white" />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -219,7 +224,8 @@ const styles = StyleSheet.create({
   payButtonText: { color: 'white', fontSize: 22, fontWeight: '800' },
 
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
-  emptyTitle: { fontSize: 22, fontWeight: '700', color: COLORS.muted, marginTop: 20 },
+  emptyTitle: { fontSize: 22, fontWeight: '700', color: COLORS.muted, marginTop: 20, textAlign: 'center' },
+  emptyMessage: { fontSize: 16, color: COLORS.muted, marginTop: 10, textAlign: 'center' },
   startOrderButton: { marginTop: 30, backgroundColor: COLORS.primary, paddingVertical: 15, paddingHorizontal: 30, borderRadius: 15 },
   startOrderText: { color: 'white', fontWeight: '700', fontSize: 16 }
 });

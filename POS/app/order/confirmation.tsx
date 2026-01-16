@@ -3,15 +3,13 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// Assurez-vous que l'URL est bien importée
 import { POS_URL } from '@/config'; 
+import { useLanguage } from '@/contexts/LanguageContext';
 
 // ==========================================
 // 🖨️ FONCTION D'IMPRESSION (TEXTE BRUT)
 // ==========================================
 const handlePrinting = async (ticketContent) => {
-    // Vérifie si l'API Electron est disponible
     if (!window.electronAPI?.printTicket) {
         console.error("❌ API Electron non disponible.");
         return { success: false, error: "API Electron non trouvée (mode web ?)" };
@@ -19,9 +17,6 @@ const handlePrinting = async (ticketContent) => {
 
     try {
         console.log("🖨️ Envoi du ticket à Electron...");
-        
-        // ⚠️ IMPORTANT : ticketContent doit être du TEXTE BRUT, pas du HTML
-        // Le backend Django doit retourner du texte formaté, pas du HTML
         const result = await window.electronAPI.printTicket(ticketContent);
         
         if (result.success) {
@@ -30,7 +25,7 @@ const handlePrinting = async (ticketContent) => {
             console.error(`❌ Échec impression: ${result.error}`);
         }
         
-        return result; // { success: true, printer: "POS-80" } ou { success: false, error: "..." }
+        return result;
 
     } catch (error) {
         console.error("❌ Erreur IPC lors de l'impression:", error);
@@ -40,10 +35,15 @@ const handlePrinting = async (ticketContent) => {
 
 export default function ConfirmationPage() {
     const router = useRouter(); 
+    const { t, isRTL } = useLanguage();
     const [orderId, setOrderId] = useState(null);
     const [accessToken, setAccessToken] = useState(null);
     const [isPrinting, setIsPrinting] = useState(false);
-    const [statusMessage, setStatusMessage] = useState("Traitement de la commande...");
+    const [statusMessage, setStatusMessage] = useState("");
+
+    useEffect(() => {
+        setStatusMessage(t('confirmation.processing'));
+    }, [t]);
 
     // ==========================================
     // 🔹 LOGIQUE D'IMPRESSION
@@ -51,17 +51,16 @@ export default function ConfirmationPage() {
     const printTicket = async (id, token) => {
         if (!id || !token) {
             console.error("❌ Token ou ID manquant");
-            setStatusMessage("Erreur : Token ou ID de commande manquant.");
+            setStatusMessage(t('errors.loading_data'));
             return false; 
         }
 
         setIsPrinting(true);
-        setStatusMessage(`Impression du ticket pour commande n°${id}...`);
+        setStatusMessage(`${t('confirmation.printing')}${id}...`);
 
         try {
             console.log(`📡 Récupération du ticket depuis Django (Commande ${id})...`);
             
-            // 1️⃣ Appel API Django pour récupérer le contenu du ticket
             const response = await axios.get(
                 `${POS_URL}/order/api/generateTicket/${id}/`,
                 { headers: { Authorization: `Bearer ${token}` } }
@@ -71,38 +70,35 @@ export default function ConfirmationPage() {
                 throw new Error(`Erreur ${response.status} lors de la récupération du ticket`);
             }
 
-            // 2️⃣ Récupérer le contenu du ticket
             const ticketContent = response.data.ticket_content;
             
             if (!ticketContent) {
-                throw new Error("Le ticket est vide");
+                throw new Error(t('errors.loading_data'));
             }
 
             console.log(`📄 Ticket reçu (${ticketContent.length} caractères)`);
             
-            // ⚠️ VÉRIFICATION IMPORTANTE : Le contenu doit être du TEXTE BRUT
             if (ticketContent.includes('<html>') || ticketContent.includes('<!DOCTYPE')) {
                 console.warn("⚠️ ATTENTION : Le backend retourne du HTML au lieu de texte brut !");
                 console.warn("⚠️ Cela peut causer une impression blanche.");
                 console.warn("⚠️ Modifiez votre backend Django pour retourner du texte brut.");
             }
 
-            // 3️⃣ Envoyer à Electron pour impression
             const printResult = await handlePrinting(ticketContent);
 
             if (printResult.success) {
                 console.log(`✅ Impression terminée sur ${printResult.printer}`);
-                setStatusMessage(`✅ Impression réussie ! Redirection...`);
+                setStatusMessage(t('confirmation.print_success'));
                 return true;
             } else {
                 console.error(`❌ Échec: ${printResult.error}`);
-                setStatusMessage(`❌ Échec de l'impression : ${printResult.error}`);
+                setStatusMessage(`${t('confirmation.print_failed')} : ${printResult.error}`);
                 return false;
             }
 
         } catch (error) {
             console.error("❌ Erreur critique:", error);
-            setStatusMessage(`❌ Erreur : ${error.message}`);
+            setStatusMessage(`${t('error')} : ${error.message}`);
             return false;
         } finally {
             setIsPrinting(false);
@@ -126,7 +122,7 @@ export default function ConfirmationPage() {
                 setOrderId(id);
             } catch (error) {
                 console.error("❌ Erreur récupération données:", error);
-                setStatusMessage("Erreur de chargement des données");
+                setStatusMessage(t('errors.loading_data'));
             }
         };
         fetchData();
@@ -139,11 +135,9 @@ export default function ConfirmationPage() {
         const processAndRedirect = async () => {
             console.log("🚀 Démarrage du processus d'impression...");
             
-            // Lancer l'impression
             const success = await printTicket(orderId, accessToken);
             
-            // Délai avant redirection
-            const delay = success ? 2000 : 4000; // 2s si succès, 4s si échec
+            const delay = success ? 2000 : 4000;
             
             console.log(`⏱️ Redirection dans ${delay}ms...`);
             
@@ -154,14 +148,12 @@ export default function ConfirmationPage() {
             }, delay);
         };
 
-        // Démarrer seulement si les données sont disponibles
         if (orderId && accessToken) {
             processAndRedirect();
         } else {
             console.log("⏳ En attente des données (orderId, accessToken)...");
         }
 
-        // Nettoyage
         return () => {
             if (redirectTimer) {
                 clearTimeout(redirectTimer);
@@ -174,8 +166,8 @@ export default function ConfirmationPage() {
     // 🔹 RENDU
     // ==========================================
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Commande Confirmée !</Text>
+        <View style={[styles.container, isRTL && { direction: 'rtl' }]}>
+            <Text style={styles.title}>{t('confirmation.title')}</Text>
             
             <View style={styles.statusBox}>
                 {isPrinting && (
@@ -192,7 +184,7 @@ export default function ConfirmationPage() {
 
                 {orderId && (
                     <Text style={styles.orderIdText}>
-                        Numéro de commande: {orderId}
+                        {t('confirmation.order_number')}: {orderId}
                     </Text>
                 )}
 
@@ -228,12 +220,14 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: 'green',
         marginBottom: 40,
+        textAlign: 'center',
     },
     statusBox: {
         alignItems: 'center',
         padding: 20,
         borderRadius: 10,
         backgroundColor: '#f5f5f5',
+        minWidth: '60%',
     },
     message: {
         fontSize: 18,
@@ -245,6 +239,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#666',
         marginTop: 10,
+        textAlign: 'center',
     },
     debugBox: {
         marginTop: 20,

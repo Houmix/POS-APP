@@ -56,3 +56,6 @@ Join our community of developers creating universal apps.
 
 
 
+
+
+npm install react-native-toast-message
