@@ -188,7 +188,7 @@ export default function ConfirmationPage() {
                     </Text>
                 )}
 
-                {/* Debug info (à retirer en production) */}
+                {/* Debug info (à retirer en production)
                 {__DEV__ && (
                     <View style={styles.debugBox}>
                         <Text style={styles.debugText}>
@@ -201,7 +201,7 @@ export default function ConfirmationPage() {
                             Order ID: {orderId || 'N/A'}
                         </Text>
                     </View>
-                )}
+                )} */}
             </View>
         </View>
     );

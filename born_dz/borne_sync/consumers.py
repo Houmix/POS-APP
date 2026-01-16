@@ -1,36 +1,34 @@
-# borne_sync/consumers.py
+# menu/consumers.py
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-# Le nom du groupe où toutes les bornes vont écouter les alertes
 SYNC_GROUP_NAME = 'bornes_sync_channel'
 
 class BorneSyncConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        # Joindre le groupe de synchronisation
+        """Quand une borne se connecte"""
         await self.channel_layer.group_add(
             SYNC_GROUP_NAME,
             self.channel_name
         )
         await self.accept()
-        print(f"Borne connectée : {self.channel_name}")
+        print(f"✅ Borne connectée : {self.channel_name}")
 
     async def disconnect(self, close_code):
-        # Quitter le groupe
+        """Quand une borne se déconnecte"""
         await self.channel_layer.group_discard(
             SYNC_GROUP_NAME,
             self.channel_name
         )
-        print(f"Borne déconnectée : {self.channel_name}")
+        print(f"❌ Borne déconnectée : {self.channel_name}")
 
-    # Fonction pour recevoir des messages envoyés via le Channel Layer
     async def sync_message(self, event):
-        # Envoie le message broadcasté à la borne
+        """
+        Reçoit le message du signal et l'envoie à la borne
+        C'est ICI que le message arrive depuis force_borne_reload()
+        """
         await self.send(text_data=json.dumps({
-            'type': event['type'],
+            'type': 'sync_message',
             'data': event['data']
         }))
-
-    # Vous pouvez ignorer la méthode receive (la borne n'envoie rien)
-    # async def receive(self, text_data):
-    #     pass
+        print(f"📤 Message de sync envoyé à la borne")

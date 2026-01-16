@@ -53,8 +53,9 @@ class OrderCreate(APIView):
                     step = Step.objects.get(id=opt["step"])
                     option = StepOption.objects.get(id=opt["option"])
                     OrderItemOption.objects.create(order_item=order_item, option=option)
-        #generate_ticket_content(request, order.id)
-        return Response({"message": "Commande créée avec succès", "order_id": order.id}, status=201)
+        generate_ticket_content(request, order.id)
+        qr_code = generate_order_qr(order.id)
+        return Response({"message": "Commande créée avec succès", "order_id": order.id, "qr_code_base64":qr_code}, status=201)
 
 
 class OrderList(APIView):
@@ -430,3 +431,25 @@ class KpiView(APIView):
             "take_away_count": orders.filter(take_away=True).count(),
         }
         return Response(context)
+
+
+import qrcode
+import io
+import base64
+
+def generate_order_qr(order_id):
+    # Les données que tu veux mettre dans le QR (ex: ID commande ou URL)
+    data = f"ORDER-{order_id}"
+    
+    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr.add_data(data)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # On sauvegarde l'image en mémoire pour la transformer en base64
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    qr_base64 = base64.b64encode(buffer.getvalue()).decode()
+    
+    return qr_base64

@@ -5,5 +5,6 @@ class MenuConfig(AppConfig):
 
     def ready(self):
         import menu.signals  # Importer les signaux
+        import menu.signals_sync
 
 

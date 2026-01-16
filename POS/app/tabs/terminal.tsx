@@ -220,35 +220,30 @@ export default function MenuScreen() {
     <View style={[styles.container, isRTL && { direction: 'rtl' }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Image 
-          source={require('@/assets/logo.png')} 
-          style={styles.logoImage} 
-          resizeMode="contain"
-        />
-        
-        <View style={styles.headerRight}>
-          {/* Bouton de langue */}
-          <TouchableOpacity 
-            style={styles.languageButton} 
-            onPress={() => setIsLanguageModalVisible(true)}
-          >
-            <Ionicons name="language" size={40} color="black" />
-          </TouchableOpacity>
+  <Image 
+    source={require('@/assets/logo.png')} 
+    style={styles.logoImage} 
+    resizeMode="contain"
+  />
+  
+  <View style={styles.headerRight}>
+    {/* Sélecteur de langue DIRECTEMENT dans le header (UX Simplifiée) */}
+    <LanguageSelector />
 
-          {/* Bouton panier */}
-          <TouchableOpacity 
-            style={styles.cartButton} 
-            onPress={() => router.push("/order/cart")}
-          >
-            <Feather name="shopping-cart" size={45} color="black" />
-            {cartCount > 0 && (
-              <View style={styles.cartBadge}>
-                <Text style={styles.cartBadgeText}>{cartCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+    {/* Bouton panier */}
+    <TouchableOpacity 
+      style={styles.cartButton} 
+      onPress={() => router.push("/order/cart")}
+    >
+      <Feather name="shopping-cart" size={45} color="black" />
+      {cartCount > 0 && (
+        <View style={styles.cartBadge}>
+          <Text style={styles.cartBadgeText}>{cartCount}</Text>
         </View>
-      </View>
+      )}
+    </TouchableOpacity>
+  </View>
+</View>
 
       {/* Contenu principal */}
       <View style={styles.content}>
@@ -324,14 +319,9 @@ export default function MenuScreen() {
         </View>
       </View>
       
+      
       {/* Modales */}
       <ChoiceModal />
-      <LanguageSelector 
-        variant="modal"
-        visible={isLanguageModalVisible}
-        onClose={() => setIsLanguageModalVisible(false)}
-        onSelect={() => setIsLanguageModalVisible(false)}
-      />
     </View>
   );
 }

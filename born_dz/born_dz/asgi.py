@@ -13,9 +13,10 @@ import os
 from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
 from django.core.asgi import get_asgi_application
-import borne_sync.routing # Importez le routing de votre app
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'born_dz.settings')
+django_asgi_app = get_asgi_application()
+import borne_sync.routing # Importez le routing de votre app
 
 application = ProtocolTypeRouter({
     "http": get_asgi_application(), # Gestionnaire pour les requêtes HTTP classiques
