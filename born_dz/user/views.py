@@ -16,13 +16,7 @@ from django.contrib.auth.hashers import check_password
 from customer.models import Loyalty
 from customer.serializers import LoyaltySerializer
 
-def get_tokens_for_user(user):
-    refresh = RefreshToken.for_user(user)
-    print("Refresh Token:", refresh)
-    return {
-        'refresh': str(refresh),
-        'access': str(refresh.access_token),
-    }
+
 class EmployeeTokenView(APIView):
     permission_classes = []  # ou ta permission personnalisée
     authentication_classes = [] #Ajout de cette ligne pour pouvoir utiliser l'api sans jeton
@@ -76,46 +70,138 @@ class EmployeeLogin(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 
+
+def get_tokens_for_user(user):
+    """Fonction pour générer les tokens JWT"""
+    from rest_framework_simplejwt.tokens import RefreshToken
+    refresh = RefreshToken.for_user(user)
+    return {
+        'refresh': str(refresh),
+        'access': str(refresh.access_token),
+    }
+
+
 class UserTokenView(APIView):
-    permission_classes = []  # Accessible sans authentification
-    authentication_classes = []  # Accessible sans jeton
+    """
+    Récupère ou crée un utilisateur et retourne son token
+    - Si phone est null → Utilisateur anonyme
+    - Si phone existe → Retourne token
+    - Si phone n'existe pas → Crée l'utilisateur et retourne token
+    """
+    permission_classes = []
+    authentication_classes = []
+    
     def post(self, request, *args, **kwargs):
         try:
             phone = request.data.get("phone")
-            user = User.objects.get(phone=phone)
-            token = get_tokens_for_user(user)
-            return Response(token, status=status.HTTP_200_OK)
-        except User.DoesNotExist:
-            if phone is None:
-                # Cas 1: Invité/Anonyme
+            
+            # ✅ CAS 1 : Anonyme (phone = null ou "0")
+            if phone is None or phone == "0" or phone == "":
+                print("📝 Mode anonyme")
                 user_phone = "0000000000"
                 user_password = "0000000000"
                 
                 user, created = User.objects.get_or_create(
                     phone=user_phone,
-                    defaults={'role_id': 2}
+                    defaults={
+                        'role_id': 2,
+                        'username': user_phone,  # ✅ Ajouter username
+                        'email': f"{user_phone}@born.dz"
+                    }
                 )
                 
-                # Hacher le mot de passe de l'invité si c'est une nouvelle création ou s'il n'est pas haché
                 if created or not user.password.startswith('pbkdf2_'):
                     user.set_password(user_password)
                     user.save()
-                    
-            else:
-                # Cas 2: Nouvel Employé (Téléphone fourni)
+                    print(f"✅ Utilisateur anonyme {'créé' if created else 'trouvé'}")
+                
+                token = get_tokens_for_user(user)
+                return Response(token, status=status.HTTP_200_OK)
+            
+            # ✅ CAS 2 : Utilisateur avec numéro
+            try:
+                # Essayer de trouver l'utilisateur
+                user = User.objects.get(phone=phone)
+                print(f"✅ Utilisateur existant trouvé: {phone}")
+                
+                token = get_tokens_for_user(user)
+                return Response(token, status=status.HTTP_200_OK)
+                
+            except User.DoesNotExist:
+                # ✅ Créer automatiquement le nouvel utilisateur
+                print(f"📝 Création nouvel utilisateur: {phone}")
+                
                 user = User.objects.create(
                     phone=phone,
-                    role_id=2,  
+                    username=phone,  # ✅ IMPORTANT : Définir username = phone
+                    email=f"{phone}@born.dz",
+                    role_id=2,  # Role client
                 )
-                
-                # ⭐ CRITIQUE : Hacher le mot de passe pour le nouvel utilisateur
-                user.set_password(phone)
+                user.set_password(phone)  # Mot de passe = numéro de téléphone
                 user.save()
-            token = get_tokens_for_user(user)
-            return Response(token, status=status.HTTP_201_CREATED)
+                
+                print(f"✅ Utilisateur créé avec succès: {phone}")
+                
+                token = get_tokens_for_user(user)
+                
+                # Retourner avec status 201 (Created)
+                return Response(token, status=status.HTTP_201_CREATED)
+                
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            print(f"❌ Erreur: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
+
+class GetUserByPhone(APIView):
+    """
+    Récupère les détails d'un utilisateur par son numéro de téléphone
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        phone = request.data.get("phone")
+        
+        if not phone:
+            return Response(
+                {"error": "Numéro de téléphone requis"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            user = User.objects.get(phone=phone)
+            serializer = UserSerializer(user)
+            
+            print(f"✅ Détails utilisateur récupérés: {phone}")
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Utilisateur introuvable"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
+class UserDetail(APIView):
+    """
+    Récupère un utilisateur par son ID (pk)
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, pk, *args, **kwargs):
+        try:
+            user = User.objects.get(pk=pk)
+            serializer = UserSerializer(user)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Utilisateur non trouvé"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 class UserCreate(APIView):
     def post(self, request, *args, **kwargs):
@@ -132,15 +218,6 @@ class UserCreate(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UserDetail(APIView):
-    permission_classes = [IsAuthenticated]
-    def get(self, request, pk, *args, **kwargs):
-        try:
-            user = User.objects.get(pk=pk)
-            serializer = UserSerializer(user)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except User.DoesNotExist:
-            return Response({"error": "Utilisateur non trouvé"}, status=status.HTTP_404_NOT_FOUND)
 
 
 class UserUpdate(APIView):

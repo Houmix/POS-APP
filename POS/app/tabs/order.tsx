@@ -1,19 +1,32 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, Dimensions, RefreshControl } from "react-native";
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ScrollView, 
+  Dimensions, 
+  RefreshControl,
+  Modal,
+  Alert,
+  TextInput
+  
+} from "react-native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { POS_URL, idRestaurant } from "@/config";
+import { POS_URL } from "@/config";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 export default function OrderScreen() {
+  // 1. Interface alignée avec la réponse Django (POSOrderGet)
   interface Order {
-    id: number;
-    order_id: string;
+    order_id: number; // Utilise order_id comme clé principale
     order_status: string;
     cash: boolean;
     created_at: string;
     total_price: number;
+    takeaway: boolean;
     items: {
       menu_name: string;
       quantity: number;
@@ -25,16 +38,19 @@ export default function OrderScreen() {
         option_price: number;
       }[];
     }[];
-    paid?: number;
-    refund?: number;
-    cancelled?: number;
+    paid?: boolean;
+    refund?: boolean;
+    cancelled?: boolean;
+    // On garde 'id' optionnel au cas où, mais on privilégie order_id
+    id?: number; 
   }
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
   const router = useRouter();
-  const screenWidth = Dimensions.get("window").width;
-
+  const [searchQuery, setSearchQuery] = useState("");
   useEffect(() => {
     fetchOrders();
   }, []);
@@ -43,15 +59,21 @@ export default function OrderScreen() {
     try {
       const accessToken = await AsyncStorage.getItem("token");
       const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
-      const response = await axios.get(`${POS_URL}/order/api/getPOSorder/${restaurantId}/`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      console.log("Commandes récupérées :", response.data.orders);
+      
+      console.log("🔍 Récupération commandes pour restaurant:", restaurantId);
+      
+      const response = await axios.get(
+        `${POS_URL}/order/api/getPOSorder/${restaurantId}/`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+      
+      console.log("✅ Commandes récupérées:", response.data.orders.length);
       setOrders(response.data.orders);
     } catch (error) {
-      console.error("Erreur lors de la récupération des commandes :", error);
+      console.error("❌ Erreur récupération commandes:", error);
+      Alert.alert("Erreur", "Impossible de charger les commandes");
     }
   };
 
@@ -61,159 +83,231 @@ export default function OrderScreen() {
     setRefreshing(false);
   };
 
+  // 2. Logique Dynamique corrigée
   const handleAction = async (orderId: number, action: string) => {
     try {
-      let updateData;
+      console.log(`🔄 Action ${action} sur commande #${orderId}`);
+      
+      let updateData: any = {};
+      
+      // Définition des nouveaux états selon l'action
       if (action === "Valider") {
-        updateData = { paid: 1, status: "in_progress" };
+        updateData = { paid: true, status: "in_progress" };
       } else if (action === "Annuler") {
-        updateData = { cancelled: 1, status: "cancelled" };
+        updateData = { cancelled: true, status: "cancelled" };
       } else if (action === "Rembourser") {
-        updateData = { refund: 1, status: "refund" };
+        updateData = { refund: true, status: "refund" };
+      } else if (action === "Prête") {
+        updateData = { refund: true, status: "ready" };
       }
 
-      const response = await axios.put(`${POS_URL}/order/api/Updateorder/${orderId}/`, updateData);
+      const accessToken = await AsyncStorage.getItem("token");
+      
+      // Appel API
+      const response = await axios.put(
+        `${POS_URL}/order/api/Updateorder/${orderId}/`,
+        updateData,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }
+      );
+
       if (response.status === 200) {
+        console.log(`✅ Commande #${orderId} mise à jour: ${action}`);
+        
+        // MISE À JOUR DYNAMIQUE : On modifie l'état local immédiatement
+        // React va détecter le changement de 'order_status' et bouger la carte de colonne
         setOrders((prevOrders) =>
           prevOrders.map((order) =>
-            order.id === orderId ? { ...order, ...updateData } : order
+            // IMPORTANT : On compare avec order_id car c'est ce que Django renvoie
+            order.order_id === orderId 
+              ? { 
+                  ...order, 
+                  ...updateData, 
+                  order_status: updateData.status // C'est ce champ qui fait bouger la carte
+                } 
+              : order
           )
         );
-        console.log(`Commande mise à jour avec succès : ${action}`);
+        
+        // Si la modale est ouverte sur cette commande, on la met à jour aussi ou on ferme
+        if (modalVisible && selectedOrder?.order_id === orderId) {
+            setModalVisible(false);
+            setSelectedOrder(null);
+        }
+        
+        // Feedback visuel optionnel (peut être retiré si trop intrusif)
+        // Alert.alert("Succès", `Commande ${action} avec succès`);
       }
-    } catch (error) {
-      console.error(`Erreur lors de l'action ${action} :`, error);
+    } catch (error: any) {
+      console.error(`❌ Erreur ${action}:`, error);
+      Alert.alert("Erreur", `Impossible de ${action.toLowerCase()} la commande`);
     }
+  };
+
+  const openOrderDetails = (order: Order) => {
+    setSelectedOrder(order);
+    setModalVisible(true);
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "pending":
-        return "clock-outline";
-      case "in_progress":
-        return "chef-hat";
-      case "ready":
-        return "check-circle";
-      default:
-        return "information";
+      case "pending": return "clock-outline";
+      case "in_progress": return "chef-hat";
+      case "ready": return "check-circle";
+      case "cancelled": return "close-circle";
+      case "refund": return "undo";
+      default: return "information";
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "pending":
-        return "#ff9900";
-      case "in_progress":
-        return "#007bff";
-      case "ready":
-        return "#28a745";
-      default:
-        return "#6c757d";
+      case "pending": return "#ff9900";
+      case "in_progress": return "#007bff";
+      case "ready": return "#28a745";
+      case "cancelled": return "#dc3545";
+      case "refund": return "#6c757d";
+      default: return "#6c757d";
     }
   };
 
-  const renderOrder = ({ item }: { item: Order }) => {
-    const isPaid = item.paid;
-    const isRefunded = item.refund;
-    const isCancelled = item.cancelled;
-    const statusColor = getStatusColor(item.order_status);
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "pending": return "En attente";
+      case "in_progress": return "En cours";
+      case "ready": return "Prête";
+      case "cancelled": return "Annulée";
+      case "refund": return "Remboursée";
+      default: return status;
+    }
+  };
+
+  const renderOrderCard = (order: Order) => {
+    const isPaid = order.paid;
+    const isRefunded = order.refund;
+    const isCancelled = order.cancelled;
+    const statusColor = getStatusColor(order.order_status);
 
     return (
-      <View style={[styles.orderCard, { borderLeftColor: statusColor }]}>
-        {/* Header de la commande */}
+      <View
+        key={order.order_id} // Clé unique correcte
+        style={[styles.orderCard, { borderLeftColor: statusColor }]}
+      >
+        {/* Header */}
         <View style={styles.orderHeader}>
           <View style={styles.orderHeaderLeft}>
             <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-              <MaterialCommunityIcons name={getStatusIcon(item.order_status)} size={16} color="#fff" />
+              <MaterialCommunityIcons
+                name={getStatusIcon(order.order_status)}
+                size={20}
+                color="#fff"
+              />
             </View>
             <View>
-              <Text style={styles.orderNumber}>#{item.order_id}</Text>
+              <Text style={styles.orderNumber}>#{order.order_id}</Text>
               <Text style={styles.orderTime}>
-                {new Date(item.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                {new Date(order.created_at).toLocaleTimeString("fr-FR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
               </Text>
             </View>
           </View>
           <View style={styles.priceContainer}>
-            <Text style={styles.orderPrice}>{item.total_price} DA</Text>
+            <Text style={styles.orderPrice}>{order.total_price} DA</Text>
           </View>
         </View>
 
-        {/* Infos de la commande */}
+        {/* Infos */}
         <View style={styles.orderInfo}>
           <View style={styles.infoRow}>
-            <MaterialCommunityIcons name={item.cash ? "cash" : "credit-card"} size={16} color="#666" />
-            <Text style={styles.infoText}>{item.cash ? "Cash" : "Carte"}</Text>
+            <MaterialCommunityIcons
+              name={order.cash ? "cash" : "credit-card"}
+              size={16}
+              color="#666"
+            />
+            <Text style={styles.infoText}>{order.cash ? "Cash" : "Carte"}</Text>
           </View>
           <View style={styles.infoRow}>
-            <MaterialCommunityIcons name="package-multiple" size={16} color="#666" />
-            <Text style={styles.infoText}>{item.items.length} article(s)</Text>
+            <MaterialCommunityIcons name="package-variant" size={16} color="#666" />
+            <Text style={styles.infoText}>{order.items.length} article(s)</Text>
           </View>
+          {order.takeaway && (
+            <View style={styles.infoRow}>
+              <MaterialCommunityIcons name="bag-personal" size={16} color="#666" />
+              <Text style={styles.infoText}>À emporter</Text>
+            </View>
+          )}
         </View>
 
-        {/* Contenu de la commande */}
+        {/* Bouton détails */}
         <TouchableOpacity
-          style={styles.contentButton}
-          onPress={() => {
-            const details = item.items
-              .map((orderItem, index) => {
-                return (
-                  `${index + 1}. ${orderItem.solo || orderItem.extra ? "Solo" : "Menu"} ${orderItem.menu_name}\n` +
-                  `   Quantité: ${orderItem.quantity}\n` +
-                  (orderItem.composition.length > 0
-                    ? `   Composition:\n${orderItem.composition
-                        .map((option) => `   • ${option.step_name}: ${option.option_name}`)
-                        .join("\n")}`
-                    : "")
-                );
-              })
-              .join("\n\n");
-
-            alert(`Détails de la commande:\n\n${details}`);
-          }}
+          style={styles.detailsButton}
+          onPress={() => openOrderDetails(order)}
         >
           <MaterialCommunityIcons name="eye" size={18} color="#007bff" />
-          <Text style={styles.contentButtonText}>Voir les détails</Text>
+          <Text style={styles.detailsButtonText}>Voir les détails</Text>
         </TouchableOpacity>
 
         {/* Actions */}
         <View style={styles.actionsContainer}>
           {isPaid ? (
             isRefunded ? (
-              <View style={[styles.statusText, { backgroundColor: "#e0e0e0" }]}>
+              <View style={[styles.statusBadgeInline, { backgroundColor: "#e0e0e0" }]}>
                 <MaterialCommunityIcons name="undo" size={16} color="#666" />
-                <Text style={{ color: "#666", fontWeight: "600", marginLeft: 8 }}>Remboursée</Text>
+                <Text style={{ color: "#666", fontWeight: "600", marginLeft: 8 }}>
+                  Remboursée
+                </Text>
               </View>
             ) : isCancelled ? (
-              <View style={[styles.statusText, { backgroundColor: "#f8d7da" }]}>
+              <View style={[styles.statusBadgeInline, { backgroundColor: "#f8d7da" }]}>
                 <MaterialCommunityIcons name="close-circle" size={16} color="#dc3545" />
-                <Text style={{ color: "#dc3545", fontWeight: "600", marginLeft: 8 }}>Annulée</Text>
+                <Text style={{ color: "#dc3545", fontWeight: "600", marginLeft: 8 }}>
+                  Annulée
+                </Text>
               </View>
             ) : (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.refundButton]}
-                onPress={() => handleAction(item.id, "Rembourser")}
-              >
-                <MaterialCommunityIcons name="undo" size={18} color="#fff" />
-                <Text style={styles.actionButtonText}>Rembourser</Text>
-              </TouchableOpacity>
+              <View style={{ flex: 1, flexDirection: 'row', gap: 8 }}>
+        {order.order_status === "in_progress" && (
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: "#28a745" }]}
+            onPress={() => handleAction(order.order_id, "Prête")}
+          >
+            <MaterialCommunityIcons name="check-all" size={18} color="#fff" />
+            <Text style={styles.actionButtonText}>Prête</Text>
+          </TouchableOpacity>
+        )}
+        
+        <TouchableOpacity
+          style={[styles.actionButton, styles.refundButton]}
+          onPress={() => handleAction(order.order_id, "Rembourser")}
+        >
+          <MaterialCommunityIcons name="undo" size={18} color="#fff" />
+          <Text style={styles.actionButtonText}>Rembourser</Text>
+        </TouchableOpacity>
+      </View>
+              
             )
           ) : isCancelled ? (
-            <View style={[styles.statusText, { backgroundColor: "#f8d7da" }]}>
+            <View style={[styles.statusBadgeInline, { backgroundColor: "#f8d7da" }]}>
               <MaterialCommunityIcons name="close-circle" size={16} color="#dc3545" />
-              <Text style={{ color: "#dc3545", fontWeight: "600", marginLeft: 8 }}>Annulée</Text>
+              <Text style={{ color: "#dc3545", fontWeight: "600", marginLeft: 8 }}>
+                Annulée
+              </Text>
             </View>
           ) : (
             <>
               <TouchableOpacity
                 style={[styles.actionButton, styles.validateButton]}
-                onPress={() => handleAction(item.id, "Valider")}
+                onPress={() => handleAction(order.order_id, "Valider")}
               >
                 <MaterialCommunityIcons name="check-circle" size={18} color="#fff" />
                 <Text style={styles.actionButtonText}>Valider</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.actionButton, styles.cancelButton]}
-                onPress={() => handleAction(item.id, "Annuler")}
+                onPress={() => handleAction(order.order_id, "Annuler")}
               >
                 <MaterialCommunityIcons name="close-circle" size={18} color="#fff" />
                 <Text style={styles.actionButtonText}>Annuler</Text>
@@ -225,13 +319,21 @@ export default function OrderScreen() {
     );
   };
 
-  const renderColumn = (title: string, status: string, icon: string) => {
-    const filteredOrders = orders.filter((order) => order.order_status === status);
+  const renderColumn = (title: string, status: string, icon: any) => {
+    // Filtrage combiné : Statut + Recherche par numéro
+    const filteredOrders = orders.filter((order) => {
+      const matchesStatus = order.order_status === status;
+      // On vérifie si order_id contient la chaîne recherchée
+      const matchesSearch = order.order_id.toString().includes(searchQuery);
+      
+      return matchesStatus && matchesSearch;
+    });
+  
     const statusColor = getStatusColor(status);
 
     return (
       <View style={styles.columnWrapper}>
-        {/* Titre de la colonne */}
+        {/* Header */}
         <View style={[styles.columnHeader, { borderBottomColor: statusColor }]}>
           <MaterialCommunityIcons name={icon} size={24} color={statusColor} />
           <Text style={[styles.columnTitle, { color: statusColor }]}>{title}</Text>
@@ -240,10 +342,9 @@ export default function OrderScreen() {
           </View>
         </View>
 
-        {/* Liste des commandes */}
+        {/* Liste */}
         <ScrollView
           style={styles.scrollColumn}
-          scrollEnabled={filteredOrders.length > 0}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
           {filteredOrders.length === 0 ? (
@@ -252,11 +353,7 @@ export default function OrderScreen() {
               <Text style={styles.emptyText}>Aucune commande</Text>
             </View>
           ) : (
-            filteredOrders.map((order) => (
-              <View key={order.order_id}>
-                {renderOrder({ item: order })}
-              </View>
-            ))
+            filteredOrders.map((order) => renderOrderCard(order))
           )}
         </ScrollView>
       </View>
@@ -267,16 +364,28 @@ export default function OrderScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Gestion des Commandes</Text>
-          <Text style={styles.headerSubtitle}>
-            {orders.length} commande{orders.length > 1 ? "s" : ""} en total
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
-          <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
+  <View style={{ flex: 1 }}>
+    <Text style={styles.headerTitle}>Gestion des Commandes</Text>
+    <View style={styles.searchContainer}>
+      <MaterialCommunityIcons name="magnify" size={20} color="#999" />
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Rechercher un N° (#123...)"
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        keyboardType="numeric"
+      />
+      {searchQuery !== "" && (
+        <TouchableOpacity onPress={() => setSearchQuery("")}>
+          <MaterialCommunityIcons name="close-circle" size={18} color="#999" />
         </TouchableOpacity>
-      </View>
+      )}
+    </View>
+  </View>
+  <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
+    <MaterialCommunityIcons name="refresh" size={24} color="#fff" />
+  </TouchableOpacity>
+</View>
 
       {/* Colonnes */}
       <View style={styles.columnsContainer}>
@@ -284,6 +393,208 @@ export default function OrderScreen() {
         {renderColumn("En cours", "in_progress", "chef-hat")}
         {renderColumn("Prête", "ready", "check-circle")}
       </View>
+
+      {/* Modale des détails */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setModalVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.modalContent}>
+            {selectedOrder && (
+              <>
+                {/* Header de la modale */}
+                <View style={styles.modalHeader}>
+                  <View style={styles.modalHeaderLeft}>
+                    <MaterialCommunityIcons
+                      name="receipt-text"
+                      size={32}
+                      color="#ff9900"
+                    />
+                    <View style={{ marginLeft: 12 }}>
+                      {/* Utilisation de order_id */}
+                      <Text style={styles.modalTitle}>
+                        Commande #{selectedOrder.order_id}
+                      </Text>
+                      <Text style={styles.modalSubtitle}>
+                        {new Date(selectedOrder.created_at).toLocaleString("fr-FR")}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setModalVisible(false)}
+                    style={styles.closeButton}
+                  >
+                    <MaterialCommunityIcons name="close" size={28} color="#333" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Infos générales */}
+                <View style={styles.modalInfos}>
+                  <View style={styles.modalInfoBox}>
+                    <MaterialCommunityIcons
+                      name={selectedOrder.cash ? "cash" : "credit-card"}
+                      size={24}
+                      color="#666"
+                    />
+                    <Text style={styles.modalInfoText}>
+                      {selectedOrder.cash ? "Paiement Cash" : "Paiement Carte"}
+                    </Text>
+                  </View>
+                  <View style={styles.modalInfoBox}>
+                    <MaterialCommunityIcons
+                      name={selectedOrder.takeaway ? "bag-personal" : "silverware-fork-knife"}
+                      size={24}
+                      color="#666"
+                    />
+                    <Text style={styles.modalInfoText}>
+                      {selectedOrder.takeaway ? "À emporter" : "Sur place"}
+                    </Text>
+                  </View>
+                  <View style={styles.modalInfoBox}>
+                    <MaterialCommunityIcons
+                      name={getStatusIcon(selectedOrder.order_status)}
+                      size={24}
+                      color={getStatusColor(selectedOrder.order_status)}
+                    />
+                    <Text style={styles.modalInfoText}>
+                      {getStatusLabel(selectedOrder.order_status)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Liste des articles */}
+                <View style={styles.modalDivider} />
+                <Text style={styles.modalSectionTitle}>Articles commandés</Text>
+
+                <ScrollView style={styles.modalItemsList}>
+                  {selectedOrder.items.map((item, index) => (
+                    <View key={index} style={styles.modalItem}>
+                      <View style={styles.modalItemHeader}>
+                        <View style={styles.modalItemQty}>
+                          <Text style={styles.modalItemQtyText}>{item.quantity}x</Text>
+                        </View>
+                        <Text style={styles.modalItemName}>
+                          {item.solo || item.extra ? "Solo/Extra " : ""}
+                          {item.menu_name}
+                        </Text>
+                      </View>
+
+                      {/* Composition */}
+                      {item.composition.length > 0 && (
+                        <View style={styles.modalComposition}>
+                          {item.composition.map((option, idx) => (
+                            <View key={idx} style={styles.modalOption}>
+                              <MaterialCommunityIcons
+                                name="chevron-right"
+                                size={16}
+                                color="#999"
+                              />
+                              <Text style={styles.modalOptionStep}>
+                                {option.step_name}:
+                              </Text>
+                              <Text style={styles.modalOptionName}>
+                                {option.option_name}
+                              </Text>
+                              {option.option_price > 0 && (
+                                <Text style={styles.modalOptionPrice}>
+                                  +{option.option_price} DA
+                                </Text>
+                              )}
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </ScrollView>
+
+                {/* Total */}
+                <View style={styles.modalDivider} />
+                <View style={styles.modalTotal}>
+                  <Text style={styles.modalTotalLabel}>TOTAL</Text>
+                  <Text style={styles.modalTotalAmount}>
+                    {selectedOrder.total_price} DA
+                  </Text>
+                </View>
+
+                {/* Actions dans la modale */}
+                <View style={styles.modalActions}>
+                  {selectedOrder.paid ? (
+                    selectedOrder.refund ? (
+                      <View style={styles.modalStatusBadge}>
+                        <MaterialCommunityIcons name="undo" size={20} color="#666" />
+                        <Text style={styles.modalStatusText}>Remboursée</Text>
+                      </View>
+                    ) : selectedOrder.cancelled ? (
+                      <View style={styles.modalStatusBadge}>
+                        <MaterialCommunityIcons
+                          name="close-circle"
+                          size={20}
+                          color="#dc3545"
+                        />
+                        <Text style={[styles.modalStatusText, { color: "#dc3545" }]}>
+                          Annulée
+                        </Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={[styles.modalActionButton, { backgroundColor: "#dc3545" }]}
+                        onPress={() => handleAction(selectedOrder.order_id, "Rembourser")}
+                      >
+                        <MaterialCommunityIcons name="undo" size={22} color="#fff" />
+                        <Text style={styles.modalActionText}>Rembourser</Text>
+                      </TouchableOpacity>
+                    )
+                  ) : selectedOrder.cancelled ? (
+                    <View style={styles.modalStatusBadge}>
+                      <MaterialCommunityIcons
+                        name="close-circle"
+                        size={20}
+                        color="#dc3545"
+                      />
+                      <Text style={[styles.modalStatusText, { color: "#dc3545" }]}>
+                        Annulée
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.modalActionButton, { backgroundColor: "#28a745" }]}
+                        onPress={() => handleAction(selectedOrder.order_id, "Valider")}
+                      >
+                        <MaterialCommunityIcons
+                          name="check-circle"
+                          size={22}
+                          color="#fff"
+                        />
+                        <Text style={styles.modalActionText}>Valider</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.modalActionButton, { backgroundColor: "#ffc107" }]}
+                        onPress={() => handleAction(selectedOrder.order_id, "Annuler")}
+                      >
+                        <MaterialCommunityIcons
+                          name="close-circle"
+                          size={22}
+                          color="#fff"
+                        />
+                        <Text style={styles.modalActionText}>Annuler</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -410,9 +721,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statusBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
@@ -442,6 +753,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginBottom: 12,
     gap: 12,
+    flexWrap: "wrap",
   },
   infoRow: {
     flexDirection: "row",
@@ -453,7 +765,7 @@ const styles = StyleSheet.create({
     color: "#666",
     fontWeight: "500",
   },
-  contentButton: {
+  detailsButton: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10,
@@ -464,7 +776,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
-  contentButtonText: {
+  detailsButtonText: {
     color: "#007bff",
     fontWeight: "600",
     fontSize: 13,
@@ -496,12 +808,223 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 12,
   },
-  statusText: {
+  statusBadgeInline: {
     flex: 1,
     flexDirection: "row",
     paddingVertical: 10,
     borderRadius: 8,
     justifyContent: "center",
     alignItems: "center",
+  },
+  
+  // MODALE
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    width: "90%",
+    maxWidth: 700,
+    maxHeight: "90%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
+  modalHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#333",
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#999",
+    marginTop: 4,
+  },
+  closeButton: {
+    padding: 8,
+  },
+  modalInfos: {
+    flexDirection: "row",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    gap: 16,
+    flexWrap: "wrap",
+  },
+  modalInfoBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8f9fa",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
+  },
+  modalInfoText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#666",
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: "#e0e0e0",
+    marginHorizontal: 24,
+    marginVertical: 8,
+  },
+  modalSectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#333",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  modalItemsList: {
+    maxHeight: 300,
+    paddingHorizontal: 24,
+  },
+  modalItem: {
+    marginBottom: 16,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 12,
+    padding: 16,
+  },
+  modalItemHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  modalItemQty: {
+    backgroundColor: "#ff9900",
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 12,
+  },
+  modalItemQtyText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  modalItemName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#333",
+    flex: 1,
+  },
+  modalComposition: {
+    marginTop: 8,
+    paddingLeft: 12,
+  },
+  modalOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 4,
+    gap: 6,
+  },
+  modalOptionStep: {
+    fontSize: 13,
+    color: "#666",
+    fontWeight: "600",
+  },
+  modalOptionName: {
+    fontSize: 13,
+    color: "#333",
+    flex: 1,
+  },
+  modalOptionPrice: {
+    fontSize: 13,
+    color: "#28a745",
+    fontWeight: "700",
+  },
+  modalTotal: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    backgroundColor: "#f8f9fa",
+  },
+  modalTotalLabel: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#333",
+  },
+  modalTotalAmount: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#ff6b35",
+  },
+  modalActions: {
+    flexDirection: "row",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  modalActionButton: {
+    flex: 1,
+    flexDirection: "row",
+    paddingVertical: 14,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  modalActionText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  modalStatusBadge: {
+    flex: 1,
+    flexDirection: "row",
+    paddingVertical: 14,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#e0e0e0",
+  },
+  modalStatusText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#666",
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    marginTop: 10,
+    height: 40,
+    maxWidth: 300,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    color: '#333',
+    paddingVertical: 0, // Important pour Android
   },
 });

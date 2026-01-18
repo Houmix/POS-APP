@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
         elevation: 5,
     },
     title: {
-        color: "black",
+        color: "#0056b3",
         fontSize: 38,
         fontWeight: "bold",
         textAlign: "center",

@@ -23,4 +23,12 @@ urlpatterns = [
     #path("api/getCustomer/", CustomerLIST.as_view(), name="api_list"),
     #path("api/updateCustomer/", UserUpdate.as_view(), name="api_update"),
     #path("api/deleteCustomer/<int:pk>/", UserDelete.as_view(), name="api_delete"),
+        # ✅ Token (création automatique si n'existe pas)
+    path('api/user/token/', UserTokenView.as_view(), name='user-token'),
+    
+    # ✅ Récupérer utilisateur par téléphone (POST avec phone dans body)
+    path('api/getUser/', GetUserByPhone.as_view(), name='get-user-by-phone'),
+    
+    # Garde l'ancien endpoint pour compatibilité (GET avec pk dans URL)
+    path('api/user/<int:pk>/', UserDetail.as_view(), name='user-detail'),
 ]

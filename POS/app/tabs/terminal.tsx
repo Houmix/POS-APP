@@ -10,13 +10,14 @@ import {
   ScrollView,
   ActivityIndicator, 
   Modal, 
+  PanResponder, // <--- IMPORT CRUCIAL
 } from "react-native";
-import { useEffect, useState } from "react";
-import { useRouter } from "expo-router";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LinearGradient } from 'expo-linear-gradient';
 import { POS_URL } from "@/config"; 
 import Feather from '@expo/vector-icons/Feather'; 
-import { Ionicons } from '@expo/vector-icons';
 import { useBorneSync } from "@/hooks/useBorneSync.js";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
@@ -24,39 +25,126 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 export default function MenuScreen() {
   const router = useRouter();
   const { t, isRTL } = useLanguage();
+  
+  // États des données
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [cartCount, setCartCount] = useState(0); 
+  
+  // États des Modales
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedItemForModal, setSelectedItemForModal] = useState(null);
-  const [isLanguageModalVisible, setIsLanguageModalVisible] = useState(false);
+  const [isInactivityModalVisible, setIsInactivityModalVisible] = useState(false);
 
+  // Hook de synchronisation
+  const { categories, menus, isLoading } = useBorneSync();
+
+  // Variables de Timer
+  const mainTimerRef = useRef(null);      
+  const secondaryTimerRef = useRef(null); 
+
+  // --- CALCULS DE LAYOUT ---
   const width = Dimensions.get("window").width;
   const itemMargin = width > 700 ? 20 : 10;
-  const numColumns =
-    width >= 700  ? 3 :
-    width >= 500  ? 2 :
-    1;
-  const sidebarPercent = width > 700 ? 25 : 35; 
+  const numColumns = width >= 700 ? 3 : width >= 500 ? 2 : 1;
+  const sidebarPercent = width > 700 ? 25 : 30; 
   const sidebarWidth = `${sidebarPercent}%`;
   const menuGridWidth = 100 - sidebarPercent;
-
   const innerGridWidth = (width * menuGridWidth / 100);
   const itemWidth = (innerGridWidth - itemMargin * (numColumns + 1)) / numColumns;
 
+  // --- GESTION DU TIMER D'INACTIVITÉ (30s) ---
+  const resetMainTimer = useCallback(() => {
+    // Si la modale d'inactivité est déjà visible, on ne reset pas, on laisse le timer de 10s tourner
+    if (isInactivityModalVisible) return;
+
+    if (mainTimerRef.current) clearTimeout(mainTimerRef.current);
+    
+    // On redémarre le compte à rebours de 30s
+    mainTimerRef.current = setTimeout(() => {
+      setIsInactivityModalVisible(true);
+    }, 30000); 
+  }, [isInactivityModalVisible]);
+
+  // ⚡ SYSTEME DE DÉTECTION GLOBAL D'ACTIVITÉ (PAN RESPONDER)
+  // Utilisation d'une ref pour accéder toujours à la dernière version de resetMainTimer
+  const resetTimerRef = useRef(resetMainTimer);
+  useEffect(() => { resetTimerRef.current = resetMainTimer; }, [resetMainTimer]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      // Demande à être notifié de tout toucher au démarrage
+      onStartShouldSetPanResponderCapture: () => {
+        resetTimerRef.current(); // Reset le timer
+        return false; // RENVOIE FALSE pour laisser le clic passer aux boutons/scrollviews
+      },
+      // Capture aussi les mouvements (scroll)
+      onMoveShouldSetPanResponderCapture: () => {
+        resetTimerRef.current(); 
+        return false; 
+      },
+    })
+  ).current;
+
+  // Active le timer quand la page gagne le focus
+  useFocusEffect(
+    useCallback(() => {
+      resetMainTimer();
+      return () => {
+        if (mainTimerRef.current) clearTimeout(mainTimerRef.current);
+        if (secondaryTimerRef.current) clearTimeout(secondaryTimerRef.current);
+      };
+    }, [resetMainTimer])
+  );
+
+  // --- GESTION DU TIMER SECONDAIRE (10s après ouverture modale) ---
+  useEffect(() => {
+    if (isInactivityModalVisible) {
+      // Si la modale s'ouvre, on lance l'ultimatum de 10s
+      secondaryTimerRef.current = setTimeout(() => {
+        console.log("⏰ Trop tard, retour à l'accueil.");
+        handleCancelOrder();
+      }, 10000);
+    } else {
+      // Si on ferme la modale (activité), on tue l'ultimatum
+      if (secondaryTimerRef.current) clearTimeout(secondaryTimerRef.current);
+    }
+
+    return () => {
+      if (secondaryTimerRef.current) clearTimeout(secondaryTimerRef.current);
+    };
+  }, [isInactivityModalVisible]);
+
+
+  // Annuler la commande et retourner à l'accueil
+  const handleCancelOrder = async () => {
+    try {
+      await AsyncStorage.multiRemove(["orderList", "pendingOrder"]);
+      setIsInactivityModalVisible(false);
+      router.replace("/"); // Retour racine
+    } catch (e) {
+      console.error("Erreur nettoyage", e);
+    }
+  };
+
+  // Continuer la commande
+  const handleContinueOrder = () => {
+    setIsInactivityModalVisible(false);
+    resetMainTimer(); // Relance les 30s
+  };
+
+  // --- LOGIQUE PANIER ET MENU ---
   const updateCartCount = async () => {
     try {
       const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
       const count = existingOrders.reduce((total, item) => total + (item.quantity || 1), 0);
       setCartCount(count);
     } catch (error) {
-      console.error("Erreur lors de la récupération du compteur de panier", error);
       setCartCount(0);
     }
   };
 
-  const { categories, menus, isLoading } = useBorneSync();
-  
   useEffect(() => {
+    updateCartCount();
     if (categories.length > 0 && !selectedCategory) {
       setSelectedCategory(categories[0]);
     }
@@ -69,51 +157,31 @@ export default function MenuScreen() {
   
   const handleSoloAdd = async () => {
     if (!selectedItemForModal) return;
-
     try {
       const item = selectedItemForModal;
       const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
-
-      const updatedOrders = [
-        ...existingOrders,
-        { 
-          menuId: item.id, 
-          menuName: item.name, 
-          solo: true, 
-          quantity: 1, 
-          price: item.solo_price || item.price || 0,
-          steps: [] 
-        },
-      ];
-
+      const updatedOrders = [...existingOrders, { 
+          menuId: item.id, menuName: item.name, solo: true, quantity: 1, 
+          price: item.solo_price || item.price || 0, steps: [] 
+      }];
       await AsyncStorage.setItem("orderList", JSON.stringify(updatedOrders));
       await updateCartCount();
       setIsModalVisible(false);
-
-      Alert.alert(
-        t('terminal.added_success'),
-        `${item.name} ${t('terminal.added_solo')}`,
-        [{ text: "OK" }]
-      );
+      resetMainTimer(); 
+      Alert.alert(t('terminal.added_success'), `${item.name} ${t('terminal.added_solo')}`, [{ text: "OK", onPress: resetMainTimer }]);
     } catch (error) {
-      console.error("Erreur lors de l'ajout solo :", error);
       Alert.alert(t('error'), t('terminal.error_add'));
     }
   };
   
   const handleMenuAdd = () => {
     if (!selectedItemForModal) return;
-
     const item = selectedItemForModal;
     setIsModalVisible(false);
-    
+    resetMainTimer(); 
     router.push({
         pathname: "/order/step",
-        params: {
-            menuId: item.id,
-            menuName: item.name,
-            price: item.price || 0,
-        },
+        params: { menuId: item.id, menuName: item.name, price: item.price || 0 },
     });
   };
 
@@ -121,22 +189,14 @@ export default function MenuScreen() {
     if (item.extra) {
       try {
         const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
-
-        const updatedOrders = [
-          ...existingOrders,
-          { menuId: item.id, menuName: item.name, extra: true, quantity: 1, price: item.price || 0 },
-        ];
-        
+        const updatedOrders = [...existingOrders, { 
+            menuId: item.id, menuName: item.name, extra: true, quantity: 1, price: item.price || 0 
+        }];
         await AsyncStorage.setItem("orderList", JSON.stringify(updatedOrders));
         await updateCartCount();
-
-        Alert.alert(
-          t('terminal.added_success'),
-          `${item.name} ${t('terminal.added_extra')}`,
-          [{ text: "OK" }]
-        );
+        resetMainTimer(); 
+        Alert.alert(t('terminal.added_success'), `${item.name} ${t('terminal.added_extra')}`, [{ text: "OK", onPress: resetMainTimer }]);
       } catch (error) {
-        console.error("Erreur lors de l'ajout au panier :", error);
         Alert.alert(t('error'), t('errors.add_cart'));
       }
     } else {
@@ -146,52 +206,23 @@ export default function MenuScreen() {
 
   const ChoiceModal = () => {
     if (!selectedItemForModal) return null;
-
     return (
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={isModalVisible}
-        onRequestClose={() => setIsModalVisible(false)} 
-      >
-        <TouchableOpacity 
-            style={modalStyles.centeredView}
-            activeOpacity={1}
-            onPress={() => setIsModalVisible(false)}
-        >
+      <Modal animationType="fade" transparent={true} visible={isModalVisible} onRequestClose={() => setIsModalVisible(false)}>
+        <TouchableOpacity style={modalStyles.centeredView} activeOpacity={1} onPress={() => setIsModalVisible(false)}>
           <TouchableOpacity activeOpacity={1} style={modalStyles.modalView}>
-            <Text style={modalStyles.modalTitle}>
-              {selectedItemForModal.name}
-            </Text>
-            <Text style={modalStyles.modalSubtitle}>
-              {t('terminal.choose_order_type')}
-            </Text>
-
+            <Text style={modalStyles.modalTitle}>{selectedItemForModal.name}</Text>
+            <Text style={modalStyles.modalSubtitle}>{t('terminal.choose_order_type')}</Text>
             <View style={modalStyles.buttonContainer}>
-              <TouchableOpacity
-                style={[modalStyles.button, modalStyles.buttonSolo]}
-                onPress={handleSoloAdd}
-              >
+              <TouchableOpacity style={[modalStyles.button, modalStyles.buttonSolo]} onPress={handleSoloAdd}>
                 <Text style={modalStyles.textStyle}>{t('terminal.solo')}</Text>
-                <Text style={modalStyles.textStyleSmall}>
-                    ({selectedItemForModal.solo_price || selectedItemForModal.price || 0} {t('terminal.solo_price')})
-                </Text>
+                <Text style={modalStyles.textStyleSmall}>({selectedItemForModal.solo_price || selectedItemForModal.price || 0} DA)</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[modalStyles.button, modalStyles.buttonMenu]}
-                onPress={handleMenuAdd}
-              >
+              <TouchableOpacity style={[modalStyles.button, modalStyles.buttonMenu]} onPress={handleMenuAdd}>
                 <Text style={modalStyles.textStyle}>{t('terminal.in_menu')}</Text>
-                <Text style={modalStyles.textStyleSmall}>
-                    ({t('terminal.in_menu_subtitle')})
-                </Text>
+                <Text style={modalStyles.textStyleSmall}>({t('terminal.in_menu_subtitle')})</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity 
-                style={modalStyles.closeButton} 
-                onPress={() => setIsModalVisible(false)}
-            >
+            <TouchableOpacity style={modalStyles.closeButton} onPress={() => setIsModalVisible(false)}>
                 <Text style={modalStyles.closeButtonText}>{t('cancel')}</Text>
             </TouchableOpacity>
           </TouchableOpacity>
@@ -200,10 +231,29 @@ export default function MenuScreen() {
     );
   };
 
+  const InactivityModal = () => {
+    return (
+      <Modal animationType="slide" transparent={true} visible={isInactivityModalVisible} onRequestClose={() => {}}>
+        <View style={modalStyles.centeredView}>
+          <View style={modalStyles.alertView}>
+            <Text style={modalStyles.alertTitle}>Toujours là ?</Text>
+            <Text style={modalStyles.alertMessage}>Votre session va expirer dans 10 secondes...</Text>
+            <TouchableOpacity style={modalStyles.alertButtonContinue} onPress={handleContinueOrder}>
+              <Text style={modalStyles.alertButtonTextWhite}>Continuer ma commande</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={modalStyles.alertButtonCancel} onPress={handleCancelOrder}>
+              <Text style={modalStyles.alertButtonTextRed}>Annuler et quitter</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#ff9900" /> 
+        <ActivityIndicator size="large" color="#0056b3" /> 
         <Text style={styles.loadingText}>{t('terminal.loading_menus')}</Text>
       </View>
     );
@@ -217,44 +267,36 @@ export default function MenuScreen() {
   );
 
   return (
-    <View style={[styles.container, isRTL && { direction: 'rtl' }]}>
-      {/* Header */}
-      <View style={styles.header}>
-  <Image 
-    source={require('@/assets/logo.png')} 
-    style={styles.logoImage} 
-    resizeMode="contain"
-  />
-  
-  <View style={styles.headerRight}>
-    {/* Sélecteur de langue DIRECTEMENT dans le header (UX Simplifiée) */}
-    <LanguageSelector />
-
-    {/* Bouton panier */}
-    <TouchableOpacity 
-      style={styles.cartButton} 
-      onPress={() => router.push("/order/cart")}
-    >
-      <Feather name="shopping-cart" size={45} color="black" />
-      {cartCount > 0 && (
-        <View style={styles.cartBadge}>
-          <Text style={styles.cartBadgeText}>{cartCount}</Text>
+    // J'ai remplacé onTouchStart par {...panResponder.panHandlers}
+    <View style={[styles.container, isRTL && { direction: 'rtl' }]} {...panResponder.panHandlers}>
+      
+      {/* HEADER AVEC DÉGRADÉ */}
+      <LinearGradient
+       colors={['#0056b3', '#ff69b4']} 
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
+      >
+        <Image source={require('@/assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+        <View style={styles.headerRight}>
+          <LanguageSelector />
+          <TouchableOpacity style={styles.cartButton} onPress={() => router.push("/order/cart")}>
+            <Feather name="shopping-cart" size={35} color="white" />
+            {cartCount > 0 && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{cartCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
-      )}
-    </TouchableOpacity>
-  </View>
-</View>
+      </LinearGradient>
 
       {/* Contenu principal */}
       <View style={styles.content}>
+        
         {/* Sidebar catégories */}
-        <ScrollView 
-          style={[styles.sidebar, { width: sidebarWidth }]} 
-          contentContainerStyle={styles.sidebarContent}
-        >
-          {categories
-            .filter((category) => category.avalaible)
-            .map((category) => (
+        <ScrollView style={[styles.sidebar, { width: sidebarWidth }]} contentContainerStyle={styles.sidebarContent}>
+          {categories.filter((category) => category.avalaible).map((category) => (
               <TouchableOpacity
                 key={category.id}
                 style={[
@@ -263,18 +305,8 @@ export default function MenuScreen() {
                 ]}
                 onPress={() => setSelectedCategory(category)}
               >
-                {category.photo && (
-                  <Image
-                    source={{ uri: `${POS_URL}${category.photo}` }}
-                    style={styles.categoryImage}
-                  />
-                )}
-                <Text 
-                  style={[
-                    styles.categoryText,
-                    selectedCategory?.id === category.id && styles.selectedCategoryText 
-                  ]}
-                >
+                {category.photo && <Image source={{ uri: `${POS_URL}${category.photo}` }} style={styles.categoryImage} />}
+                <Text style={[styles.categoryText, selectedCategory?.id === category.id && styles.selectedCategoryText]}>
                   {category.name}
                 </Text>
               </TouchableOpacity>
@@ -298,18 +330,17 @@ export default function MenuScreen() {
                   style={[styles.menuItem, { width: itemWidth, margin: itemMargin / 2 }]}
                   onPress={() => handleAddToCart(item)}
                 >
-                  {item.photo && (
-                    <Image
-                      source={{ uri: `${POS_URL}${item.photo}` }}
-                      style={styles.menuImage}
-                      resizeMode="cover"
-                    />
-                  )}
+                  {item.photo && <Image source={{ uri: `${POS_URL}${item.photo}` }} style={styles.menuImage} resizeMode="cover" />}
                   <View style={styles.menuInfo}>
                     <Text style={styles.menuText} numberOfLines={2}>{item.name}</Text>
-                    <Text style={styles.menuPrice}>
-                      {item.extra == 1 ? `+${item.price}` : item.solo_price == 1 ? `${item.solo_price} ${item.price} DA` : `${item.price} DA`}
-                    </Text>
+                    <View style={styles.priceActionContainer}>
+                        <Text style={styles.menuPrice}>
+                          {item.extra == 1 ? `+${item.price}` : item.solo_price == 1 ? `${item.solo_price}` : `${item.price}`} <Text style={{fontSize: 14}}>DA</Text>
+                        </Text>
+                        <View style={styles.addButton}>
+                           <Feather name="plus" size={20} color="white" />
+                        </View>
+                    </View>
                   </View>
                 </TouchableOpacity>
               )}
@@ -319,258 +350,96 @@ export default function MenuScreen() {
         </View>
       </View>
       
-      
-      {/* Modales */}
       <ChoiceModal />
+      <InactivityModal />
+      
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  logoImage: {
-    width: 150,
-    height: 50,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: "white", 
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "white",
-  },
-  loadingText: {
-    fontSize: 30,
-    textAlign: "center",
-    marginTop: 20,
-    color: "#333",
-    fontWeight: 'bold',
-  },
+  logoImage: { width: 250, height: 150 },
+  container: { flex: 1, backgroundColor: "#F8F9FA" }, 
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8F9FA" },
+  loadingText: { fontSize: 24, textAlign: "center", marginTop: 20, color: "#1e293b", fontWeight: '600' },
+  
   header: {
-    height: 100,
-    backgroundColor: "#ffc300", 
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 30,
-    elevation: 8,
-    shadowColor: "#000",
+    height: 90, 
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center", 
+    paddingHorizontal: 25, elevation: 6, shadowColor: "#000"
   },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 15,
-  },
-  languageButton: {
-    padding: 15,
-    borderRadius: 10,
-    backgroundColor: 'white',
-    elevation: 5,
-  },
-  cartButton: {
-    padding: 15,
-    borderRadius: 10,
-    elevation: 5,
-    position: 'relative',
-  },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  cartButton: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)' },
   cartBadge: {
-    position: 'absolute',
-    right: 5,
-    top: 5,
-    backgroundColor: 'red',
-    borderRadius: 15,
-    minWidth: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 2,
-    zIndex: 1,
+    position: 'absolute', right: -6, top: -6, backgroundColor: 'red', borderRadius: 12,
+    width: 24, height: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white'
   },
-  cartBadgeText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  content: {
-    flex: 1,
-    flexDirection: "row",
-  },
-  sidebar: {
-    backgroundColor: "#333", 
-    elevation: 5,
-  },
-  sidebarContent: {
-    paddingVertical: 20,
-    alignItems: "center",
-  },
+  cartBadgeText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
+  
+  content: { flex: 1, flexDirection: "row" },
+  
+  sidebar: { backgroundColor: "#1e293b", elevation: 5 }, 
+  sidebarContent: { paddingVertical: 20, alignItems: "center" },
   categoryButton: {
-    borderRadius: 10,
-    padding: 15,
-    width: "90%",
-    marginBottom: 15,
-    alignItems: "center",
-    backgroundColor: "#555",
-    elevation: 3,
-    minHeight: 80, 
-    justifyContent: 'center',
+    borderRadius: 10, padding: 10, width: "85%", marginBottom: 5, alignItems: "center",
+    backgroundColor: "transparent", minHeight: 90, justifyContent: 'center'
   },
-  selectedCategory: {
-    backgroundColor: "#ff9900",
-    borderWidth: 4,
-    borderColor: "#fff", 
+  selectedCategory: { 
+    backgroundColor: "#334155", borderLeftWidth: 4, borderColor: "#ff69b4" 
   },
-  selectedCategoryText: {
-    color: "#333",
-  },
-  categoryImage: {
-    width: "100%",
-    height: 100,
-    marginBottom: 10,
-    borderRadius: 8,
-  },
-  categoryText: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-  menuGridContainer: {
-    padding: 10, 
-  },
-  menuGrid: {
-    justifyContent: "flex-start",
-    alignItems: "flex-start",
-  },
+  selectedCategoryText: { color: "#ff69b4", fontWeight: '700' }, 
+  categoryImage: { width: "100%", height: 130, marginBottom: 10, borderRadius: 10, backgroundColor: 'white' }, 
+  categoryText: { color: "#94a3b8", fontSize: 15, fontWeight: "600", textAlign: "center" },
+  
+  menuGridContainer: { padding: 15 },
+  menuGrid: { justifyContent: "flex-start", alignItems: "flex-start" },
   menuItem: {
-    height: 300,
-    aspectRatio: 1, 
-    backgroundColor: "#fff",
-    borderRadius: 15,
-    overflow: 'hidden',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 5,
-    elevation: 5,
-    marginBottom: 20,
+    height: 280, aspectRatio: 0.8, backgroundColor: "#fff", borderRadius: 20, overflow: 'hidden',
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8,
+    elevation: 3, marginBottom: 20
   },
-  menuImage: {
-    width: "100%",
-    height: "60%",
-    borderTopLeftRadius: 15,
-    borderTopRightRadius: 15,
+  menuImage: { width: "100%", height: "55%" },
+  menuInfo: { padding: 15, flex: 1, justifyContent: 'space-between' },
+  menuText: { fontSize: 17, fontWeight: "700", textAlign: "left", color: "#1e293b", marginBottom: 5 },
+  priceActionContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  menuPrice: { fontSize: 20, color: "#0056b3", fontWeight: "800" }, 
+  addButton: { 
+    backgroundColor: "#ff69b4", width: 36, height: 36, borderRadius: 18, 
+    justifyContent: 'center', alignItems: 'center', elevation: 2 
   },
-  menuInfo: {
-    padding: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: "40%",
-  },
-  menuText: {
-    fontSize: 22,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#333",
-    flexWrap: 'wrap',
-  },
-  menuPrice: {
-    fontSize: 28, 
-    color: "#e74c3c", 
-    fontWeight: "bold",
-    marginTop: 5,
-  },
-  emptyGrid: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyGridText: {
-    fontSize: 30,
-    color: '#999',
-    textAlign: 'center',
-  },
+  emptyGrid: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyGridText: { fontSize: 20, color: '#94a3b8', textAlign: 'center' },
 });
 
 const modalStyles = StyleSheet.create({
   centeredView: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: 'rgba(0, 0, 0, 0.6)'
   },
   modalView: {
-    margin: 20,
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 35,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    width: '70%',
-    maxWidth: 600,
-    position: 'relative',
+    margin: 20, backgroundColor: "white", borderRadius: 25, padding: 35, alignItems: "center",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 10,
+    elevation: 10, width: '65%', maxWidth: 600
   },
-  modalTitle: {
-    fontSize: 40,
-    fontWeight: "bold",
-    marginBottom: 10,
-    color: '#333',
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    fontSize: 24,
-    marginBottom: 30,
-    color: '#666',
-    textAlign: 'center',
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 20,
-  },
+  modalTitle: { fontSize: 32, fontWeight: "800", marginBottom: 10, color: '#0056b3', textAlign: 'center' },
+  modalSubtitle: { fontSize: 18, marginBottom: 30, color: '#64748B', textAlign: 'center' },
+  buttonContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', gap: 20 },
   button: {
-    borderRadius: 15,
-    padding: 20,
-    elevation: 5,
-    minHeight: 120,
-    width: '48%',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: 20, padding: 20, elevation: 4, minHeight: 120, flex: 1,
+    justifyContent: 'center', alignItems: 'center'
   },
-  buttonSolo: {
-    backgroundColor: "#007bff",
+  buttonSolo: { backgroundColor: "#0056b3" }, 
+  buttonMenu: { backgroundColor: "#ff69b4" }, 
+  textStyle: { color: "white", fontWeight: "800", textAlign: "center", fontSize: 24 },
+  textStyleSmall: { color: "rgba(255,255,255,0.9)", textAlign: "center", fontSize: 16, marginTop: 5, fontWeight: '500' },
+  closeButton: { marginTop: 25, padding: 10 },
+  closeButtonText: { fontSize: 16, color: '#94a3b8', fontWeight: 'bold' },
+  alertView: { width: 400, backgroundColor: "white", borderRadius: 25, padding: 30, alignItems: "center", elevation: 20 },
+  alertTitle: { fontSize: 26, fontWeight: "800", color: "#0056b3", marginBottom: 10 },
+  alertMessage: { fontSize: 16, color: "#475569", marginBottom: 30, textAlign: 'center', lineHeight: 24 },
+  alertButtonContinue: {
+    backgroundColor: "#0056b3", paddingVertical: 16, borderRadius: 15, width: '100%', alignItems: 'center', marginBottom: 12
   },
-  buttonMenu: {
-    backgroundColor: "#ff9900",
-  },
-  textStyle: {
-    color: "white",
-    fontWeight: "bold",
-    textAlign: "center",
-    fontSize: 30,
-  },
-  textStyleSmall: {
-    color: "white",
-    textAlign: "center",
-    fontSize: 18,
-    marginTop: 5,
-  },
-  closeButton: {
-    backgroundColor: '#ccc',
-    paddingVertical: 10,
-    paddingHorizontal: 30,
-    borderRadius: 10,
-    marginTop: 15,
-  },
-  closeButtonText: {
-    fontSize: 20,
-    color: '#333',
-    fontWeight: 'bold',
-  }
+  alertButtonCancel: { paddingVertical: 12, width: '100%', alignItems: 'center' },
+  alertButtonTextWhite: { color: "white", fontSize: 18, fontWeight: "bold" },
+  alertButtonTextRed: { color: "#ef4444", fontSize: 16, fontWeight: "bold" }
 });

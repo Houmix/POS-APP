@@ -7,28 +7,22 @@ import { POS_URL } from '@/config';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 // ==========================================
-// 🖨️ FONCTION D'IMPRESSION (TEXTE BRUT)
+// 🖨️ FONCTION D'IMPRESSION SÉRIE (RS232)
 // ==========================================
 const handlePrinting = async (ticketContent) => {
+    // Vérification de l'API exposée par preload.js
     if (!window.electronAPI?.printTicket) {
         console.error("❌ API Electron non disponible.");
-        return { success: false, error: "API Electron non trouvée (mode web ?)" };
+        return { success: false, error: "Lien avec le matériel manquant" };
     }
 
     try {
-        console.log("🖨️ Envoi du ticket à Electron...");
+        console.log("🖨️ Envoi du ticket au port COM via Electron...");
+        // On envoie le contenu brut (le main.js s'occupera de la découpe)
         const result = await window.electronAPI.printTicket(ticketContent);
-        
-        if (result.success) {
-            console.log(`✅ Impression réussie sur ${result.printer}`);
-        } else {
-            console.error(`❌ Échec impression: ${result.error}`);
-        }
-        
         return result;
-
     } catch (error) {
-        console.error("❌ Erreur IPC lors de l'impression:", error);
+        console.error("❌ Erreur de communication imprimante:", error);
         return { success: false, error: error.message };
     }
 };
@@ -36,173 +30,97 @@ const handlePrinting = async (ticketContent) => {
 export default function ConfirmationPage() {
     const router = useRouter(); 
     const { t, isRTL } = useLanguage();
-    const [orderId, setOrderId] = useState(null);
-    const [accessToken, setAccessToken] = useState(null);
     const [isPrinting, setIsPrinting] = useState(false);
     const [statusMessage, setStatusMessage] = useState("");
-
-    useEffect(() => {
-        setStatusMessage(t('confirmation.processing'));
-    }, [t]);
+    const [orderId, setOrderId] = useState(null);
 
     // ==========================================
-    // 🔹 LOGIQUE D'IMPRESSION
+    // 🔹 LOGIQUE PRINCIPALE
     // ==========================================
-    const printTicket = async (id, token) => {
-        if (!id || !token) {
-            console.error("❌ Token ou ID manquant");
-            setStatusMessage(t('errors.loading_data'));
-            return false; 
-        }
-
-        setIsPrinting(true);
-        setStatusMessage(`${t('confirmation.printing')}${id}...`);
-
+    const processOrderAndPrint = async () => {
         try {
-            console.log(`📡 Récupération du ticket depuis Django (Commande ${id})...`);
+            // 1. Récupération des données locales
+            const token = await AsyncStorage.getItem("token");
+            const id = await AsyncStorage.getItem("lastOrderId");
             
+            if (!id || !token) {
+                throw new Error(t('errors.loading_data'));
+            }
+
+            setOrderId(id);
+            setIsPrinting(true);
+            setStatusMessage(`${t('confirmation.printing')}...`);
+
+            // 2. Récupération du ticket et du contenu QR depuis Django
+            console.log(`📡 Récupération data commande ${id}...`);
             const response = await axios.get(
                 `${POS_URL}/order/api/generateTicket/${id}/`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
-            if (response.status !== 200) {
-                throw new Error(`Erreur ${response.status} lors de la récupération du ticket`);
+            // On s'attend à recevoir ticket_content et qr_content (texte brut)
+            const { ticket_content, qr_content } = response.data;
+
+            if (!ticket_content) {
+                throw new Error("Contenu du ticket vide.");
             }
 
-            const ticketContent = response.data.ticket_content;
-            
-            if (!ticketContent) {
-                throw new Error(t('errors.loading_data'));
-            }
-
-            console.log(`📄 Ticket reçu (${ticketContent.length} caractères)`);
-            
-            if (ticketContent.includes('<html>') || ticketContent.includes('<!DOCTYPE')) {
-                console.warn("⚠️ ATTENTION : Le backend retourne du HTML au lieu de texte brut !");
-                console.warn("⚠️ Cela peut causer une impression blanche.");
-                console.warn("⚠️ Modifiez votre backend Django pour retourner du texte brut.");
-            }
-
-            const printResult = await handlePrinting(ticketContent);
+            // 3. Construction du flux final
+            // On peut ajouter le contenu du QR à la fin du texte si le main.js ne le gère pas encore
+            // Mais ici on envoie le bloc principal
+            const printResult = await handlePrinting(ticket_content);
 
             if (printResult.success) {
-                console.log(`✅ Impression terminée sur ${printResult.printer}`);
+                console.log("✅ Impression et découpe terminées");
                 setStatusMessage(t('confirmation.print_success'));
-                return true;
             } else {
-                console.error(`❌ Échec: ${printResult.error}`);
-                setStatusMessage(`${t('confirmation.print_failed')} : ${printResult.error}`);
-                return false;
+                throw new Error(printResult.error);
             }
 
         } catch (error) {
-            console.error("❌ Erreur critique:", error);
-            setStatusMessage(`${t('error')} : ${error.message}`);
-            return false;
+            console.error("❌ Erreur Process:", error);
+            setStatusMessage(`${t('confirmation.print_failed')} : ${error.message}`);
         } finally {
             setIsPrinting(false);
+            
+            // 4. Redirection automatique vers l'accueil après un délai
+            setTimeout(() => {
+                console.log("🔄 Retour au terminal...");
+                AsyncStorage.removeItem("lastOrderId"); 
+                AsyncStorage.removeItem("orderList"); // Vide les articles
+                AsyncStorage.removeItem("pendingOrder"); // Vide la commande en cours
+                router.push("/tabs/terminal"); 
+            }, 10000);
         }
     };
 
-    // ==========================================
-    // 🔹 EFFETS DE CYCLE DE VIE
-    // ==========================================
-
-    // 1️⃣ Récupération des données depuis AsyncStorage
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const token = await AsyncStorage.getItem("token");
-                const id = await AsyncStorage.getItem("lastOrderId");
-                
-                console.log(`📦 Données récupérées - ID: ${id}, Token: ${token ? 'présent' : 'absent'}`);
-                
-                setAccessToken(token);
-                setOrderId(id);
-            } catch (error) {
-                console.error("❌ Erreur récupération données:", error);
-                setStatusMessage(t('errors.loading_data'));
-            }
-        };
-        fetchData();
+        processOrderAndPrint();
     }, []);
 
-    // 2️⃣ Déclenchement de l'impression et redirection
-    useEffect(() => {
-        let redirectTimer;
-        
-        const processAndRedirect = async () => {
-            console.log("🚀 Démarrage du processus d'impression...");
-            
-            const success = await printTicket(orderId, accessToken);
-            
-            const delay = success ? 2000 : 4000;
-            
-            console.log(`⏱️ Redirection dans ${delay}ms...`);
-            
-            redirectTimer = setTimeout(() => {
-                console.log("🔄 Redirection vers terminal...");
-                AsyncStorage.removeItem("lastOrderId"); 
-                router.push("/tabs/terminal"); 
-            }, delay);
-        };
-
-        if (orderId && accessToken) {
-            processAndRedirect();
-        } else {
-            console.log("⏳ En attente des données (orderId, accessToken)...");
-        }
-
-        return () => {
-            if (redirectTimer) {
-                clearTimeout(redirectTimer);
-                console.log("🧹 Timer de redirection nettoyé");
-            }
-        };
-    }, [orderId, accessToken, router]); 
-
-    // ==========================================
-    // 🔹 RENDU
-    // ==========================================
     return (
         <View style={[styles.container, isRTL && { direction: 'rtl' }]}>
             <Text style={styles.title}>{t('confirmation.title')}</Text>
             
             <View style={styles.statusBox}>
-                {isPrinting && (
-                    <ActivityIndicator 
-                        size="large" 
-                        color="#007bff" 
-                        style={{marginBottom: 10}} 
-                    />
+                {isPrinting ? (
+                    <ActivityIndicator size="large" color="#007bff" style={{marginBottom: 15}} />
+                ) : (
+                    <Text style={styles.successIcon}>✅</Text>
                 )}
                 
-                <Text style={styles.message}>
-                    {statusMessage}
-                </Text>
+                <Text style={styles.message}>{statusMessage}</Text>
 
                 {orderId && (
                     <Text style={styles.orderIdText}>
                         {t('confirmation.order_number')}: {orderId}
                     </Text>
                 )}
-
-                {/* Debug info (à retirer en production)
-                {__DEV__ && (
-                    <View style={styles.debugBox}>
-                        <Text style={styles.debugText}>
-                            🔧 Debug: electronAPI = {window.electronAPI ? '✅ Présent' : '❌ Absent'}
-                        </Text>
-                        <Text style={styles.debugText}>
-                            Token: {accessToken ? '✅ OK' : '❌ Manquant'}
-                        </Text>
-                        <Text style={styles.debugText}>
-                            Order ID: {orderId || 'N/A'}
-                        </Text>
-                    </View>
-                )} */}
             </View>
+
+            <Text style={styles.footerNote}>
+                {t('confirmation.thank_you')}
+            </Text>
         </View>
     );
 }
@@ -216,43 +134,39 @@ const styles = StyleSheet.create({
         backgroundColor: '#ffffff',
     },
     title: {
-        fontSize: 30,
+        fontSize: 35,
         fontWeight: 'bold',
-        color: 'green',
-        marginBottom: 40,
+        color: '#28a745',
+        marginBottom: 30,
         textAlign: 'center',
     },
     statusBox: {
         alignItems: 'center',
-        padding: 20,
-        borderRadius: 10,
-        backgroundColor: '#f5f5f5',
-        minWidth: '60%',
+        padding: 30,
+        borderRadius: 20,
+        backgroundColor: '#f8f9fa',
+        width: '80%',
+        elevation: 5,
     },
-    message: {
-        fontSize: 18,
-        color: '#333',
-        textAlign: 'center',
+    successIcon: {
+        fontSize: 50,
         marginBottom: 10,
     },
-    orderIdText: {
-        fontSize: 16,
-        color: '#666',
-        marginTop: 10,
+    message: {
+        fontSize: 22,
+        color: '#333',
         textAlign: 'center',
+        fontWeight: '500',
     },
-    debugBox: {
-        marginTop: 20,
-        padding: 10,
-        backgroundColor: '#f0f0f0',
-        borderRadius: 5,
-        borderWidth: 1,
-        borderColor: '#ccc',
-    },
-    debugText: {
-        fontSize: 12,
-        fontFamily: 'monospace',
+    orderIdText: {
+        fontSize: 18,
         color: '#666',
-        marginVertical: 2,
+        marginTop: 15,
+        fontFamily: 'monospace',
     },
+    footerNote: {
+        marginTop: 50,
+        fontSize: 16,
+        color: '#999',
+    }
 });

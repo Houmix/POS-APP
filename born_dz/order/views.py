@@ -18,46 +18,192 @@ from datetime import datetime
 class OrderCreate(APIView):
     permission_classes = []
     authentication_classes = []
-
+    
     def post(self, request, card):
+        print("\n" + "="*50)
+        print("🔵 DÉBUT CREATE ORDER")
+        print("="*50)
         
         data = request.data
         user = data.get("user")
         card = bool(card)
         
+        # 🔍 DEBUG: Afficher TOUTES les données reçues
+        print(f"\n📦 DONNÉES REÇUES:")
+        print(f"   - user: {user} (type: {type(user)})")
+        print(f"   - restaurant (brut): {data.get('restaurant')} (type: {type(data.get('restaurant'))})")
+        print(f"   - items: {data.get('items')}")
+        print(f"   - card: {card}")
+        print(f"   - takeaway: {data.get('takeaway')}")
+        print(f"\n📋 DATA complet: {data}")
+        
+        # 🔍 Tenter de convertir le restaurant ID
+        restaurant_raw = data.get("restaurant")
+        print(f"\n🔍 Restaurant ID (brut): '{restaurant_raw}'")
+        print(f"   Type: {type(restaurant_raw)}")
+        
         try:
+            restaurant_id = int(restaurant_raw)
+            print(f"✅ Conversion réussie: {restaurant_id}")
+        except (ValueError, TypeError) as e:
+            print(f"❌ ERREUR de conversion: {e}")
+            return Response(
+                {
+                    "error": "Restaurant ID invalide",
+                    "details": f"Impossible de convertir '{restaurant_raw}' en entier",
+                    "received_data": str(data)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 🔍 Vérifier que le restaurant existe
+        print(f"\n🔍 Recherche du restaurant avec ID={restaurant_id}...")
+        
+        try:
+            restaurant = Restaurant.objects.get(id=restaurant_id)
+            print(f"✅ Restaurant trouvé: {restaurant}")
+            print("📍 Checkpoint: la")  # TON CHECKPOINT
             
-            restaurant = Restaurant.objects.get(id=int(data.get("restaurant")))
-            order = Order.objects.create(user=user if (user!={} and user!=0) else None, cash=card,restaurant=restaurant, take_away=data.get("takeaway", False))
-            if not(user!={} or user!=0):
-                loyalty = Loyalty.objects.get_or_create(user=user, restaurant=restaurant)
-            # Ajouter des points de fidélité à la commande
+        except Restaurant.DoesNotExist:
+            print(f"❌ Restaurant ID={restaurant_id} INTROUVABLE dans la base")
+            
+            # Lister tous les restaurants disponibles
+            all_restaurants = Restaurant.objects.all()
+            print(f"\n📋 Restaurants disponibles dans la base:")
+            for r in all_restaurants:
+                print(f"   - ID: {r.id}, Nom: {r.name if hasattr(r, 'name') else 'N/A'}")
+            
+            return Response(
+                {
+                    "error": "Restaurant introuvable",
+                    "details": f"Aucun restaurant avec l'ID {restaurant_id}",
+                    "available_restaurants": [{"id": r.id, "name": getattr(r, 'name', 'N/A')} for r in all_restaurants]
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        except Exception as e:
+            print(f"❌ ERREUR inattendue lors de la recherche du restaurant: {e}")
+            return Response(
+                {
+                    "error": "Erreur lors de la recherche du restaurant",
+                    "details": str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        # Créer la commande
+        print(f"\n🔵 Création de la commande...")
+        try:
+            order = Order.objects.create(
+                user=user if (user and user != {} and user != 0) else None, 
+                cash=card,
+                restaurant=restaurant, 
+                take_away=data.get("takeaway", False)
+            )
+            print(f"✅ Commande créée: ID={order.id}")
+            
+        except Exception as e:
+            print(f"❌ ERREUR lors de la création de la commande: {e}")
+            return Response(
+                {
+                    "error": "Erreur lors de la création de la commande",
+                    "details": str(e)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Gérer les points de fidélité
+        if user and user != {} and user != 0:
+            try:
+                print(f"\n🎯 Ajout des points de fidélité pour user={user}")
+                loyalty, created = Loyalty.objects.get_or_create(
+                    user=user, 
+                    restaurant=restaurant
+                )
                 loyalty.point += order.total_price()
                 loyalty.save()
-            print("here")
-        except Exception as e:
-            return Response({"error": "Erreur lors de la création de la commande (Order.objects...)", "details": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                print(f"✅ Points ajoutés: {order.total_price()}")
+            except Exception as loyalty_error:
+                print(f"⚠️ Erreur fidélité (non bloquante): {loyalty_error}")
         
-        for item_data in data.get('items', []):
-            menu = Menu.objects.get(id=item_data["menu"])
-            order_item = OrderItem.objects.create(order=order, menu=menu, quantity=item_data.get("quantity", 1))
-            if item_data.get("solo") == True:
-                order_item.solo = True
-                order_item.save()
-            elif item_data.get("extra") == True:
-                order_item.extra = True
-                order_item.save()
-            else:
-                for opt in item_data.get("options", []):
-                    print(opt)
-                    step = Step.objects.get(id=opt["step"])
-                    option = StepOption.objects.get(id=opt["option"])
-                    OrderItemOption.objects.create(order_item=order_item, option=option)
-        generate_ticket_content(request, order.id)
-        qr_code = generate_order_qr(order.id)
-        return Response({"message": "Commande créée avec succès", "order_id": order.id, "qr_code_base64":qr_code}, status=201)
-
-
+        # Ajouter les items
+        print(f"\n🔵 Ajout des items...")
+        items_count = 0
+        
+        try:
+            for item_data in data.get('items', []):
+                try:
+                    menu = Menu.objects.get(id=item_data["menu"])
+                    order_item = OrderItem.objects.create(
+                        order=order, 
+                        menu=menu, 
+                        quantity=item_data.get("quantity", 1)
+                    )
+                    items_count += 1
+                    print(f"   ✅ Item {items_count}: Menu ID={menu.id}, Qté={item_data.get('quantity', 1)}")
+                    
+                    # Gérer les options
+                    if item_data.get("solo") == True:
+                        order_item.solo = True
+                        order_item.save()
+                        print(f"      → Solo activé")
+                    elif item_data.get("extra") == True:
+                        order_item.extra = True
+                        order_item.save()
+                        print(f"      → Extra activé")
+                    else:
+                        for opt in item_data.get("options", []):
+                            try:
+                                step = Step.objects.get(id=opt["step"])
+                                option = StepOption.objects.get(id=opt["option"])
+                                OrderItemOption.objects.create(
+                                    order_item=order_item, 
+                                    option=option
+                                )
+                                print(f"      → Option ajoutée: Step={step.id}, Option={option.id}")
+                            except (Step.DoesNotExist, StepOption.DoesNotExist) as opt_error:
+                                print(f"      ⚠️ Option ignorée: {opt_error}")
+                
+                except Menu.DoesNotExist:
+                    print(f"   ⚠️ Menu {item_data.get('menu')} introuvable, item ignoré")
+                    continue
+            
+            print(f"✅ {items_count} item(s) ajouté(s)")
+            
+        except Exception as items_error:
+            print(f"❌ Erreur lors de l'ajout des items: {items_error}")
+            order.delete()
+            return Response(
+                {
+                    "error": "Erreur lors de l'ajout des items",
+                    "details": str(items_error)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Générer le ticket
+        print(f"\n🔵 Génération du ticket...")
+        try:
+            generate_ticket_content(request, order.id)
+            qr_code = generate_order_qr(order.id)
+            print(f"✅ Ticket généré")
+        except Exception as ticket_error:
+            print(f"⚠️ Erreur ticket (non bloquante): {ticket_error}")
+            qr_code = None
+        
+        print("\n" + "="*50)
+        print(f"✅ COMMANDE CRÉÉE AVEC SUCCÈS - ID: {order.id}")
+        print("="*50 + "\n")
+        
+        return Response(
+            {
+                "message": "Commande créée avec succès", 
+                "order_id": order.id, 
+                "qr_code_base64": qr_code
+            }, 
+            status=status.HTTP_201_CREATED
+        )
 class OrderList(APIView):
     permission_classes = [IsAuthenticated]
 

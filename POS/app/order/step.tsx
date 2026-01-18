@@ -10,7 +10,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 const { width } = Dimensions.get('window');
 
 const COLORS = {
-  primary: "#FF6B00",
+  primary: "#ff69b4",
   success: "#28a745",
   bg: "#F8F9FA",
   text: "#1A1A1A",
