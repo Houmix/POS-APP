@@ -1,16 +1,18 @@
+// ✅ TOUS les imports au début
 const { app, BrowserWindow, ipcMain } = require('electron');
-const { spawn, execSync } = require('child_process'); // ⭐ AJOUT execSync ICI
+const { spawn, exec, execSync } = require('child_process'); // ← Tous ensemble
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
 const express = require('express');
 const os = require('os');
 
-// 🚨 CORRECTION CRUCIALE POUR WINDOWS (Installeurs Squirrel/NSIS)
+// Correction Squirrel
 const electronSquirrelStartup = require('electron-squirrel-startup');
 if (electronSquirrelStartup) {
-  return app.quit(); 
+  return app.quit();
 }
+
 
 let djangoProcess;
 let staticServer;
@@ -111,41 +113,38 @@ function getResourcePath(relativePath) {
 const backendPath = getResourcePath('born_dz');
 const frontendPath = getResourcePath('pos');
 const webBuildPath = path.join(frontendPath, 'web-build');
-
+// ✅ CORRECTION getDjangoExecutable en production
 function getDjangoExecutable() {
   const managePyPath = path.join(backendPath, 'manage.py');
-  const asgiApplication = 'born_dz.asgi:application';
   
   if (isDev) {
-    const venvPython = path.join(backendPath, 'venv', 'bin', 'python3');
-    const venvPythonWin = path.join(backendPath, 'venv', 'Scripts', 'python.exe');
+    // Mode développement (identique à avant)
     const venvDaphne = path.join(backendPath, 'venv', 'bin', 'daphne');
     const venvDaphneWin = path.join(backendPath, 'venv', 'Scripts', 'daphne.exe');
     
     if (fs.existsSync(venvDaphne)) {
-      return { exec: venvDaphne, args: [asgiApplication] };
+      return { exec: venvDaphne, args: ['born_dz.asgi:application'] };
     } else if (fs.existsSync(venvDaphneWin)) {
-      return { exec: venvDaphneWin, args: [asgiApplication] };
-    } else if (fs.existsSync(venvPython) || fs.existsSync(venvPythonWin)) {
-      log('⚠️ Daphne non trouvé, fallback manage.py', 'warning');
-      const pythonExec = fs.existsSync(venvPython) ? venvPython : venvPythonWin;
-      return { exec: pythonExec, args: [managePyPath] };
+      return { exec: venvDaphneWin, args: ['born_dz.asgi:application'] };
     }
     
-    log('❌ Python/Daphne introuvable', 'error');
+    log('❌ Daphne non trouvé', 'error');
     app.quit();
     return null;
 
   } else {
+    // ✅ MODE PRODUCTION CORRIGÉ
     const executableName = process.platform === 'win32' ? 'django_asgi_app.exe' : 'django_asgi_app';
-    const bundledExec = path.join(backendPath, executableName); 
+    const bundledExec = path.join(backendPath, executableName);
     
     if (!fs.existsSync(bundledExec)) {
         log(`❌ Exécutable ASGI manquant: ${bundledExec}`, 'error');
         app.quit();
         return null;
     }
-    return { exec: bundledExec, args: [asgiApplication] };
+    
+    // ✅ CORRECTION : Pas d'arguments Python, l'exe est autonome
+    return { exec: bundledExec, args: [] };  // ← args vide !
   }
 }
 
@@ -171,18 +170,20 @@ function checkRequirements() {
   return true;
 }
 
+// ✅ CORRECTION startDjango (ligne ~110)
 function startDjango(callback) {
   if (!djangoExecInfo) return;
 
   log('Vérification et nettoyage du port 8000...', 'info');
 
-  // Définition de la logique de démarrage
   const proceedWithStart = () => {
     log('Démarrage Django (ASGI/Daphne)...', 'info');
 
-    const daphneArgs = ['--bind', '0.0.0.0', '--port', '8000'];
     const execPath = djangoExecInfo.exec;
-    const args = [...djangoExecInfo.args, ...daphneArgs];
+    
+    // ✅ CORRECTION : En production, pas besoin d'args Daphne
+    // L'exe bundlé les a déjà intégrés
+    const args = isDev ? ['--bind', '0.0.0.0', '--port', '8000', ...djangoExecInfo.args] : [];
 
     log(`Commande exécutée: ${execPath} ${args.join(' ')}`, 'info');
 
@@ -228,16 +229,13 @@ function startDjango(callback) {
     });
   };
 
-  // 🛡️ Nettoyage préventif AVANT de lancer proceedWithStart
   if (process.platform === 'win32') {
-    // On force l'arrêt de tout processus daphne.exe existant
-    // /f = force, /im = image name, /t = arbre de processus (enfants)
-    exec('taskkill /f /im daphne.exe /t', () => {
-      // On attend 500ms que Windows libère réellement le port réseau
-      setTimeout(proceedWithStart, 500);
+    exec('taskkill /f /im daphne.exe /t 2>nul', () => {
+      exec('taskkill /f /im django_asgi_app.exe /t 2>nul', () => {  // ← Ajouter ceci
+        setTimeout(proceedWithStart, 500);
+      });
     });
   } else {
-    // Sur macOS/Linux, le signal SIGTERM suffit généralement
     proceedWithStart();
   }
 }

@@ -2,7 +2,7 @@
   "name": "my-desktop-app",
   "productName": "POS-Desktop",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "POS Desktop Application with Django Backend",
   "main": "main.js",
   "author": {
     "name": "Houmix",
@@ -13,31 +13,18 @@
     "start": "electron .",
     "dev": "electron .",
     "prebuild:frontend": "cd ../pos && npx expo export --platform web --output-dir web-build && cd ../my-desktop-app",
-    "prebuild:python": "node ./scripts/pyinstaller_bundle.js",
+    "prebuild:python": "node pyinstaller_bundle.js",
     "prebuild": "npm run prebuild:frontend && npm run prebuild:python",
     "build": "npm run prebuild && electron-builder",
-    "build:mac": "npm run prebuild && electron-builder --mac",
     "build:win": "npm run prebuild && electron-builder --win",
-    "build:all": "npm run prebuild && electron-builder --config.forceArchive=false --win --mac --linux"
+    "build:mac": "npm run prebuild && electron-builder --mac"
   },
   "dependencies": {
     "assert-plus": "^1.0.0",
     "electron-squirrel-startup": "^1.0.1",
-    "escpos": "^3.0.0-alpha.6",
-    "escpos-usb": "^3.0.0-alpha.4",
-    "express": "^4.18.2",
-    "node-thermal-printer": "^4.5.0",
-    "pdf-to-printer": "^5.6.1"
+    "express": "^4.18.2"
   },
   "devDependencies": {
-    "@electron-forge/cli": "^7.10.2",
-    "@electron-forge/maker-deb": "^7.10.2",
-    "@electron-forge/maker-rpm": "^7.10.2",
-    "@electron-forge/maker-squirrel": "^7.10.2",
-    "@electron-forge/maker-zip": "^7.10.2",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
-    "@electron-forge/plugin-fuses": "^7.10.2",
-    "@electron/fuses": "^1.8.0",
     "electron": "^39.2.4",
     "electron-builder": "^26.0.12"
   },
@@ -49,58 +36,29 @@
     },
     "files": [
       "main.js",
+      "preload.js",
+      "splash.html",
       "package.json",
+      "pyinstaller_bundle.js",
       "node_modules/**/*",
-      "!node_modules/.cache",
-      "scripts/pyinstaller_bundle.js",
-      "splash.html"
+      "!node_modules/.cache"
     ],
     "extraResources": [
       {
         "from": "dist/python-build/born_dz",
         "to": "born_dz",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "../pos/web-build",
         "to": "pos/web-build",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       }
     ],
     "asar": false,
-    "asarUnpack": [
-      "dist/python-build/**/*"
-    ],
-    "icon": "build/icon",
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
-      ],
-      "category": "public.app-category.productivity",
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false,
-      "icon": "build/icon.icns"
-    },
     "win": {
-      "target": [
-        "nsis"
-      ],
+      "target": ["nsis"],
       "icon": "build/icon.ico"
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ]
     }
   }
 }

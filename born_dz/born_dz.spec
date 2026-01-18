@@ -1,16 +1,22 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\born_dz', 'born_dz'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\user', 'user'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\chain', 'chain'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\customer', 'customer'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\KDS', 'KDS'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\manager', 'manager'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\media', 'media'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\menu', 'menu'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\order', 'order'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\POS', 'POS'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\restaurant', 'restaurant'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\terminal', 'terminal'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\website', 'website'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\templates', 'templates'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\static', 'static'), ('C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\db.sqlite3', '.')]
+datas = [('/Users/houmamelachache/Documents/POS-APP/born_dz/born_dz', 'born_dz'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/user', 'user'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/chain', 'chain'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/customer', 'customer'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/KDS', 'KDS'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/manager', 'manager'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/media', 'media'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/menu', 'menu'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/order', 'order'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/POS', 'POS'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/restaurant', 'restaurant'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/terminal', 'terminal'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/website', 'website'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/templates', 'templates'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/static', 'static'), ('/Users/houmamelachache/Documents/POS-APP/born_dz/db.sqlite3', '.')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('django')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('daphne')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('channels')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('channels_redis')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
-    ['C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\manage.py'],
-    pathex=['C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\user', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\chain', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\customer', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\KDS', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\manager', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\media', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\menu', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\order', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\POS', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\restaurant', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\terminal', 'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\website'],
+    ['/Users/houmamelachache/Documents/POS-APP/born_dz/run_daphne.py'],
+    pathex=['/Users/houmamelachache/Documents/POS-APP/born_dz/user', '/Users/houmamelachache/Documents/POS-APP/born_dz/chain', '/Users/houmamelachache/Documents/POS-APP/born_dz/customer', '/Users/houmamelachache/Documents/POS-APP/born_dz/KDS', '/Users/houmamelachache/Documents/POS-APP/born_dz/manager', '/Users/houmamelachache/Documents/POS-APP/born_dz/media', '/Users/houmamelachache/Documents/POS-APP/born_dz/menu', '/Users/houmamelachache/Documents/POS-APP/born_dz/order', '/Users/houmamelachache/Documents/POS-APP/born_dz/POS', '/Users/houmamelachache/Documents/POS-APP/born_dz/restaurant', '/Users/houmamelachache/Documents/POS-APP/born_dz/terminal', '/Users/houmamelachache/Documents/POS-APP/born_dz/website'],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
