@@ -95,9 +95,9 @@ class UserTokenView(APIView):
         try:
             phone = request.data.get("phone")
             
-            # ✅ CAS 1 : Anonyme (phone = null ou "0")
+            #   CAS 1 : Anonyme (phone = null ou "0")
             if phone is None or phone == "0" or phone == "":
-                print("📝 Mode anonyme")
+                print("  Mode anonyme")
                 user_phone = "0000000000"
                 user_password = "0000000000"
                 
@@ -105,7 +105,7 @@ class UserTokenView(APIView):
                     phone=user_phone,
                     defaults={
                         'role_id': 2,
-                        'username': user_phone,  # ✅ Ajouter username
+                        'username': user_phone,  #   Ajouter username
                         'email': f"{user_phone}@born.dz"
                     }
                 )
@@ -113,34 +113,34 @@ class UserTokenView(APIView):
                 if created or not user.password.startswith('pbkdf2_'):
                     user.set_password(user_password)
                     user.save()
-                    print(f"✅ Utilisateur anonyme {'créé' if created else 'trouvé'}")
+                    print(f"  Utilisateur anonyme {'créé' if created else 'trouvé'}")
                 
                 token = get_tokens_for_user(user)
                 return Response(token, status=status.HTTP_200_OK)
             
-            # ✅ CAS 2 : Utilisateur avec numéro
+            #   CAS 2 : Utilisateur avec numéro
             try:
                 # Essayer de trouver l'utilisateur
                 user = User.objects.get(phone=phone)
-                print(f"✅ Utilisateur existant trouvé: {phone}")
+                print(f"  Utilisateur existant trouvé: {phone}")
                 
                 token = get_tokens_for_user(user)
                 return Response(token, status=status.HTTP_200_OK)
                 
             except User.DoesNotExist:
-                # ✅ Créer automatiquement le nouvel utilisateur
-                print(f"📝 Création nouvel utilisateur: {phone}")
+                #   Créer automatiquement le nouvel utilisateur
+                print(f"  Création nouvel utilisateur: {phone}")
                 
                 user = User.objects.create(
                     phone=phone,
-                    username=phone,  # ✅ IMPORTANT : Définir username = phone
+                    username=phone,  #   IMPORTANT : Définir username = phone
                     email=f"{phone}@born.dz",
                     role_id=2,  # Role client
                 )
                 user.set_password(phone)  # Mot de passe = numéro de téléphone
                 user.save()
                 
-                print(f"✅ Utilisateur créé avec succès: {phone}")
+                print(f"  Utilisateur créé avec succès: {phone}")
                 
                 token = get_tokens_for_user(user)
                 
@@ -148,7 +148,7 @@ class UserTokenView(APIView):
                 return Response(token, status=status.HTTP_201_CREATED)
                 
         except Exception as e:
-            print(f"❌ Erreur: {str(e)}")
+            print(f"  Erreur: {str(e)}")
             import traceback
             traceback.print_exc()
             return Response(
@@ -176,7 +176,7 @@ class GetUserByPhone(APIView):
             user = User.objects.get(phone=phone)
             serializer = UserSerializer(user)
             
-            print(f"✅ Détails utilisateur récupérés: {phone}")
+            print(f"  Détails utilisateur récupérés: {phone}")
             return Response(serializer.data, status=status.HTTP_200_OK)
             
         except User.DoesNotExist:

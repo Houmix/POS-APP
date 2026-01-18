@@ -12,7 +12,7 @@ class BorneSyncConsumer(AsyncWebsocketConsumer):
             self.channel_name
         )
         await self.accept()
-        print(f"✅ Borne connectée : {self.channel_name}")
+        print(f"Borne connectée : {self.channel_name}")
 
     async def disconnect(self, close_code):
         """Quand une borne se déconnecte"""
@@ -20,7 +20,7 @@ class BorneSyncConsumer(AsyncWebsocketConsumer):
             SYNC_GROUP_NAME,
             self.channel_name
         )
-        print(f"❌ Borne déconnectée : {self.channel_name}")
+        print(f"Borne déconnectée : {self.channel_name}")
 
     async def sync_message(self, event):
         """
@@ -31,4 +31,4 @@ class BorneSyncConsumer(AsyncWebsocketConsumer):
             'type': 'sync_message',
             'data': event['data']
         }))
-        print(f"📤 Message de sync envoyé à la borne")
+        print(f" Message de sync envoyé à la borne")

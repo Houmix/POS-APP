@@ -30,7 +30,7 @@ def force_borne_reload():
         )
         print("🔔 [SYNC] Rechargement forcé envoyé aux bornes")
     except Exception as e:
-        print(f"❌ [SYNC] Erreur : {e}")
+        print(f"[SYNC] Erreur : {e}")
 
 
 # ==================== SIGNAUX MENUS ====================

@@ -59,7 +59,7 @@ def create_default_steps(sender, instance, created, **kwargs):
             max_options=step_data["max_options"],
         )
     
-    print(f"✅ {len(default_steps)} étapes créées pour le menu: {instance.name}")
+    print(f"s{len(default_steps)} étapes créées pour le menu: {instance.name}")
 
 
 @receiver(post_save, sender=Option)
@@ -89,7 +89,7 @@ def create_step_options_for_option(sender, instance, created, **kwargs):
         if was_created:
             created_count += 1
     
-    print(f"✅ {created_count} StepOption créés pour l'option: {instance.name}")
+    print(f"{created_count} StepOption créés pour l'option: {instance.name}")
 
 
 @receiver(post_save, sender=Step)
@@ -119,7 +119,7 @@ def create_step_options_for_step(sender, instance, created, **kwargs):
         if was_created:
             created_count += 1
     
-    print(f"✅ {created_count} StepOption créés pour l'étape: {instance.name}")
+    print(f"{created_count} StepOption créés pour l'étape: {instance.name}")
 
 
 @receiver(post_save, sender=Option)
@@ -135,7 +135,7 @@ def sync_extra_price_with_stepoption(sender, instance, **kwargs):
     updated_count = step_options.update(extra_price=instance.extra_price or 0.00)
     
     if updated_count > 0:
-        print(f"✅ {updated_count} StepOption mis à jour avec extra_price={instance.extra_price}")
+        print(f"{updated_count} StepOption mis à jour avec extra_price={instance.extra_price}")
 
 
 # ============= SIGNAL COMMENTÉ - À DÉCOMMENTER SI NÉCESSAIRE =============

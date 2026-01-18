@@ -21,32 +21,32 @@ class OrderCreate(APIView):
     
     def post(self, request, card):
         print("\n" + "="*50)
-        print("🔵 DÉBUT CREATE ORDER")
+        print("  DÉBUT CREATE ORDER")
         print("="*50)
         
         data = request.data
         user = data.get("user")
         card = bool(card)
         
-        # 🔍 DEBUG: Afficher TOUTES les données reçues
-        print(f"\n📦 DONNÉES REÇUES:")
+        #   DEBUG: Afficher TOUTES les données reçues
+        print(f"\n  DONNÉES REÇUES:")
         print(f"   - user: {user} (type: {type(user)})")
         print(f"   - restaurant (brut): {data.get('restaurant')} (type: {type(data.get('restaurant'))})")
         print(f"   - items: {data.get('items')}")
         print(f"   - card: {card}")
         print(f"   - takeaway: {data.get('takeaway')}")
-        print(f"\n📋 DATA complet: {data}")
+        print(f"\n  DATA complet: {data}")
         
-        # 🔍 Tenter de convertir le restaurant ID
+        #   Tenter de convertir le restaurant ID
         restaurant_raw = data.get("restaurant")
-        print(f"\n🔍 Restaurant ID (brut): '{restaurant_raw}'")
+        print(f"\n  Restaurant ID (brut): '{restaurant_raw}'")
         print(f"   Type: {type(restaurant_raw)}")
         
         try:
             restaurant_id = int(restaurant_raw)
-            print(f"✅ Conversion réussie: {restaurant_id}")
+            print(f"  Conversion réussie: {restaurant_id}")
         except (ValueError, TypeError) as e:
-            print(f"❌ ERREUR de conversion: {e}")
+            print(f"  ERREUR de conversion: {e}")
             return Response(
                 {
                     "error": "Restaurant ID invalide",
@@ -56,20 +56,20 @@ class OrderCreate(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 🔍 Vérifier que le restaurant existe
-        print(f"\n🔍 Recherche du restaurant avec ID={restaurant_id}...")
+        #   Vérifier que le restaurant existe
+        print(f"\n  Recherche du restaurant avec ID={restaurant_id}...")
         
         try:
             restaurant = Restaurant.objects.get(id=restaurant_id)
-            print(f"✅ Restaurant trouvé: {restaurant}")
+            print(f"  Restaurant trouvé: {restaurant}")
             print("📍 Checkpoint: la")  # TON CHECKPOINT
             
         except Restaurant.DoesNotExist:
-            print(f"❌ Restaurant ID={restaurant_id} INTROUVABLE dans la base")
+            print(f"  Restaurant ID={restaurant_id} INTROUVABLE dans la base")
             
             # Lister tous les restaurants disponibles
             all_restaurants = Restaurant.objects.all()
-            print(f"\n📋 Restaurants disponibles dans la base:")
+            print(f"\n  Restaurants disponibles dans la base:")
             for r in all_restaurants:
                 print(f"   - ID: {r.id}, Nom: {r.name if hasattr(r, 'name') else 'N/A'}")
             
@@ -83,7 +83,7 @@ class OrderCreate(APIView):
             )
         
         except Exception as e:
-            print(f"❌ ERREUR inattendue lors de la recherche du restaurant: {e}")
+            print(f"  ERREUR inattendue lors de la recherche du restaurant: {e}")
             return Response(
                 {
                     "error": "Erreur lors de la recherche du restaurant",
@@ -93,7 +93,7 @@ class OrderCreate(APIView):
             )
         
         # Créer la commande
-        print(f"\n🔵 Création de la commande...")
+        print(f"\n  Création de la commande...")
         try:
             order = Order.objects.create(
                 user=user if (user and user != {} and user != 0) else None, 
@@ -101,10 +101,10 @@ class OrderCreate(APIView):
                 restaurant=restaurant, 
                 take_away=data.get("takeaway", False)
             )
-            print(f"✅ Commande créée: ID={order.id}")
+            print(f"  Commande créée: ID={order.id}")
             
         except Exception as e:
-            print(f"❌ ERREUR lors de la création de la commande: {e}")
+            print(f"  ERREUR lors de la création de la commande: {e}")
             return Response(
                 {
                     "error": "Erreur lors de la création de la commande",
@@ -116,19 +116,19 @@ class OrderCreate(APIView):
         # Gérer les points de fidélité
         if user and user != {} and user != 0:
             try:
-                print(f"\n🎯 Ajout des points de fidélité pour user={user}")
+                print(f"\n  Ajout des points de fidélité pour user={user}")
                 loyalty, created = Loyalty.objects.get_or_create(
                     user=user, 
                     restaurant=restaurant
                 )
                 loyalty.point += order.total_price()
                 loyalty.save()
-                print(f"✅ Points ajoutés: {order.total_price()}")
+                print(f"  Points ajoutés: {order.total_price()}")
             except Exception as loyalty_error:
-                print(f"⚠️ Erreur fidélité (non bloquante): {loyalty_error}")
+                print(f"  Erreur fidélité (non bloquante): {loyalty_error}")
         
         # Ajouter les items
-        print(f"\n🔵 Ajout des items...")
+        print(f"\n  Ajout des items...")
         items_count = 0
         
         try:
@@ -141,7 +141,7 @@ class OrderCreate(APIView):
                         quantity=item_data.get("quantity", 1)
                     )
                     items_count += 1
-                    print(f"   ✅ Item {items_count}: Menu ID={menu.id}, Qté={item_data.get('quantity', 1)}")
+                    print(f"     Item {items_count}: Menu ID={menu.id}, Qté={item_data.get('quantity', 1)}")
                     
                     # Gérer les options
                     if item_data.get("solo") == True:
@@ -163,16 +163,16 @@ class OrderCreate(APIView):
                                 )
                                 print(f"      → Option ajoutée: Step={step.id}, Option={option.id}")
                             except (Step.DoesNotExist, StepOption.DoesNotExist) as opt_error:
-                                print(f"      ⚠️ Option ignorée: {opt_error}")
+                                print(f"        Option ignorée: {opt_error}")
                 
                 except Menu.DoesNotExist:
-                    print(f"   ⚠️ Menu {item_data.get('menu')} introuvable, item ignoré")
+                    print(f"     Menu {item_data.get('menu')} introuvable, item ignoré")
                     continue
             
-            print(f"✅ {items_count} item(s) ajouté(s)")
+            print(f"  {items_count} item(s) ajouté(s)")
             
         except Exception as items_error:
-            print(f"❌ Erreur lors de l'ajout des items: {items_error}")
+            print(f"  Erreur lors de l'ajout des items: {items_error}")
             order.delete()
             return Response(
                 {
@@ -183,17 +183,17 @@ class OrderCreate(APIView):
             )
         
         # Générer le ticket
-        print(f"\n🔵 Génération du ticket...")
+        print(f"\n  Génération du ticket...")
         try:
             generate_ticket_content(request, order.id)
             qr_code = generate_order_qr(order.id)
-            print(f"✅ Ticket généré")
+            print(f"  Ticket généré")
         except Exception as ticket_error:
-            print(f"⚠️ Erreur ticket (non bloquante): {ticket_error}")
+            print(f"  Erreur ticket (non bloquante): {ticket_error}")
             qr_code = None
         
         print("\n" + "="*50)
-        print(f"✅ COMMANDE CRÉÉE AVEC SUCCÈS - ID: {order.id}")
+        print(f"  COMMANDE CRÉÉE AVEC SUCCÈS - ID: {order.id}")
         print("="*50 + "\n")
         
         return Response(
@@ -320,15 +320,15 @@ def generate_ticket_content(request, order_id):
     Récupère une commande par son ID, génère le contenu du ticket
     et le retourne à la borne.
     """
-    print(f"📡 [API] Génération du ticket pour la commande ID: {order_id}")
+    print(f"  [API] Génération du ticket pour la commande ID: {order_id}")
     
     try:
         # Récupérer la commande
         order = get_object_or_404(Order, id=order_id)
-        print(f"✅ [API] Commande trouvée: #{order.id}")
+        print(f"  [API] Commande trouvée: #{order.id}")
         
     except Exception as e:
-        print(f"❌ [API] Erreur récupération commande: {e}")
+        print(f"  [API] Erreur récupération commande: {e}")
         return Response(
             {"detail": f"Commande introuvable: {e}"},
             status=status.HTTP_404_NOT_FOUND
@@ -340,7 +340,7 @@ def generate_ticket_content(request, order_id):
         
         ticket_data = format_order_as_ticket(order.id)
         
-        print(f"✅ [API] Ticket généré ({len(ticket_data['content'])} caractères)")
+        print(f"  [API] Ticket généré ({len(ticket_data['content'])} caractères)")
         
         # Retourner le contenu formaté
         return Response({
@@ -352,7 +352,7 @@ def generate_ticket_content(request, order_id):
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print(f"❌ [API] Erreur génération ticket: {e}")
+        print(f"  [API] Erreur génération ticket: {e}")
         import traceback
         traceback.print_exc()  # Afficher la stack trace complète
         

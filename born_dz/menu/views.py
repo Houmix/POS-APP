@@ -39,7 +39,7 @@ class GroupMenuCreate(APIView):
     
     def post(self, request, *args, **kwargs):
         print("=" * 60)
-        print("📝 CRÉATION GROUPMENU - DÉBUT")
+        print("   CRÉATION GROUPMENU - DÉBUT")
         print("=" * 60)
         
         # Logs détaillés de la requête
@@ -59,24 +59,24 @@ class GroupMenuCreate(APIView):
         # Vérification spécifique de la photo
         if 'photo' in request.data:
             photo = request.data['photo']
-            print("\n📸 ANALYSE DE LA PHOTO:")
+            print("\n     ANALYSE DE LA PHOTO:")
             print(f"  Type: {type(photo)}")
             print(f"  Valeur: {photo}")
             
             # Si c'est un fichier uploadé
             if hasattr(photo, 'name'):
-                print(f"  ✅ Nom du fichier: {photo.name}")
+                print(f"     Nom du fichier: {photo.name}")
             if hasattr(photo, 'content_type'):
-                print(f"  ✅ Content-Type: {photo.content_type}")
+                print(f"     Content-Type: {photo.content_type}")
             if hasattr(photo, 'size'):
-                print(f"  ✅ Taille: {photo.size} bytes ({photo.size / 1024:.2f} KB)")
+                print(f"     Taille: {photo.size} bytes ({photo.size / 1024:.2f} KB)")
             
             # Si c'est une string (erreur)
             if isinstance(photo, str):
-                print(f"  ❌ ERREUR: Photo est une string: '{photo}'")
-                print(f"  ❌ Devrait être un fichier uploadé")
+                print(f"    ERREUR: Photo est une string: '{photo}'")
+                print(f"    Devrait être un fichier uploadé")
         else:
-            print("\n⚠️ Aucune photo dans la requête")
+            print("\n    Aucune photo dans la requête")
         
         print("=" * 60)
         
@@ -84,17 +84,17 @@ class GroupMenuCreate(APIView):
             serializer = GroupMenuSerializer(data=request.data, partial=True)
             
             if serializer.is_valid():
-                print("✅ Serializer validé")
+                print("   Serializer validé")
                 instance = serializer.save()
-                print(f"✅ GroupMenu créé: ID={instance.id}, Nom={instance.name}")
+                print(f"   GroupMenu créé: ID={instance.id}, Nom={instance.name}")
                 
                 # Vérifier si la photo a été sauvegardée
                 if instance.photo:
-                    print(f"✅ Photo sauvegardée: {instance.photo.name}")
-                    print(f"✅ Chemin complet: {instance.photo.path}")
-                    print(f"✅ URL: {instance.photo.url}")
+                    print(f"   Photo sauvegardée: {instance.photo.name}")
+                    print(f"   Chemin complet: {instance.photo.path}")
+                    print(f"   URL: {instance.photo.url}")
                 else:
-                    print("⚠️ Aucune photo sauvegardée dans l'instance")
+                    print("    Aucune photo sauvegardée dans l'instance")
                 
                 print("=" * 60)
                 
@@ -115,7 +115,7 @@ class GroupMenuCreate(APIView):
                     "data": serializer.data
                 }, status=status.HTTP_201_CREATED)
             
-            print(f"❌ Erreurs de validation serializer:")
+            print(f" Erreurs de validation serializer:")
             for field, errors in serializer.errors.items():
                 print(f"  - {field}: {errors}")
             print("=" * 60)
@@ -126,7 +126,7 @@ class GroupMenuCreate(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
             
         except Exception as e:
-            print(f"❌ EXCEPTION: {str(e)}")
+            print(f"EXCEPTION: {str(e)}")
             print("Traceback complet:")
             print(traceback.format_exc())
             print("=" * 60)
@@ -139,7 +139,7 @@ class GroupMenuUpdate(APIView):
     
     def put(self, request, *args, **kwargs):
         print("=" * 60)
-        print("📝 MISE À JOUR GROUPMENU - DÉBUT")
+        print("   MISE À JOUR GROUPMENU - DÉBUT")
         print("=" * 60)
         
         try:
@@ -150,14 +150,14 @@ class GroupMenuUpdate(APIView):
             # Vérifier la photo
             if 'photo' in request.data:
                 photo = request.data['photo']
-                print(f"\n📸 Photo détectée:")
+                print(f"\n     Photo détectée:")
                 print(f"  Type: {type(photo)}")
                 if hasattr(photo, 'name'):
                     print(f"  Nom: {photo.name}")
                 if hasattr(photo, 'size'):
                     print(f"  Taille: {photo.size} bytes")
             else:
-                print("\n⚠️ Pas de nouvelle photo (conservation de l'ancienne)")
+                print("\n    Pas de nouvelle photo (conservation de l'ancienne)")
             
             group_menu_id = request.data.get("id")
             
@@ -168,7 +168,7 @@ class GroupMenuUpdate(APIView):
                 )
             
             group_menu = GroupMenu.objects.get(id=group_menu_id)
-            print(f"✅ GroupMenu trouvé: {group_menu.name}")
+            print(f"   GroupMenu trouvé: {group_menu.name}")
             
             # Photo actuelle
             if group_menu.photo:
@@ -180,13 +180,13 @@ class GroupMenuUpdate(APIView):
             
             if serializer.is_valid():
                 instance = serializer.save()
-                print(f"✅ GroupMenu mis à jour: {instance.name}")
+                print(f"   GroupMenu mis à jour: {instance.name}")
                 
                 # Vérifier la nouvelle photo
                 if instance.photo:
-                    print(f"✅ Photo finale: {instance.photo.name}")
+                    print(f"   Photo finale: {instance.photo.name}")
                 else:
-                    print(f"⚠️ Pas de photo finale")
+                    print(f"    Pas de photo finale")
                 
                 print("=" * 60)
                 
@@ -207,7 +207,7 @@ class GroupMenuUpdate(APIView):
                     "data": serializer.data
                 }, status=status.HTTP_200_OK)
             
-            print(f"❌ Erreurs de validation:")
+            print(f"  Erreurs de validation:")
             for field, errors in serializer.errors.items():
                 print(f"  - {field}: {errors}")
             print("=" * 60)
@@ -223,7 +223,7 @@ class GroupMenuUpdate(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         except Exception as e:
-            print(f"❌ EXCEPTION: {str(e)}")
+            print(f"  EXCEPTION: {str(e)}")
             print(traceback.format_exc())
             print("=" * 60)
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -236,13 +236,13 @@ class MenuCreate(APIView):
     
     def post(self, request, *args, **kwargs):
         print("=" * 60)
-        print("📝 CRÉATION MENU")
+        print("   CRÉATION MENU")
         print("=" * 60)
         
         # Vérifier la photo
         if 'photo' in request.data:
             photo = request.data['photo']
-            print(f"📸 Photo: {type(photo)}")
+            print(f"     Photo: {type(photo)}")
             if hasattr(photo, 'name'):
                 print(f"  Nom: {photo.name}, Taille: {photo.size} bytes")
         
@@ -251,9 +251,9 @@ class MenuCreate(APIView):
             
             if serializer.is_valid():
                 instance = serializer.save()
-                print(f"✅ Menu créé: {instance.name}")
+                print(f"   Menu créé: {instance.name}")
                 if instance.photo:
-                    print(f"✅ Photo: {instance.photo.name}")
+                    print(f"   Photo: {instance.photo.name}")
                 print("=" * 60)
                 
                 return Response({
@@ -261,7 +261,7 @@ class MenuCreate(APIView):
                     "data": serializer.data
                 }, status=status.HTTP_201_CREATED)
             
-            print(f"❌ Erreurs: {serializer.errors}")
+            print(f"  Erreurs: {serializer.errors}")
             print("=" * 60)
             
             return Response({
@@ -270,7 +270,7 @@ class MenuCreate(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
             
         except Exception as e:
-            print(f"❌ Exception: {str(e)}")
+            print(f"  Exception: {str(e)}")
             print(traceback.format_exc())
             print("=" * 60)
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -282,7 +282,7 @@ class MenuUpdate(APIView):
     
     def put(self, request, *args, **kwargs):
         print("=" * 60)
-        print("📝 MISE À JOUR MENU")
+        print("   MISE À JOUR MENU")
         print("=" * 60)
         
         try:
@@ -295,11 +295,11 @@ class MenuUpdate(APIView):
                 )
             
             menu = Menu.objects.get(id=menu_id)
-            print(f"✅ Menu trouvé: {menu.name}")
+            print(f"   Menu trouvé: {menu.name}")
             
             if 'photo' in request.data:
                 photo = request.data['photo']
-                print(f"📸 Nouvelle photo: {type(photo)}")
+                print(f"     Nouvelle photo: {type(photo)}")
                 if hasattr(photo, 'name'):
                     print(f"  Nom: {photo.name}")
             
@@ -307,7 +307,7 @@ class MenuUpdate(APIView):
             
             if serializer.is_valid():
                 instance = serializer.save()
-                print(f"✅ Menu mis à jour: {instance.name}")
+                print(f"   Menu mis à jour: {instance.name}")
                 print("=" * 60)
                 
                 # Notification WebSocket
@@ -327,7 +327,7 @@ class MenuUpdate(APIView):
                     "data": serializer.data
                 }, status=status.HTTP_200_OK)
             
-            print(f"❌ Erreurs: {serializer.errors}")
+            print(f"  Erreurs: {serializer.errors}")
             print("=" * 60)
             
             return Response({
@@ -338,7 +338,7 @@ class MenuUpdate(APIView):
         except Menu.DoesNotExist:
             return Response({"error": "Menu non trouvé"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            print(f"❌ Exception: {str(e)}")
+            print(f"  Exception: {str(e)}")
             print(traceback.format_exc())
             print("=" * 60)
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -351,12 +351,12 @@ class OptionCreate(APIView):
     
     def post(self, request, *args, **kwargs):
         print("=" * 60)
-        print("📝 CRÉATION OPTION")
+        print("   CRÉATION OPTION")
         print("=" * 60)
         
         if 'photo' in request.data:
             photo = request.data['photo']
-            print(f"📸 Photo: {type(photo)}")
+            print(f"     Photo: {type(photo)}")
             if hasattr(photo, 'name'):
                 print(f"  Nom: {photo.name}")
         
@@ -365,9 +365,9 @@ class OptionCreate(APIView):
             
             if serializer.is_valid():
                 instance = serializer.save()
-                print(f"✅ Option créée: {instance.name}")
+                print(f"   Option créée: {instance.name}")
                 if instance.photo:
-                    print(f"✅ Photo: {instance.photo.name}")
+                    print(f"   Photo: {instance.photo.name}")
                 print("=" * 60)
                 
                 return Response({
@@ -375,7 +375,7 @@ class OptionCreate(APIView):
                     "data": serializer.data
                 }, status=status.HTTP_201_CREATED)
             
-            print(f"❌ Erreurs: {serializer.errors}")
+            print(f"  Erreurs: {serializer.errors}")
             print("=" * 60)
             
             return Response({
@@ -384,7 +384,7 @@ class OptionCreate(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
             
         except Exception as e:
-            print(f"❌ Exception: {str(e)}")
+            print(f"  Exception: {str(e)}")
             print(traceback.format_exc())
             print("=" * 60)
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -395,7 +395,7 @@ class OptionUpdate(APIView):
     
     def put(self, request, *args, **kwargs):
         print("=" * 60)
-        print("📝 MISE À JOUR OPTION")
+        print("   MISE À JOUR OPTION")
         print("=" * 60)
         
         try:
@@ -408,11 +408,11 @@ class OptionUpdate(APIView):
                 )
             
             option = Option.objects.get(id=option_id)
-            print(f"✅ Option trouvée: {option.name}")
+            print(f"   Option trouvée: {option.name}")
             
             if 'photo' in request.data:
                 photo = request.data['photo']
-                print(f"📸 Nouvelle photo: {type(photo)}")
+                print(f"     Nouvelle photo: {type(photo)}")
                 if hasattr(photo, 'name'):
                     print(f"  Nom: {photo.name}")
             
@@ -420,7 +420,7 @@ class OptionUpdate(APIView):
             
             if serializer.is_valid():
                 instance = serializer.save()
-                print(f"✅ Option mise à jour: {instance.name}")
+                print(f"   Option mise à jour: {instance.name}")
                 print("=" * 60)
                 
                 return Response({
@@ -428,7 +428,7 @@ class OptionUpdate(APIView):
                     "data": serializer.data
                 }, status=status.HTTP_200_OK)
             
-            print(f"❌ Erreurs: {serializer.errors}")
+            print(f"  Erreurs: {serializer.errors}")
             print("=" * 60)
             
             return Response({
@@ -439,7 +439,7 @@ class OptionUpdate(APIView):
         except Option.DoesNotExist:
             return Response({"error": "Option non trouvée"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            print(f"❌ Exception: {str(e)}")
+            print(f"  Exception: {str(e)}")
             print(traceback.format_exc())
             print("=" * 60)
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -482,7 +482,7 @@ class GroupMenuDelete(APIView):
             group_menu = GroupMenu.objects.get(pk=pk)
             group_menu_name = group_menu.name
             group_menu.delete()
-            print(f"✅ GroupMenu supprimé: {group_menu_name}")
+            print(f"   GroupMenu supprimé: {group_menu_name}")
             return Response({"message": "GroupMenu supprimé avec succès"}, status=status.HTTP_204_NO_CONTENT)
         except GroupMenu.DoesNotExist:
             return Response({"error": "GroupMenu non trouvé"}, status=status.HTTP_404_NOT_FOUND)
@@ -518,7 +518,7 @@ class MenuDelete(APIView):
             menu = Menu.objects.get(pk=pk)
             menu_name = menu.name
             menu.delete()
-            print(f"✅ Menu supprimé: {menu_name}")
+            print(f"   Menu supprimé: {menu_name}")
             return Response({"message": "Menu supprimé avec succès"}, status=status.HTTP_204_NO_CONTENT)
         except Menu.DoesNotExist:
             return Response({"error": "Menu non trouvé"}, status=status.HTTP_404_NOT_FOUND)
@@ -553,7 +553,7 @@ class OptionDelete(APIView):
             option = Option.objects.get(pk=pk)
             option_name = option.name
             option.delete()
-            print(f"✅ Option supprimée: {option_name}")
+            print(f"   Option supprimée: {option_name}")
             return Response({"message": "Option supprimée avec succès"}, status=status.HTTP_204_NO_CONTENT)
         except Option.DoesNotExist:
             return Response({"error": "Option non trouvée"}, status=status.HTTP_404_NOT_FOUND)
