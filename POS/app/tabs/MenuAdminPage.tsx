@@ -386,16 +386,29 @@ export default function MenuAdminPage() {
     };
 
     const openEditMenu = (menu: any) => {
+        // Sécurité : On récupère l'ID que ce soit un objet ou juste un ID
+        let groupId = '';
+        if (menu.group_menu) {
+            // Si c'est un objet (ex: {id: 5, name: 'Burger'}), on prend .id
+            if (typeof menu.group_menu === 'object') {
+                groupId = menu.group_menu.id ? menu.group_menu.id.toString() : '';
+            } 
+            // Si c'est déjà un nombre ou une string, on le convertit en string
+            else {
+                groupId = menu.group_menu.toString();
+            }
+        }
+
         setEditingMenu({
             ...menu,
             price: menu.price.toString(),
-            solo_price: menu.solo_price.toString()
+            solo_price: menu.solo_price ? menu.solo_price.toString() : '0',
+            group_menu: groupId, // On stocke l'ID en format texte pour le Picker
+            type: menu.type // On garde le type
         });
         setSelectedMenuPhoto(null);
         setEditMenuModal(true);
-    };
-
-    const handleUpdateMenu = async () => {
+    };const handleUpdateMenu = async () => {
         if (!editingMenu) return;
         
         const token = await AsyncStorage.getItem("token");
@@ -408,7 +421,12 @@ export default function MenuAdminPage() {
             formData.append('solo_price', (editingMenu.solo_price || '0').toString());
             formData.append('type', editingMenu.type);
             formData.append('avalaible', editingMenu.avalaible.toString());
-            
+
+            // 👇 CORRECTION : On envoie l'ID du groupe au serveur 👇
+            if (editingMenu.group_menu) {
+                formData.append('group_menu', editingMenu.group_menu); 
+            }
+
             if (selectedMenuPhoto) {
                 await appendImageToFormData(formData, 'photo', selectedMenuPhoto);
             }
@@ -420,19 +438,20 @@ export default function MenuAdminPage() {
             });
     
             if (response.ok) {
-                showSuccess("Succès", "Menu mis à jour");
+                showSuccess("Succès", "Article mis à jour");
                 setEditMenuModal(false);
                 setEditingMenu(null);
                 setSelectedMenuPhoto(null);
                 fetchInitialData();
             } else {
+                const errorText = await response.text();
+                console.log("Erreur update:", errorText); // Pour le debug
                 showError("Erreur", "Mise à jour échouée");
             }
         } catch (e: any) { 
             showError("Erreur", e.message);
         }
     };
-
     const handleDeleteMenu = (menuId: number) => {
         askConfirmation(
             "Supprimer l'article ?",
@@ -842,30 +861,100 @@ export default function MenuAdminPage() {
                     </View>
                 </View>
             </Modal>
-            
+            {/* MODAL EDIT MENU CORRIGÉE */}
             <Modal visible={editMenuModal} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <ScrollView contentContainerStyle={{flexGrow: 1, justifyContent: 'center'}}>
                         <View style={styles.modalContent}>
-                            <View style={styles.modalHeader}><Text style={styles.modalTitle}>Modifier l'Article</Text><TouchableOpacity onPress={() => setEditMenuModal(false)}><X size={24} color={COLORS.secondary} /></TouchableOpacity></View>
-                            <TextInput style={styles.input} placeholder="Nom" value={editingMenu?.name || ''} onChangeText={(t) => setEditingMenu({...editingMenu, name: t})} />
-                            <TextInput style={styles.input} placeholder="Description" value={editingMenu?.description || ''} onChangeText={(t) => setEditingMenu({...editingMenu, description: t})} multiline />
-                            <View style={styles.row}>
-                                <TextInput style={[styles.input, {flex: 1, marginRight: 10}]} placeholder="Prix" keyboardType="numeric" value={editingMenu?.price || ''} onChangeText={(t) => setEditingMenu({...editingMenu, price: t})} />
-                                <TextInput style={[styles.input, {flex: 1}]} placeholder="Prix solo" keyboardType="numeric" value={editingMenu?.solo_price || ''} onChangeText={(t) => setEditingMenu({...editingMenu, solo_price: t})} />
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Modifier l'Article</Text>
+                                <TouchableOpacity onPress={() => setEditMenuModal(false)}>
+                                    <X size={24} color={COLORS.secondary} />
+                                </TouchableOpacity>
                             </View>
+
+                            <Text style={styles.photoLabel}>Nom de l'article</Text>
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="Nom" 
+                                value={editingMenu?.name || ''} 
+                                onChangeText={(t) => setEditingMenu({...editingMenu, name: t})} 
+                            />
+                            
+                            <Text style={styles.photoLabel}>Description</Text>
+                            <TextInput 
+                                style={styles.input} 
+                                placeholder="Description" 
+                                value={editingMenu?.description || ''} 
+                                onChangeText={(t) => setEditingMenu({...editingMenu, description: t})} 
+                                multiline 
+                            />
+
+                            {/* 👇 SÉLECTEUR DE GROUPE (CATÉGORIE) 👇 */}
+                            <Text style={{marginBottom: 5, marginTop: 10, color: COLORS.secondary, fontWeight:'700'}}>
+                                Catégorie (Groupe)
+                            </Text>
                             <View style={styles.pickerContainer}>
-                                <Picker selectedValue={editingMenu?.type} onValueChange={(v) => setEditingMenu({...editingMenu, type: v})}>
-                                    {MENU_TYPES.map((type) => (<Picker.Item key={type.value} label={type.label} value={type.value} />))}
+                                <Picker 
+                                    selectedValue={editingMenu?.group_menu ? editingMenu.group_menu.toString() : ""} 
+                                    onValueChange={(v) => setEditingMenu({...editingMenu, group_menu: v})}
+                                >
+                                    <Picker.Item label="Sélectionner une catégorie..." value="" />
+                                    {groups.map((g: any) => (
+                                        <Picker.Item key={g.id} label={g.name} value={g.id.toString()} />
+                                    ))}
                                 </Picker>
                             </View>
+
+                            {/* PRIX */}
+                            <View style={[styles.row, {marginTop: 10}]}>
+                                <View style={{flex: 1, marginRight: 10}}>
+                                    <Text style={styles.photoLabel}>Prix Menu</Text>
+                                    <TextInput 
+                                        style={styles.input} 
+                                        placeholder="0.00" 
+                                        keyboardType="numeric" 
+                                        value={editingMenu?.price || ''} 
+                                        onChangeText={(t) => setEditingMenu({...editingMenu, price: t})} 
+                                    />
+                                </View>
+                                <View style={{flex: 1}}>
+                                    <Text style={styles.photoLabel}>Prix Solo</Text>
+                                    <TextInput 
+                                        style={styles.input} 
+                                        placeholder="0.00" 
+                                        keyboardType="numeric" 
+                                        value={editingMenu?.solo_price || ''} 
+                                        onChangeText={(t) => setEditingMenu({...editingMenu, solo_price: t})} 
+                                    />
+                                </View>
+                            </View>
+
+                            {/* 👇 SÉLECTEUR DE TYPE (BURGER, WRAP...) 👇 */}
+                            <Text style={{marginBottom: 5, marginTop: 5, color: COLORS.secondary, fontWeight:'700'}}>
+                                Type de produit
+                            </Text>
+                            <View style={styles.pickerContainer}>
+                                <Picker 
+                                    selectedValue={editingMenu?.type} 
+                                    onValueChange={(v) => setEditingMenu({...editingMenu, type: v})}
+                                >
+                                    {MENU_TYPES.map((type) => (
+                                        <Picker.Item key={type.value} label={type.label} value={type.value} />
+                                    ))}
+                                </Picker>
+                            </View>
+                            
                             {renderPhotoPicker(selectedMenuPhoto, setSelectedMenuPhoto, editingMenu?.photo)}
-                            <TouchableOpacity style={styles.submitBtn} onPress={handleUpdateMenu}><Save size={20} color="white" /><Text style={styles.btnText}>Enregistrer</Text></TouchableOpacity>
+                            
+                            <TouchableOpacity style={styles.submitBtn} onPress={handleUpdateMenu}>
+                                <Save size={20} color="white" />
+                                <Text style={styles.btnText}>Enregistrer</Text>
+                            </TouchableOpacity>
                         </View>
                     </ScrollView>
                 </View>
             </Modal>
-
             <Modal visible={editOptionModal} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>

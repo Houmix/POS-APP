@@ -558,27 +558,48 @@ from django.db.models import Sum, Count, F
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from .models import Order
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from .models import Order
 
 class KpiView(APIView):
     def get(self, request, restaurantId):
-        orders = Order.objects.filter(id=restaurantId) # Filtre par resto
+        # 1. CORRECTION DU FILTRE
+        # On utilise 'restaurant_id' ou 'restaurant__id' pour filtrer par la clé étrangère
+        # on utilise prefetch_related pour charger les items/options en une seule fois (Performance)
+        orders = Order.objects.filter(restaurant_id=restaurantId).prefetch_related(
+            'items__menu', 
+            'items__options__option'
+        )
         
-        # On calcule le CA manuellement ou via une annotation complexe
-        # Ici une boucle simple (optimisable avec Sum sur les OrderItems)
-        total_revenue = sum(order.total_price() for order in orders.filter(paid=True))
-        total_orders = orders.count()
+        # 2. FILTRAGE DES COMMANDES PAYÉES POUR LE CA
+        paid_orders = orders.filter(paid=True)
         
+        # 3. CALCUL DU CA
+        # On utilise votre méthode total_price(), mais grâce au prefetch ci-dessus,
+        # cela ne martèlera pas votre base de données.
+        total_revenue = sum(order.total_price() for order in paid_orders)
+        
+        # Compteurs
+        total_orders_count = orders.count()
+        paid_orders_count = paid_orders.count()
+        
+        # 4. CALCUL DU PANIER MOYEN
+        # Il est plus logique de diviser le CA par le nombre de commandes payées
+        # sinon les commandes annulées font chuter artificiellement la moyenne.
+        average_cart = (total_revenue / paid_orders_count) if paid_orders_count > 0 else 0
+
         context = {
             "total_revenue": total_revenue,
-            "total_orders": total_orders,
-            "average_cart": total_revenue / total_orders if total_orders > 0 else 0,
+            "total_orders": total_orders_count,
+            "average_cart": average_cart,
+            # On vérifie le status OU le booléen pour être sûr
             "completed_orders": orders.filter(status='completed').count(),
-            "cancelled_orders": orders.filter(status='cancelled').count(),
+            "cancelled_orders": orders.filter(cancelled=True).count(), 
             "take_away_count": orders.filter(take_away=True).count(),
         }
+        
         return Response(context)
-
-
 import qrcode
 import io
 import base64
