@@ -1,10 +1,78 @@
-# dependencies
-/node_modules
+# ========================
+# 1. GÉNÉRAL & SYSTÈME
+# ========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
 
-# Ignorer node_modules et dist dans my-desktop-app
-my-desktop-app/node_modules/
-POS/node_modules/
-my-desktop-app/dist/
+# ========================
+# 2. SÉCURITÉ (TRÈS IMPORTANT)
+# ========================
+# Ne jamais envoyer tes clés API ou config locales
+.env
+.env.local
+.env.production
 
-born_dz/venv/
+# ========================
+# 3. NODE.JS (Global)
+# ========================
+# Ignore node_modules partout (racine et sous-dossiers)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# ========================
+# 4. PYTHON & DJANGO (born_dz)
+# ========================
+# Bytecode Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environnements Virtuels
 venv/
+.venv/
+env/
+born_dz/venv/
+
+# Base de données (Ne jamais envoyer la DB de prod/dev !)
+*.sqlite3
+db.sqlite3
+
+# Dossiers générés par Django (statique/media uploadés)
+born_dz/staticfiles/
+born_dz/media/
+
+# PYINSTALLER (Compilation EXE)
+# On ignore les dossiers de build, MAIS on garde le fichier .spec
+born_dz/build/
+born_dz/dist/
+# Si un spec se crée ailleurs par erreur
+*.spec
+!born_dz/born_dz.spec  # Exception : On veut garder TON fichier spec customisé !
+
+# ========================
+# 5. ELECTRON (my-desktop-app)
+# ========================
+# Dossiers de compilation Electron
+my-desktop-app/dist/
+my-desktop-app/release/
+my-desktop-app/win-unpacked/
+
+# Le dossier où on copie le backend manuellement (c'est un doublon)
+my-desktop-app/backend_dist/
+
+# Le dossier web généré (s'il est copié là)
+my-desktop-app/resources/web-build/
+
+# ========================
+# 6. REACT NATIVE / EXPO (POS)
+# ========================
+.expo/
+POS/.expo/
+POS/dist/
+POS/web-build/
+POS/.dart_tool/
