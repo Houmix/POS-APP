@@ -10,7 +10,7 @@ import {
   ScrollView,
   ActivityIndicator, 
   Modal, 
-  PanResponder, // <--- IMPORT CRUCIAL
+  // ❌ SUPPRIMÉ : PanResponder n'est plus nécessaire
 } from "react-native";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -52,86 +52,26 @@ export default function MenuScreen() {
   const innerGridWidth = (width * menuGridWidth / 100);
   const itemWidth = (innerGridWidth - itemMargin * (numColumns + 1)) / numColumns;
 
-  // --- GESTION DU TIMER D'INACTIVITÉ (30s) ---
-  const resetMainTimer = useCallback(() => {
-    // Si la modale d'inactivité est déjà visible, on ne reset pas, on laisse le timer de 10s tourner
-    if (isInactivityModalVisible) return;
-
-    if (mainTimerRef.current) clearTimeout(mainTimerRef.current);
-    
-    // On redémarre le compte à rebours de 30s
-    mainTimerRef.current = setTimeout(() => {
-      setIsInactivityModalVisible(true);
-    }, 30000); 
-  }, [isInactivityModalVisible]);
-
-  // ⚡ SYSTEME DE DÉTECTION GLOBAL D'ACTIVITÉ (PAN RESPONDER)
-  // Utilisation d'une ref pour accéder toujours à la dernière version de resetMainTimer
-  const resetTimerRef = useRef(resetMainTimer);
-  useEffect(() => { resetTimerRef.current = resetMainTimer; }, [resetMainTimer]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      // Demande à être notifié de tout toucher au démarrage
-      onStartShouldSetPanResponderCapture: () => {
-        resetTimerRef.current(); // Reset le timer
-        return false; // RENVOIE FALSE pour laisser le clic passer aux boutons/scrollviews
-      },
-      // Capture aussi les mouvements (scroll)
-      onMoveShouldSetPanResponderCapture: () => {
-        resetTimerRef.current(); 
-        return false; 
-      },
-    })
-  ).current;
-
-  // Active le timer quand la page gagne le focus
-  useFocusEffect(
-    useCallback(() => {
-      resetMainTimer();
-      return () => {
-        if (mainTimerRef.current) clearTimeout(mainTimerRef.current);
-        if (secondaryTimerRef.current) clearTimeout(secondaryTimerRef.current);
-      };
-    }, [resetMainTimer])
-  );
-
-  // --- GESTION DU TIMER SECONDAIRE (10s après ouverture modale) ---
-  useEffect(() => {
-    if (isInactivityModalVisible) {
-      // Si la modale s'ouvre, on lance l'ultimatum de 10s
-      secondaryTimerRef.current = setTimeout(() => {
-        console.log("⏰ Trop tard, retour à l'accueil.");
-        handleCancelOrder();
-      }, 10000);
-    } else {
-      // Si on ferme la modale (activité), on tue l'ultimatum
-      if (secondaryTimerRef.current) clearTimeout(secondaryTimerRef.current);
+  // ✅ FONCTION DE RESET DES TIMERS (à définir selon votre logique)
+  const resetMainTimer = () => {
+    // Votre logique de reset timer ici
+    if (mainTimerRef.current) {
+      clearTimeout(mainTimerRef.current);
     }
-
-    return () => {
-      if (secondaryTimerRef.current) clearTimeout(secondaryTimerRef.current);
-    };
-  }, [isInactivityModalVisible]);
-
-
-  // Annuler la commande et retourner à l'accueil
-  const handleCancelOrder = async () => {
-    try {
-      await AsyncStorage.multiRemove(["orderList", "pendingOrder"]);
-      setIsInactivityModalVisible(false);
-      router.replace("/"); // Retour racine
-    } catch (e) {
-      console.error("Erreur nettoyage", e);
+    if (secondaryTimerRef.current) {
+      clearTimeout(secondaryTimerRef.current);
     }
+    // Relancer les timers si nécessaire
   };
 
-  // Continuer la commande
-  const handleContinueOrder = () => {
-    setIsInactivityModalVisible(false);
-    resetMainTimer(); // Relance les 30s
+  // ✅ GESTIONNAIRE D'ACTIVITÉ UTILISATEUR (remplace PanResponder)
+  const handleUserActivity = () => {
+    resetMainTimer();
+    // Vous pouvez ajouter d'autres logiques ici
   };
-
+  
+  
+  
   // --- LOGIQUE PANIER ET MENU ---
   const updateCartCount = async () => {
     try {
@@ -151,12 +91,14 @@ export default function MenuScreen() {
   }, [categories]);
 
   const handleOpenModal = (item) => {
+    handleUserActivity(); // Reset timer
     setSelectedItemForModal(item);
     setIsModalVisible(true);
   };
   
   const handleSoloAdd = async () => {
     if (!selectedItemForModal) return;
+    handleUserActivity(); // Reset timer
     try {
       const item = selectedItemForModal;
       const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
@@ -167,7 +109,7 @@ export default function MenuScreen() {
       await AsyncStorage.setItem("orderList", JSON.stringify(updatedOrders));
       await updateCartCount();
       setIsModalVisible(false);
-      resetMainTimer(); 
+      
       Alert.alert(t('terminal.added_success'), `${item.name} ${t('terminal.added_solo')}`, [{ text: "OK", onPress: resetMainTimer }]);
     } catch (error) {
       Alert.alert(t('error'), t('terminal.error_add'));
@@ -176,9 +118,10 @@ export default function MenuScreen() {
   
   const handleMenuAdd = () => {
     if (!selectedItemForModal) return;
+    handleUserActivity(); // Reset timer
     const item = selectedItemForModal;
     setIsModalVisible(false);
-    resetMainTimer(); 
+
     router.push({
         pathname: "/order/step",
         params: { menuId: item.id, menuName: item.name, price: item.price || 0 },
@@ -186,6 +129,7 @@ export default function MenuScreen() {
   };
 
   const handleAddToCart = async (item) => {
+    handleUserActivity(); // Reset timer
     if (item.extra) {
       try {
         const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
@@ -194,7 +138,7 @@ export default function MenuScreen() {
         }];
         await AsyncStorage.setItem("orderList", JSON.stringify(updatedOrders));
         await updateCartCount();
-        resetMainTimer(); 
+        
         Alert.alert(t('terminal.added_success'), `${item.name} ${t('terminal.added_extra')}`, [{ text: "OK", onPress: resetMainTimer }]);
       } catch (error) {
         Alert.alert(t('error'), t('errors.add_cart'));
@@ -231,18 +175,28 @@ export default function MenuScreen() {
     );
   };
 
+  // ✅ MODAL D'INACTIVITÉ (à définir selon votre besoin)
   const InactivityModal = () => {
     return (
-      <Modal animationType="slide" transparent={true} visible={isInactivityModalVisible} onRequestClose={() => {}}>
+      <Modal animationType="fade" transparent={true} visible={isInactivityModalVisible}>
         <View style={modalStyles.centeredView}>
           <View style={modalStyles.alertView}>
-            <Text style={modalStyles.alertTitle}>Toujours là ?</Text>
-            <Text style={modalStyles.alertMessage}>Votre session va expirer dans 10 secondes...</Text>
-            <TouchableOpacity style={modalStyles.alertButtonContinue} onPress={handleContinueOrder}>
-              <Text style={modalStyles.alertButtonTextWhite}>Continuer ma commande</Text>
+            <Text style={modalStyles.alertTitle}>{t('terminal.inactivity_title')}</Text>
+            <Text style={modalStyles.alertMessage}>{t('terminal.inactivity_message')}</Text>
+            <TouchableOpacity 
+              style={modalStyles.alertButtonContinue}
+              onPress={() => {
+                setIsInactivityModalVisible(false);
+                handleUserActivity();
+              }}
+            >
+              <Text style={modalStyles.alertButtonTextWhite}>{t('terminal.continue')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={modalStyles.alertButtonCancel} onPress={handleCancelOrder}>
-              <Text style={modalStyles.alertButtonTextRed}>Annuler et quitter</Text>
+            <TouchableOpacity 
+              style={modalStyles.alertButtonCancel}
+              onPress={() => router.push("/")}
+            >
+              <Text style={modalStyles.alertButtonTextRed}>{t('cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -267,8 +221,12 @@ export default function MenuScreen() {
   );
 
   return (
-    // J'ai remplacé onTouchStart par {...panResponder.panHandlers}
-    <View style={[styles.container, isRTL && { direction: 'rtl' }]} {...panResponder.panHandlers}>
+    // ✅ REMPLACÉ : onTouchStart simple au lieu de panResponder.panHandlers
+    <View 
+      style={[styles.container, isRTL && { direction: 'rtl' }]} 
+      onTouchStart={handleUserActivity}
+      onResponderGrant={handleUserActivity}
+    >
       
       {/* HEADER AVEC DÉGRADÉ */}
       <LinearGradient
@@ -303,7 +261,10 @@ export default function MenuScreen() {
                   styles.categoryButton,
                   selectedCategory?.id === category.id && styles.selectedCategory,
                 ]}
-                onPress={() => setSelectedCategory(category)}
+                onPress={() => {
+                  handleUserActivity();
+                  setSelectedCategory(category);
+                }}
               >
                 {category.photo && <Image source={{ uri: `${POS_URL}${category.photo}` }} style={styles.categoryImage} />}
                 <Text style={[styles.categoryText, selectedCategory?.id === category.id && styles.selectedCategoryText]}>

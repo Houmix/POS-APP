@@ -118,9 +118,7 @@ export default function ConfirmationPage() {
                 )}
             </View>
 
-            <Text style={styles.footerNote}>
-                {t('confirmation.thank_you')}
-            </Text>
+            
         </View>
     );
 }

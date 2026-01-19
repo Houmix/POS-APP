@@ -76,6 +76,7 @@ export const translations = {
       print_success: "✅ Impression réussie ! Redirection...",
       print_failed: "❌ Échec de l'impression",
       redirecting: "Redirection...",
+      thank_you:"Merci",
     },
     
     // Menu
@@ -171,6 +172,7 @@ export const translations = {
       print_success: "✅ Print successful! Redirecting...",
       print_failed: "❌ Print failed",
       redirecting: "Redirecting...",
+      thank_you:"Thank You",
     },
     
     // Error messages
@@ -260,6 +262,7 @@ export const translations = {
       print_success: "✅ تمت الطباعة بنجاح! جاري التوجيه...",
       print_failed: "❌ فشلت الطباعة",
       redirecting: "جاري التوجيه...",
+      thank_you: "شكراً",
     },
     
     // رسائل الخطأ

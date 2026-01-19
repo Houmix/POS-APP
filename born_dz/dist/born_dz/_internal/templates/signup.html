@@ -1,0 +1,30 @@
+{% extends "site_vitrine.html" %}
+{% load static %}
+
+{% block headerContent %}
+<link rel="stylesheet" href="{% static 'form.css' %}">
+
+<title>Login</title>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2>Inscription</h2>
+    <form action="{% url 'signUp' %}" method="POST">
+        {% csrf_token %}
+        <h1>Inscription</h1>
+        {{form.as_p}}
+        {% if form.errors %}
+            {% for field, errors in form.errors.items %}
+                {% for error in errors %}
+                    <span>{{ error }}</span>
+                {% endfor %}
+                <br>
+            {% endfor %}
+        {% endif %}
+        <button type="submit">S'inscrire</button>
+    </form>
+</div>
+
+{% endblock %}
+
