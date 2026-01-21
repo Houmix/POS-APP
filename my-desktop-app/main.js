@@ -1,4 +1,4 @@
-// ✅ TOUS les imports au début
+//  OK TOUS les imports au début
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { spawn, exec, execSync } = require('child_process'); // ← Tous ensemble
 const path = require('path');
@@ -22,13 +22,13 @@ let splashWindow;
 const isDev = !app.isPackaged;
 
 function log(message, type = 'info') {
-  const emoji = { info: '🔹', success: '✅', error: '❌', warning: '⚠️' }[type] || '•';
+  const emoji = { info: ' info', success: ' OK', error: ' NO', warning: ' ATTENTION' }[type] || '•';
   console.log(`${emoji} ${message}`);
 }
 
 const POS_PRINTER_NAME = "POS-80"; // ⬅️ AJUSTEZ CE NOM EXACTEMENT
 // ==========================================
-// 🖨️ HANDLER D'IMPRESSION (TEXTE BRUT RAW)
+//   HANDLER D'IMPRESSION (TEXTE BRUT RAW)
 // ==========================================
 ipcMain.handle("print-ticket", async (event, ticketText) => {
     // Utiliser un nom de fichier unique pour éviter les erreurs d'accès concurrents
@@ -36,10 +36,17 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
 
     try {
         log(`[Impression] Tentative RAW sur "${POS_PRINTER_NAME}"`, 'info');
+// 1️⃣ Définition des commandes ESC/POS
+        const ESC = '\x1B';
+        const GS = '\x1D';
+        const CUT_COMMAND = GS + 'V' + '\x42' + '\x00'; // Commande "Full Cut"
+        const LINE_FEEDS = '\n\n\n\n\n'; // Espace pour que le texte dépasse la lame
 
+        // 2️⃣ Assemblage du contenu (Texte + Espaces + Découpe)
+        const fullContent = ticketText + LINE_FEEDS + CUT_COMMAND;
         // 1️⃣ Écriture du fichier en encodage 'latin1' (ou 'cp437')
         // Cela garantit que les caractères spéciaux de l'imprimante (lignes, euros) passent bien
-        fs.writeFileSync(tempFilePath, ticketText, { encoding: 'latin1' });
+        fs.writeFileSync(tempFilePath, fullContent, { encoding: 'latin1' });
 
         // 2️⃣ Commande d'envoi direct (Mode RAW)
         // Note: Pour que '\\127.0.0.1\POS-80' fonctionne, l'imprimante DOIT être partagée dans Windows.
@@ -53,7 +60,7 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
         // Exécution de la commande
         execSync(commandRaw, { windowsHide: true });
 
-        log('[Impression] ✅ Ticket envoyé avec succès lalalala', 'success');
+        log('[Impression]  OK Ticket envoyé avec succès lalalala', 'success');
 
         // 3️⃣ Nettoyage asynchrone pour ne pas ralentir le retour UI
         setTimeout(() => {
@@ -65,16 +72,16 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
         return { success: true };
 
     } catch (error) {
-        log(`[Impression] ❌ Erreur: ${error.message}`, 'error');
+        log(`[Impression]  NO Erreur: ${error.message}`, 'error');
         
         // Tentative de secours automatique si le partage réseau n'est pas actif
         try {
-            log('[Impression] ⚠️ Repli sur PowerShell (Out-Printer)...', 'warning');
+            log('[Impression]  ATTENTION Repli sur PowerShell (Out-Printer)...', 'warning');
             const commandAlt = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${POS_PRINTER_NAME}'"`;
             execSync(commandAlt, { windowsHide: true });
             return { success: true, warning: "Repli PowerShell utilisé" };
         } catch (altError) {
-            log(`[Impression] ❌ Échec total: ${altError.message}`, 'error');
+            log(`[Impression]  NO Échec total: ${altError.message}`, 'error');
             return { success: false, error: altError.message };
         }
     }
@@ -113,41 +120,33 @@ function getResourcePath(relativePath) {
 const backendPath = getResourcePath('born_dz');
 const frontendPath = getResourcePath('pos');
 const webBuildPath = path.join(frontendPath, 'web-build');
-// ✅ CORRECTION getDjangoExecutable en production
+//  OK CORRECTION getDjangoExecutable en production
 function getDjangoExecutable() {
-  const managePyPath = path.join(backendPath, 'manage.py');
+  // En PROD, le dossier s'appelle 'born_dz' (défini dans le "to" du package.json)
+  // Il se trouve dans resources
+  const prodPath = path.join(process.resourcesPath, 'born_dz');
+  const executableName = 'django_asgi_app.exe';
   
   if (isDev) {
-    // Mode développement (identique à avant)
-    const venvDaphne = path.join(backendPath, 'venv', 'bin', 'daphne');
-    const venvDaphneWin = path.join(backendPath, 'venv', 'Scripts', 'daphne.exe');
-    
-    if (fs.existsSync(venvDaphne)) {
-      return { exec: venvDaphne, args: ['born_dz.asgi:application'] };
-    } else if (fs.existsSync(venvDaphneWin)) {
-      return { exec: venvDaphneWin, args: ['born_dz.asgi:application'] };
-    }
-    
-    log('❌ Daphne non trouvé', 'error');
-    app.quit();
-    return null;
-
+    // ... (garde ton code dev actuel)
+    return null; // ou ta logique dev
   } else {
-    // ✅ MODE PRODUCTION CORRIGÉ
-    const executableName = process.platform === 'win32' ? 'django_asgi_app.exe' : 'django_asgi_app';
-    const bundledExec = path.join(backendPath, executableName);
+    // MODE PROD
+    const bundledExec = path.join(prodPath, executableName);
     
+    // Debug: Vérifier si le fichier est là
+    log(`Recherche du backend ici : ${bundledExec}`, 'info');
+
     if (!fs.existsSync(bundledExec)) {
-        log(`❌ Exécutable ASGI manquant: ${bundledExec}`, 'error');
-        app.quit();
+        log(`CRITIQUE: Backend introuvable à ${bundledExec}`, 'error');
+        // Fallback: parfois il est dans un sous-dossier selon PyInstaller
+        const nestedExec = path.join(prodPath, 'django_asgi_app', executableName);
+        if (fs.existsSync(nestedExec)) return { exec: nestedExec, args: [] };
         return null;
     }
-    
-    // ✅ CORRECTION : Pas d'arguments Python, l'exe est autonome
-    return { exec: bundledExec, args: [] };  // ← args vide !
+    return { exec: bundledExec, args: [] };
   }
 }
-
 const djangoExecInfo = getDjangoExecutable();
 
 log(`Mode: ${isDev ? 'DEV' : 'PROD'}`, 'info');
@@ -170,7 +169,7 @@ function checkRequirements() {
   return true;
 }
 
-// ✅ CORRECTION startDjango (ligne ~110)
+//  OK CORRECTION startDjango (ligne ~110)
 function startDjango(callback) {
   if (!djangoExecInfo) return;
 
@@ -181,7 +180,7 @@ function startDjango(callback) {
 
     const execPath = djangoExecInfo.exec;
     
-    // ✅ CORRECTION : En production, pas besoin d'args Daphne
+    //  OK CORRECTION : En production, pas besoin d'args Daphne
     // L'exe bundlé les a déjà intégrés
     const args = isDev ? ['--bind', '0.0.0.0', '--port', '8000', ...djangoExecInfo.args] : [];
 
@@ -336,6 +335,12 @@ function createMainWindow() {
   if (mainWindow) return;
 
   mainWindow = new BrowserWindow({
+    // 1. Force le plein écran (masque la barre des tâches Windows)
+    fullscreen: true, 
+    // 2. Supprime la bordure et la barre de titre (Fermer, Réduire, etc.)
+    frame: false,
+    // 3. Empêche l'utilisateur de sortir du mode plein écran facilement
+    kiosk: true, 
     width: 1280,
     height: 800,
     webPreferences: {
@@ -346,6 +351,10 @@ function createMainWindow() {
     show: false,
     backgroundColor: '#ffffff',
   });
+
+  // 4. Supprime totalement la barre de menu (Fichier, Aide, Zoom...)
+  mainWindow.setMenu(null); 
+
   mainWindow.maximize();
   mainWindow.once('ready-to-show', async () => {
     if (splashWindow) {
@@ -354,19 +363,19 @@ function createMainWindow() {
     }
     mainWindow.show();
     
-    // 🖨️ Lister les imprimantes disponibles
+    //   Lister les imprimantes disponibles
     try {
       const printers = await mainWindow.webContents.getPrintersAsync();
-      console.log('\n🖨️ === IMPRIMANTES DISPONIBLES ===');
+      console.log('\n  === IMPRIMANTES DISPONIBLES ===');
       printers.forEach((p, i) => {
-        console.log(`[${i+1}] "${p.name}" ${p.isDefault ? '⭐ (Par défaut)' : ''}`);
+        console.log(`[${i+1}] "${p.name}" ${p.isDefault ? '  (Par défaut)' : ''}`);
         if (p.name === POS_PRINTER_NAME) {
-          console.log('    ✅ IMPRIMANTE POS TROUVÉE !');
+          console.log('     OK IMPRIMANTE POS TROUVÉE !');
         }
       });
       console.log('===================================\n');
     } catch (err) {
-      console.error('❌ Erreur récupération imprimantes:', err);
+      console.error(' NO Erreur récupération imprimantes:', err);
     }
     
     log('Application prête', 'success');
@@ -402,7 +411,7 @@ function createSplashWindow(callback) {
     callback();
   });
 }
-const { exec } = require('child_process');
+
 function cleanup() {
   log('Arrêt des processus et libération des ports...', 'info');
 
@@ -415,7 +424,7 @@ function cleanup() {
         if (err) {
           log(`Note: Impossible de tuer le PID ${djangoProcess.pid} (déjà fermé ?)`, 'info');
         } else {
-          log('✅ Django et ses processus enfants ont été terminés.', 'success');
+          log(' OK Django et ses processus enfants ont été terminés.', 'success');
         }
       });
     } else {
@@ -426,7 +435,7 @@ function cleanup() {
 
   // 2️⃣ Fermer le serveur Express
   if (staticServer) {
-    staticServer.close(() => log('✅ Serveur statique arrêté', 'success'));
+    staticServer.close(() => log(' OK Serveur statique arrêté', 'success'));
   }
 }
 

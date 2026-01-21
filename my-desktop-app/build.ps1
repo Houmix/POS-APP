@@ -3,10 +3,10 @@
 # =====================================================
 
 # Couleurs pour les messages
-function Write-Success { Write-Host "✅ $args" -ForegroundColor Green }
-function Write-Error-Custom { Write-Host "❌ $args" -ForegroundColor Red }
-function Write-Info { Write-Host "ℹ️  $args" -ForegroundColor Cyan }
-function Write-Warning-Custom { Write-Host "⚠️  $args" -ForegroundColor Yellow }
+function Write-Success { Write-Host "OK $args" -ForegroundColor Green }
+function Write-Error-Custom { Write-Host "NO $args" -ForegroundColor Red }
+function Write-Info { Write-Host "ℹ$args" -ForegroundColor Cyan }
+function Write-Warning-Custom { Write-Host "  $args" -ForegroundColor Yellow }
 
 # =====================================================
 # CONFIGURATION - MODIFIEZ CES CHEMINS
@@ -211,8 +211,8 @@ $installerFiles = Get-ChildItem -Path (Join-Path $ELECTRON_DIR "dist") -Filter "
 if ($installerFiles.Count -gt 0) {
     Write-Success "Installateur créé:"
     foreach ($file in $installerFiles) {
-        Write-Host "  📦 $($file.FullName)" -ForegroundColor Green
-        Write-Host "  📊 Taille: $([math]::Round($file.Length / 1MB, 2)) MB"
+        Write-Host "   $($file.FullName)" -ForegroundColor Green
+        Write-Host "   Taille: $([math]::Round($file.Length / 1MB, 2)) MB"
     }
 } else {
     Write-Warning-Custom "Aucun installateur trouvé dans dist/"
@@ -223,13 +223,13 @@ if ($installerFiles.Count -gt 0) {
 # =====================================================
 Write-Host ""
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
-Write-Host "           🎉 BUILD TERMINÉ AVEC SUCCÈS 🎉" -ForegroundColor Green
+Write-Host "            BUILD TERMINÉ AVEC SUCCÈS " -ForegroundColor Green
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "📁 Dossier de sortie:" -ForegroundColor Cyan
+Write-Host " Dossier de sortie:" -ForegroundColor Cyan
 Write-Host "   $ELECTRON_DIR\dist" -ForegroundColor White
 Write-Host ""
-Write-Host "🚀 Prochaines étapes:" -ForegroundColor Cyan
+Write-Host " Prochaines étapes:" -ForegroundColor Cyan
 Write-Host "   1. Testez l'installateur dans dist/" -ForegroundColor White
 Write-Host "   2. Installez l'application sur votre machine" -ForegroundColor White
 Write-Host "   3. Vérifiez que tout fonctionne correctement" -ForegroundColor White

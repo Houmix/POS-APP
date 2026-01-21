@@ -28,7 +28,7 @@ def force_borne_reload():
                 }
             }
         )
-        print("🔔 [SYNC] Rechargement forcé envoyé aux bornes")
+        print("[SYNC] Rechargement forcé envoyé aux bornes")
     except Exception as e:
         print(f"[SYNC] Erreur : {e}")
 
@@ -39,14 +39,14 @@ def force_borne_reload():
 def menu_changed(sender, instance, created, **kwargs):
     """Quand un menu est créé ou modifié → forcer rechargement"""
     action = "créé" if created else "modifié"
-    print(f"🔔 Menu {instance.name} {action} → Rechargement bornes")
+    print(f"  Menu {instance.name} {action} → Rechargement bornes")
     force_borne_reload()
 
 
 @receiver(post_delete, sender=Menu)
 def menu_removed(sender, instance, **kwargs):
     """Quand un menu est supprimé → forcer rechargement"""
-    print(f"🔔 Menu {instance.name} supprimé → Rechargement bornes")
+    print(f"  Menu {instance.name} supprimé → Rechargement bornes")
     force_borne_reload()
 
 
@@ -56,12 +56,12 @@ def menu_removed(sender, instance, **kwargs):
 def category_changed(sender, instance, created, **kwargs):
     """Quand une catégorie est créée ou modifiée → forcer rechargement"""
     action = "créée" if created else "modifiée"
-    print(f"🔔 Catégorie {instance.name} {action} → Rechargement bornes")
+    print(f"  Catégorie {instance.name} {action} → Rechargement bornes")
     force_borne_reload()
 
 
 @receiver(post_delete, sender=GroupMenu)
 def category_removed(sender, instance, **kwargs):
     """Quand une catégorie est supprimée → forcer rechargement"""
-    print(f"🔔 Catégorie {instance.name} supprimée → Rechargement bornes")
+    print(f"  Catégorie {instance.name} supprimée → Rechargement bornes")
     force_borne_reload()

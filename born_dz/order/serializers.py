@@ -47,15 +47,15 @@ class OrderSerializer(serializers.ModelSerializer):
         """
         Mise à jour personnalisée pour gérer les champs booléens correctement
         """
-        print(f"🔄 [SERIALIZER] Mise à jour de la commande #{instance.id}")
+        print(f" [SERIALIZER] Mise à jour de la commande #{instance.id}")
         print(f"   Données reçues: {validated_data}")
         
         # Mettre à jour chaque champ présent dans validated_data
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-            print(f"   ✅ {attr} = {value}")
+            print(f"    {attr} = {value}")
         
         instance.save()
-        print(f"✅ [SERIALIZER] Commande #{instance.id} sauvegardée")
+        print(f" [SERIALIZER] Commande #{instance.id} sauvegardée")
         
         return instance

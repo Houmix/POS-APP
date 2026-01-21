@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const POS_PRINTER_NAME = "POS-80"; // ⚠️ Ajustez selon votre imprimante
+const POS_PRINTER_NAME = "POS-80"; // Ajustez selon votre imprimante
 
 /**
  * Handler d'impression pour tickets POS
@@ -37,8 +37,8 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
             windowsHide: true // Cache la fenêtre PowerShell
         });
         
-        console.log(`[Impression] ✅ Succès`);
-
+        console.log(`[Impression]  ok Succès`);
+        
         // 3️⃣ Nettoyer le fichier temporaire après un délai
         setTimeout(() => {
             try {
@@ -57,7 +57,7 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
         };
 
     } catch (error) {
-        console.error(`[Impression] ❌ Erreur: ${error.message}`);
+        console.error(`[Impression] no Erreur: ${error.message}`);
         
         // Essayer de nettoyer même en cas d'erreur
         if (tempFilePath) {
@@ -103,7 +103,7 @@ ipcMain.handle("get-available-printers", async () => {
 });
 
 // ==========================================
-// 📤 EXPORTS (si vous utilisez des modules)
+//  EXPORTS (si vous utilisez des modules)
 // ==========================================
 module.exports = {
     setupPrintHandlers: () => {
