@@ -32,19 +32,18 @@ class User(AbstractUser):
     # AbstractUser possède déjà ce champ, le redéfinir ici cassait le hachage.
 
     def save(self, *args, **kwargs):
-        if not self.username:
-            self.username = self.phone
-        if not self.email:
-            self.email = f"{self.phone}@born.dz"
-            
-        # Ne hacher QUE si ce n'est pas déjà un hash Django
-        if self.password and not (self.password.startswith('pbkdf2_') or self.password.startswith('bcrypt')):
-            self.set_password(self.password)
-            
-        super().save(*args, **kwargs)
-        
-        def __str__(self):
-            return self.phone + " " + str(self.role)
+            if not self.username:
+                self.username = self.phone
+            if not self.email:
+                self.email = f"{self.phone}@born.dz"
+     
+            # Vérification de la longueur avant le hachage
+            if self.password and not (self.password.startswith('pbkdf2_') or self.password.startswith('bcrypt')):
+                if len(self.password) != 6:
+                    raise ValueError("Le mot de passe doit faire exactement 6 caractères.")
+                self.set_password(self.password)
+                
+            super().save(*args, **kwargs)
 
 
 class Employee(models.Model):

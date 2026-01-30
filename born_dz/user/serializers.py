@@ -16,12 +16,24 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'phone', 'email', 'role', 'password']
         extra_kwargs = {
-            'password': {'write_only': True},
+            'password': {
+                'write_only': True,
+                'min_length': 6, # Sécurité minimale DRF
+                'max_length': 6  # Sécurité maximale DRF
+            },
             # 2. MODIFICATION : On rend ces champs optionnels pour laisser 
             # le models.py les générer automatiquement (save method)
             'email': {'required': False},
             'username': {'required': False},
         }
+    
+    # Cette méthode est appelée automatiquement par DRF lors du .is_valid()
+    def validate_password(self, value):
+        if len(value) != 6:
+            raise serializers.ValidationError("Le code doit contenir exactement 6 chiffres.")
+        if not value.isdigit():
+            raise serializers.ValidationError("Le code doit contenir uniquement des chiffres.")
+        return value
 
     def create(self, validated_data):
         # On extrait le mot de passe pour le traiter proprement
