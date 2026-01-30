@@ -11,10 +11,11 @@ class UserSerializer(serializers.ModelSerializer):
     # 1. MODIFICATION CRITIQUE : On accepte l'ID du rôle (ex: 2) pour l'écriture
     # queryset=Role.objects.all() permet de vérifier que l'ID existe en base
     role = serializers.PrimaryKeyRelatedField(queryset=Role.objects.all())
+    role_name = serializers.CharField(source='role.role', read_only=True)
 
     class Meta:
         model = User
-        fields = ['id', 'phone', 'email', 'role', 'password']
+        fields = ['id', 'phone', 'email', 'role', 'role_name', 'password']
         extra_kwargs = {
             'password': {
                 'write_only': True,
