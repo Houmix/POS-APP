@@ -40,6 +40,7 @@ ALLOWED_HOSTS =["192.168.1.50","menugo-dz.com", "www.menugo-dz.com","127.0.0.1",
 # Application definition
 
 INSTALLED_APPS = [ #Add created app here like customer, kds...
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
