@@ -98,15 +98,32 @@ export default function MenuScreen() {
   
   const handleSoloAdd = async () => {
     if (!selectedItemForModal) return;
-    handleUserActivity(); // Reset timer
+    handleUserActivity();
     try {
       const item = selectedItemForModal;
       const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
-      const updatedOrders = [...existingOrders, { 
-          menuId: item.id, menuName: item.name, solo: true, quantity: 1, 
-          price: item.solo_price || item.price || 0, steps: [] 
-      }];
-      await AsyncStorage.setItem("orderList", JSON.stringify(updatedOrders));
+
+      // Vérifier si le produit solo existe déjà
+      const existingIndex = existingOrders.findIndex(order => 
+        order.menuId === item.id && order.solo === true
+      );
+
+      if (existingIndex !== -1) {
+        // Si oui, on augmente la quantité
+        existingOrders[existingIndex].quantity += 1;
+      } else {
+        // Sinon, on ajoute une nouvelle ligne
+        existingOrders.push({ 
+          menuId: item.id, 
+          menuName: item.name, 
+          solo: true, 
+          quantity: 1, 
+          price: item.solo_price || item.price || 0, 
+          steps: [] 
+        });
+      }
+
+      await AsyncStorage.setItem("orderList", JSON.stringify(existingOrders));
       await updateCartCount();
       setIsModalVisible(false);
       
@@ -114,7 +131,7 @@ export default function MenuScreen() {
     } catch (error) {
       Alert.alert(t('error'), t('terminal.error_add'));
     }
-  };
+};
   
   const handleMenuAdd = () => {
     if (!selectedItemForModal) return;
@@ -151,24 +168,65 @@ export default function MenuScreen() {
   const ChoiceModal = () => {
     if (!selectedItemForModal) return null;
     return (
-      <Modal animationType="fade" transparent={true} visible={isModalVisible} onRequestClose={() => setIsModalVisible(false)}>
-        <TouchableOpacity style={modalStyles.centeredView} activeOpacity={1} onPress={() => setIsModalVisible(false)}>
-          <TouchableOpacity activeOpacity={1} style={modalStyles.modalView}>
-            <Text style={modalStyles.modalTitle}>{selectedItemForModal.name}</Text>
-            <Text style={modalStyles.modalSubtitle}>{t('terminal.choose_order_type')}</Text>
-            <View style={modalStyles.buttonContainer}>
-              <TouchableOpacity style={[modalStyles.button, modalStyles.buttonSolo]} onPress={handleSoloAdd}>
-                <Text style={modalStyles.textStyle}>{t('terminal.solo')}</Text>
-                <Text style={modalStyles.textStyleSmall}>({selectedItemForModal.solo_price || selectedItemForModal.price || 0} DA)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[modalStyles.button, modalStyles.buttonMenu]} onPress={handleMenuAdd}>
-                <Text style={modalStyles.textStyle}>{t('terminal.in_menu')}</Text>
-                <Text style={modalStyles.textStyleSmall}>({t('terminal.in_menu_subtitle')})</Text>
-              </TouchableOpacity>
+      <Modal 
+        animationType="slide" 
+        transparent={true} 
+        visible={isModalVisible} 
+        onRequestClose={() => setIsModalVisible(false)}
+      >
+        <TouchableOpacity 
+          style={modalStyles.centeredView} 
+          activeOpacity={1} 
+          onPress={() => setIsModalVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={modalStyles.productCard}>
+            {/* Image du Produit */}
+            {selectedItemForModal.photo && (
+              <Image 
+                source={{ uri: `${POS_URL}${selectedItemForModal.photo}` }} 
+                style={modalStyles.productImageFull} 
+                resizeMode="cover" 
+              />
+            )}
+
+            <View style={modalStyles.productDetails}>
+              <Text style={modalStyles.modalTitle}>{selectedItemForModal.name}</Text>
+              
+              <View style={modalStyles.descriptionSection}>
+                
+                <Text style={modalStyles.descriptionText}>
+                  {selectedItemForModal.description || "Délicieuse préparation artisanale avec des produits frais sélectionnés avec soin."}
+                </Text>
+              </View>
+
+              {/* Barre d'actions Footer */}
+              <View style={modalStyles.footerActions}>
+                <TouchableOpacity 
+                  style={modalStyles.backButton} 
+                  onPress={() => setIsModalVisible(false)}
+                >
+                  <Feather name="arrow-left" size={20} color="#94a3b8" />
+                  <Text style={modalStyles.backButtonText}>{t('cancel')}</Text>
+                </TouchableOpacity>
+
+                <View style={modalStyles.mainButtons}>
+                  <TouchableOpacity style={[modalStyles.actionBtn, modalStyles.btnSolo]} onPress={handleSoloAdd}>
+                    <Text style={modalStyles.btnLabel}>{t('terminal.solo')}</Text>
+                    <Text style={modalStyles.btnPrice}>{selectedItemForModal.solo_price || selectedItemForModal.price || 0} DA</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity style={[modalStyles.actionBtn, modalStyles.btnMenu]} onPress={handleMenuAdd}>
+                    {/* On garde le titre "En Menu" */}
+                    <Text style={[modalStyles.btnLabel, { color: 'white' }]}>{t('terminal.in_menu')}</Text>
+                    
+                    {/* ✅ REMPLACÉ : t('terminal.in_menu_subtitle') par le prix */}
+                    <Text style={modalStyles.btnSubtitle}>
+                      {selectedItemForModal.price || 0} DA
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-            <TouchableOpacity style={modalStyles.closeButton} onPress={() => setIsModalVisible(false)}>
-                <Text style={modalStyles.closeButtonText}>{t('cancel')}</Text>
-            </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -374,33 +432,110 @@ const styles = StyleSheet.create({
 
 const modalStyles = StyleSheet.create({
   centeredView: {
-    flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: 'rgba(0, 0, 0, 0.6)'
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: 'rgba(0, 0, 0, 0.7)', // Fond plus sombre pour focus
   },
-  modalView: {
-    margin: 20, backgroundColor: "white", borderRadius: 25, padding: 35, alignItems: "center",
-    shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 10,
-    elevation: 10, width: '65%', maxWidth: 600
+  productCard: {
+    backgroundColor: "white",
+    borderRadius: 30,
+    width: '75%',
+    maxWidth: 800,
+    overflow: 'hidden', // Pour que l'image respecte les bords arrondis
+    elevation: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
   },
-  modalTitle: { fontSize: 32, fontWeight: "800", marginBottom: 10, color: '#0056b3', textAlign: 'center' },
-  modalSubtitle: { fontSize: 18, marginBottom: 30, color: '#64748B', textAlign: 'center' },
-  buttonContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', gap: 20 },
-  button: {
-    borderRadius: 20, padding: 20, elevation: 4, minHeight: 120, flex: 1,
-    justifyContent: 'center', alignItems: 'center'
+  productImageFull: {
+    width: '100%',
+    height: 300,
   },
-  buttonSolo: { backgroundColor: "#0056b3" }, 
-  buttonMenu: { backgroundColor: "#ff69b4" }, 
-  textStyle: { color: "white", fontWeight: "800", textAlign: "center", fontSize: 24 },
-  textStyleSmall: { color: "rgba(255,255,255,0.9)", textAlign: "center", fontSize: 16, marginTop: 5, fontWeight: '500' },
-  closeButton: { marginTop: 25, padding: 10 },
-  closeButtonText: { fontSize: 16, color: '#94a3b8', fontWeight: 'bold' },
-  alertView: { width: 400, backgroundColor: "white", borderRadius: 25, padding: 30, alignItems: "center", elevation: 20 },
-  alertTitle: { fontSize: 26, fontWeight: "800", color: "#0056b3", marginBottom: 10 },
-  alertMessage: { fontSize: 16, color: "#475569", marginBottom: 30, textAlign: 'center', lineHeight: 24 },
-  alertButtonContinue: {
-    backgroundColor: "#0056b3", paddingVertical: 16, borderRadius: 15, width: '100%', alignItems: 'center', marginBottom: 12
+  productDetails: {
+    padding: 30,
   },
-  alertButtonCancel: { paddingVertical: 12, width: '100%', alignItems: 'center' },
-  alertButtonTextWhite: { color: "white", fontSize: 18, fontWeight: "bold" },
-  alertButtonTextRed: { color: "#ef4444", fontSize: 16, fontWeight: "bold" }
+  modalTitle: {
+    fontSize: 36,
+    fontWeight: "900",
+    color: '#1e293b',
+    marginBottom: 15,
+  },
+  descriptionSection: {
+    marginBottom: 40,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    color: '#ff69b4',
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  descriptionText: {
+    fontSize: 18,
+    color: '#64748b',
+    lineHeight: 26,
+  },
+  footerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingTop: 25,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+  },
+  backButtonText: {
+    fontSize: 18,
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  mainButtons: {
+    flexDirection: 'row',
+    gap: 15,
+  },
+  actionBtn: {
+    paddingVertical: 15,
+    paddingHorizontal: 25,
+    borderRadius: 18,
+    minWidth: 160,
+    alignItems: 'center',
+  },
+  btnSolo: {
+    backgroundColor: '#f1f5f9',
+  },
+  btnMenu: {
+    backgroundColor: '#5e9bdd',
+  },
+  btnLabel: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  btnPrice: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  // On ajuste le texte pour le bouton Menu qui est bleu
+  btnMenuText: {
+    color: 'white',
+  },
+  btnSubtitle: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  // Surcharge pour les textes du bouton bleu
+  btnMenuLabel: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '800',
+  }
 });
