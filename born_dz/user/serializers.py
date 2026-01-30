@@ -1,10 +1,6 @@
-#Utilisé pour transformer nos données sous formats JSON (Convertir des objets en JSON)
-
-from django.utils.crypto import get_random_string
 from rest_framework import serializers
 from .models import Employee, User, Role
 from restaurant.models import Restaurant
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class RoleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -12,35 +8,51 @@ class RoleSerializer(serializers.ModelSerializer):
         fields = ['id', 'role']
 
 class UserSerializer(serializers.ModelSerializer):
-    role = RoleSerializer()  # Sérialise la relation avec le modèle Role
+    # 1. MODIFICATION CRITIQUE : On accepte l'ID du rôle (ex: 2) pour l'écriture
+    # queryset=Role.objects.all() permet de vérifier que l'ID existe en base
+    role = serializers.PrimaryKeyRelatedField(queryset=Role.objects.all())
 
     class Meta:
         model = User
         fields = ['id', 'phone', 'email', 'role', 'password']
         extra_kwargs = {
-            'password': {'write_only': True},  # Le mot de passe sera en lecture seule
+            'password': {'write_only': True},
+            # 2. MODIFICATION : On rend ces champs optionnels pour laisser 
+            # le models.py les générer automatiquement (save method)
+            'email': {'required': False},
+            'username': {'required': False},
         }
 
     def create(self, validated_data):
-        role_data = validated_data.pop('role', None)
-        if role_data:
-            role = Role.objects.get(role=role_data['role'])
-            validated_data['role'] = role
-        user = User.objects.create(**validated_data)
-        return user
+        # On extrait le mot de passe pour le traiter proprement
+        password = validated_data.pop('password', None)
+        
+        # On crée l'instance SANS la sauvegarder tout de suite en base
+        instance = self.Meta.model(**validated_data)
+        
+        # On définit le mot de passe (si fourni)
+        if password:
+            instance.set_password(password)
+        
+        # 3. L'appel à save() ici va déclencher la logique de votre models.py
+        # (génération auto de l'email et du username si manquants)
+        instance.save()
+        return instance
 
     def update(self, instance, validated_data):
-        role_data = validated_data.pop('role', None)
-        if role_data:
-            role = Role.objects.get(role=role_data['role'])
-            instance.role = role
+        # Gestion du mot de passe en cas de mise à jour
+        password = validated_data.pop('password', None)
+        if password:
+            instance.set_password(password)
+            
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         return instance
 
 class EmployeeSerializer(serializers.ModelSerializer):
-    user = UserSerializer()  # Sérialise la relation avec le modèle User
+    # On garde le UserSerializer corrigé ici
+    user = UserSerializer()
     restaurant = serializers.PrimaryKeyRelatedField(queryset=Restaurant.objects.all())
 
     class Meta:
@@ -49,6 +61,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         user_data = validated_data.pop('user')
+        # On passe le user_data au UserSerializer corrigé
         user_serializer = UserSerializer(data=user_data)
         if user_serializer.is_valid():
             user = user_serializer.save()
@@ -69,5 +82,3 @@ class EmployeeSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
-
-
