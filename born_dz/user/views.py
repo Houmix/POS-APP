@@ -60,15 +60,23 @@ class EmployeeTokenView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # 5. Génération du token si tout est OK
+        # 5. Génération du token ET sérialisation de l'utilisateur
         refresh = RefreshToken.for_user(employee_user)
-        token = {
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
+        
+        # On utilise le sérializer pour récupérer le role_name proprement
+        user_serializer = UserSerializer(employee_user)
+
+        data = {
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            },
+            # On renvoie tout l'objet user (qui contient role_name grâce à votre serializer)
+            'user': user_serializer.data 
         }
         
-        print(f"Connexion réussie pour {phone}")
-        return Response(token, status=status.HTTP_200_OK)
+        print(f"Connexion réussie pour {phone} - Rôle: {user_serializer.data.get('role_name')}")
+        return Response(data, status=status.HTTP_200_OK)
     
 class EmployeeLogin(APIView):
     # L'utilisateur doit avoir un token valide
