@@ -207,6 +207,22 @@ export default function MenuAdminPage() {
 
             if (!result.canceled && result.assets[0]) {
                 const asset = result.assets[0];
+
+                // 👇 1. DÉFINITION DU SEUIL DE QUALITÉ (en pixels)
+                // Pour un menu, 500px est un minimum correct pour ne pas être flou
+                const MIN_WIDTH = 500;
+                const MIN_HEIGHT = 500;
+
+                // 👇 2. VÉRIFICATION DE LA RÉSOLUTION
+                if (asset.width < MIN_WIDTH || asset.height < MIN_HEIGHT) {
+                    showError(
+                        'Qualité insuffisante', 
+                        `L'image est trop pixelisée. Veuillez choisir une image d'au moins ${MIN_WIDTH}x${MIN_HEIGHT} pixels.`
+                    );
+                    return; // ⛔ STOP : On n'enregistre pas l'image
+                }
+
+                // Si la qualité est bonne, on continue comme avant
                 setter({
                     uri: asset.uri,
                     type: 'image/jpeg',
@@ -696,14 +712,25 @@ export default function MenuAdminPage() {
                     <TextInput style={[styles.input, {flex: 1}]} placeholder="Prix solo" keyboardType="numeric" value={menuForm.solo_price} onChangeText={(t) => setMenuForm({...menuForm, solo_price: t})} />
                 </View>
                 <View style={styles.row}>
+                    {/* Picker Groupe harmonisé */}
                     <View style={[styles.pickerContainer, {flex: 1, marginRight: 10}]}>
-                        <Picker selectedValue={menuForm.group_menu} onValueChange={(v) => setMenuForm({...menuForm, group_menu: v})}>
-                            <Picker.Item label="Choisir un groupe" value="" />
+                        <Picker 
+                            selectedValue={menuForm.group_menu} 
+                            onValueChange={(v) => setMenuForm({...menuForm, group_menu: v})}
+                            style={{ width: '100%', height: '100%', color: COLORS.secondary, backgroundColor: 'transparent' }} // 👈 STYLE AJOUTÉ
+                        >
+                            <Picker.Item label="Choisir un groupe" value="" style={{color: COLORS.muted}} />
                             {groups.map((g: any) => (<Picker.Item key={g.id} label={g.name} value={g.id.toString()} />))}
                         </Picker>
                     </View>
+
+                    {/* Picker Type harmonisé */}
                     <View style={[styles.pickerContainer, {flex: 1}]}>
-                        <Picker selectedValue={menuForm.type} onValueChange={(v) => setMenuForm({...menuForm, type: v})}>
+                        <Picker 
+                            selectedValue={menuForm.type} 
+                            onValueChange={(v) => setMenuForm({...menuForm, type: v})}
+                            style={{ width: '100%', height: '100%', color: COLORS.secondary, backgroundColor: 'transparent' }} // 👈 STYLE AJOUTÉ
+                        >
                             {MENU_TYPES.map((type) => (<Picker.Item key={type.value} label={type.label} value={type.value} />))}
                         </Picker>
                     </View>
@@ -862,6 +889,7 @@ export default function MenuAdminPage() {
                 </View>
             </Modal>
             {/* MODAL EDIT MENU CORRIGÉE */}
+
             <Modal visible={editMenuModal} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <ScrollView contentContainerStyle={{flexGrow: 1, justifyContent: 'center'}}>
@@ -873,6 +901,7 @@ export default function MenuAdminPage() {
                                 </TouchableOpacity>
                             </View>
 
+                            {/* Nom */}
                             <Text style={styles.photoLabel}>Nom de l'article</Text>
                             <TextInput 
                                 style={styles.input} 
@@ -881,6 +910,7 @@ export default function MenuAdminPage() {
                                 onChangeText={(t) => setEditingMenu({...editingMenu, name: t})} 
                             />
                             
+                            {/* Description */}
                             <Text style={styles.photoLabel}>Description</Text>
                             <TextInput 
                                 style={styles.input} 
@@ -890,16 +920,17 @@ export default function MenuAdminPage() {
                                 multiline 
                             />
 
-                            {/* 👇 SÉLECTEUR DE GROUPE (CATÉGORIE) 👇 */}
-                            <Text style={{marginBottom: 5, marginTop: 10, color: COLORS.secondary, fontWeight:'700'}}>
+                            {/* 👇 SÉLECTEUR DE GROUPE (CATÉGORIE) HARMONISÉ 👇 */}
+                            <Text style={{marginBottom: 8, marginTop: 10, color: COLORS.secondary, fontWeight:'700'}}>
                                 Catégorie (Groupe)
                             </Text>
                             <View style={styles.pickerContainer}>
                                 <Picker 
                                     selectedValue={editingMenu?.group_menu ? editingMenu.group_menu.toString() : ""} 
                                     onValueChange={(v) => setEditingMenu({...editingMenu, group_menu: v})}
+                                    style={{ width: '100%', height: '100%', color: COLORS.secondary, backgroundColor: 'transparent' }}
                                 >
-                                    <Picker.Item label="Sélectionner une catégorie..." value="" />
+                                    <Picker.Item label="Sélectionner une catégorie..." value="" style={{color: COLORS.muted}} />
                                     {groups.map((g: any) => (
                                         <Picker.Item key={g.id} label={g.name} value={g.id.toString()} />
                                     ))}
@@ -914,7 +945,7 @@ export default function MenuAdminPage() {
                                         style={styles.input} 
                                         placeholder="0.00" 
                                         keyboardType="numeric" 
-                                        value={editingMenu?.price || ''} 
+                                        value={editingMenu?.price ? editingMenu.price.toString() : ''} 
                                         onChangeText={(t) => setEditingMenu({...editingMenu, price: t})} 
                                     />
                                 </View>
@@ -924,20 +955,21 @@ export default function MenuAdminPage() {
                                         style={styles.input} 
                                         placeholder="0.00" 
                                         keyboardType="numeric" 
-                                        value={editingMenu?.solo_price || ''} 
+                                        value={editingMenu?.solo_price ? editingMenu.solo_price.toString() : ''} 
                                         onChangeText={(t) => setEditingMenu({...editingMenu, solo_price: t})} 
                                     />
                                 </View>
                             </View>
 
-                            {/* 👇 SÉLECTEUR DE TYPE (BURGER, WRAP...) 👇 */}
-                            <Text style={{marginBottom: 5, marginTop: 5, color: COLORS.secondary, fontWeight:'700'}}>
+                            {/* 👇 SÉLECTEUR DE TYPE HARMONISÉ 👇 */}
+                            <Text style={{marginBottom: 8, marginTop: 15, color: COLORS.secondary, fontWeight:'700'}}>
                                 Type de produit
                             </Text>
                             <View style={styles.pickerContainer}>
                                 <Picker 
                                     selectedValue={editingMenu?.type} 
                                     onValueChange={(v) => setEditingMenu({...editingMenu, type: v})}
+                                    style={{ width: '100%', height: '100%', color: COLORS.secondary, backgroundColor: 'transparent' }}
                                 >
                                     {MENU_TYPES.map((type) => (
                                         <Picker.Item key={type.value} label={type.label} value={type.value} />
@@ -945,6 +977,7 @@ export default function MenuAdminPage() {
                                 </Picker>
                             </View>
                             
+                            {/* Photo (Le contrôle de qualité est géré ici via renderPhotoPicker -> pickImage) */}
                             {renderPhotoPicker(selectedMenuPhoto, setSelectedMenuPhoto, editingMenu?.photo)}
                             
                             <TouchableOpacity style={styles.submitBtn} onPress={handleUpdateMenu}>
@@ -1041,8 +1074,29 @@ const styles = StyleSheet.create({
     card: { backgroundColor: COLORS.card, padding: 25, borderRadius: 16, marginBottom: 25, elevation: 4 },
     cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 20, color: COLORS.secondary },
     row: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-    input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, padding: 15, borderRadius: 12, fontSize: 16, marginBottom: 15 },
-    pickerContainer: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, marginBottom: 15 },
+    input: { 
+        backgroundColor: '#F8FAFC', // Fond gris très clair
+        borderWidth: 1, 
+        borderColor: COLORS.border, // La couleur de la bordure grise
+        paddingHorizontal: 15, 
+        borderRadius: 12,           // L'arrondi
+        fontSize: 16, 
+        marginBottom: 15,
+        color: COLORS.secondary,
+        height: 55, 
+        justifyContent: 'center' 
+    },
+    pickerContainer: { 
+        backgroundColor: '#F8FAFC', // 👈 IMPORTANT : Même fond que l'input
+        borderWidth: 1,             // 👈 IMPORTANT : Même épaisseur
+        borderColor: COLORS.border, // 👈 IMPORTANT : Même couleur de bordure grise
+        borderRadius: 12,           // 👈 IMPORTANT : Même arrondi
+        marginBottom: 15,
+        height: 55, 
+        justifyContent: 'center',
+        // 👇 C'EST LA CLÉ POUR LES COINS 👇
+        overflow: 'hidden', // Coupe tout ce qui dépasse des coins arrondis
+    },
     
     submitBtn: { backgroundColor: COLORS.success, flexDirection: 'row', height: 60, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 10 },
     btnText: { color: '#FFF', fontWeight: '800', fontSize: 16 },

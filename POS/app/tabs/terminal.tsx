@@ -365,13 +365,20 @@ export default function MenuScreen() {
                   <View style={styles.menuInfo}>
                     <Text style={styles.menuText} numberOfLines={2}>{item.name}</Text>
                     <View style={styles.priceActionContainer}>
-                        <Text style={styles.menuPrice}>
-                          {item.extra == 1 ? `+${item.price}` : item.solo_price == 1 ? `${item.solo_price}` : `${item.price}`} <Text style={{fontSize: 14}}>DA</Text>
-                        </Text>
-                        <View style={styles.addButton}>
-                           <Feather name="plus" size={20} color="white" />
-                        </View>
-                    </View>
+                      <Text style={styles.menuPrice}>
+                        {/* CORRECTION : On affiche item.solo_price s'il existe, sinon on se rabat sur item.price */}
+                        {item.extra == 1 
+                          ? `+${item.price}` 
+                          : (item.solo_price && parseFloat(item.solo_price) > 0) 
+                              ? `${item.solo_price}` 
+                              : `${item.price}`
+                        } 
+                        <Text style={{fontSize: 14}}> DA</Text>
+                      </Text>
+                      <View style={styles.addButton}>
+                        <Feather name="plus" size={20} color="white" />
+                      </View>
+                  </View>
                   </View>
                 </TouchableOpacity>
               )}
