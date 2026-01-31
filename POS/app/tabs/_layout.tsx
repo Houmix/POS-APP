@@ -16,15 +16,17 @@ export default function TabLayout() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fonction pour récupérer le rôle stocké lors du Login
     const checkUserRole = async () => {
       try {
-        // Supposons que vous stockiez l'objet user complet en JSON string
-        const userData = await AsyncStorage.getItem('user'); 
+        const userData = await AsyncStorage.getItem('user');
+        console.log("🔍 _layout: Données utilisateur brutes:", userData);
+
         if (userData) {
           const user = JSON.parse(userData);
-          // Ici on utilise le 'role_name' ajouté à l'étape 1
-          setUserRole(user.role_name); 
+          // Sécurité : on vérifie si role_name existe, sinon on regarde role
+          const role = user.role_name || user.role?.role || ''; 
+          console.log("🔍 _layout: Rôle détecté:", role);
+          setUserRole(role);
         }
       } catch (e) {
         console.error("Erreur récupération role", e);
@@ -44,8 +46,10 @@ export default function TabLayout() {
     );
   }
 
-  // Définir qui est Manager (Manager ou Owner)
-  const isManager = userRole === 'manager' || userRole === 'owner';
+  // Logique stricte pour déterminer l'accès
+  // On met tout en minuscule pour éviter les erreurs de casse (Manager vs manager)
+  const roleLower = userRole ? userRole.toLowerCase() : '';
+  const isManager = roleLower === 'manager' || roleLower === 'owner';
 
   return (
     <Tabs
@@ -58,7 +62,6 @@ export default function TabLayout() {
         tabBarIconStyle: { marginBottom: -4 },
       }}
     >
-      {/* 1. Caisse - Accessible à tous les employés */}
       <Tabs.Screen
         name="terminal"
         options={{
@@ -69,7 +72,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 2. Commandes - Accessible à tous les employés */}
       <Tabs.Screen
         name="order"
         options={{
@@ -80,7 +82,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 3. Stocks - Accessible à tous les employés */}
       <Tabs.Screen
         name="manageTerminal"
         options={{
@@ -91,25 +92,26 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 4. Menu - RÉSERVÉ MANAGER */}
+      {/* REGLAGE MANAGER : Si pas manager, href: null cache l'onglet */}
       <Tabs.Screen
         name="MenuAdminPage"
         options={{
           title: 'Menu',
-          // Si ce n'est pas un manager, href: null cache l'onglet complètement
-          href: isManager ? '/MenuAdminPage' : null,
+          // ⚠️ CORRECTION : On utilise 'undefined' au lieu du chemin '/MenuAdminPage'
+          // Cela laisse Expo Router trouver le fichier automatiquement
+          href: isManager ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "restaurant" : "restaurant-outline"} size={24} color={color} />
           ),
         }}
       />
 
-      {/* 5. Stats (KPI) - RÉSERVÉ MANAGER */}
       <Tabs.Screen
         name="kpi"
         options={{
           title: 'Stats',
-          href: isManager ? '/kpi' : null,
+          // ⚠️ CORRECTION : Idem ici, 'undefined' si manager, 'null' sinon
+          href: isManager ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "bar-chart" : "bar-chart-outline"} size={24} color={color} />
           ),
