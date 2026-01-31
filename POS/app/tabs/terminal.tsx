@@ -98,9 +98,7 @@ export default function MenuScreen() {
   // --- BOUTON MANUEL DE DÉCONNEXION ---
   const handleLogoutPress = async () => {
     if (Platform.OS === 'web') {
-        if (window.confirm("Voulez-vous vraiment quitter le terminal ?")) {
             performLogout();
-        }
     } else {
         Alert.alert(
             "Déconnexion",
