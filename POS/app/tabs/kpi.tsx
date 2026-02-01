@@ -16,6 +16,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import DatePicker, { registerLocale } from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css"; 
 import { fr } from 'date-fns/locale';
+import { setHours, setMinutes } from 'date-fns';
 
 registerLocale('fr', fr);
 
@@ -33,6 +34,104 @@ const COLORS = {
   textSub: "#64748B",
   border: "#E2E8F0"
 };
+
+// --- STYLES MODERNES POUR LE CALENDRIER WEB ---
+const MODERN_DATEPICKER_CSS = `
+  .react-datepicker {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    border: 1px solid ${COLORS.border} !important;
+    border-radius: 16px !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+  }
+  
+  /* HEADER (Mois/Année) */
+  .react-datepicker__header {
+    background-color: white !important;
+    border-bottom: 1px solid ${COLORS.border} !important;
+    padding-top: 15px !important;
+  }
+  .react-datepicker__current-month {
+    color: ${COLORS.textHeader} !important;
+    font-weight: 800 !important;
+    font-size: 1rem !important;
+    margin-bottom: 10px;
+  }
+  .react-datepicker__day-name {
+    color: ${COLORS.textSub} !important;
+    font-weight: 600 !important;
+    width: 2.5rem !important;
+  }
+
+  /* JOURS */
+  .react-datepicker__day {
+    width: 2.5rem !important;
+    line-height: 2.5rem !important;
+    margin: 0.1rem !important;
+    border-radius: 50% !important;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+  .react-datepicker__day:hover {
+    background-color: ${COLORS.bg} !important;
+    border-radius: 50% !important;
+  }
+  .react-datepicker__day--selected, 
+  .react-datepicker__day--keyboard-selected {
+    background-color: ${COLORS.primary} !important;
+    color: white !important;
+    box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4);
+  }
+  .react-datepicker__day--today {
+    color: ${COLORS.primary};
+    font-weight: 800;
+    position: relative;
+  }
+  .react-datepicker__day--today::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    background-color: ${COLORS.primary};
+    border-radius: 50%;
+  }
+  /* Override pour le jour sélectionné qui est aussi aujourd'hui */
+  .react-datepicker__day--selected.react-datepicker__day--today::after {
+    background-color: white;
+  }
+
+  /* SELECTEUR D'HEURE (Time) */
+  .react-datepicker__time-container {
+    border-left: 1px solid ${COLORS.border} !important;
+    width: 100px !important;
+  }
+  .react-datepicker__header--time {
+    background-color: white !important;
+    border-bottom: 1px solid ${COLORS.border} !important;
+  }
+  .react-datepicker__time-list-item {
+    height: auto !important;
+    padding: 10px !important;
+    font-weight: 500;
+  }
+  .react-datepicker__time-list-item:hover {
+    background-color: ${COLORS.bg} !important;
+  }
+  .react-datepicker__time-list-item--selected {
+    background-color: ${COLORS.primary} !important;
+    color: white !important;
+    font-weight: 700 !important;
+  }
+
+  /* FLÈCHES NAVIGATION */
+  .react-datepicker__navigation-icon::before {
+    border-color: ${COLORS.textSub} !important;
+    border-width: 2px 2px 0 0 !important;
+  }
+`;
 
 // --- FONCTION UTILITAIRE POUR LES DATES (CORRECTION FILTRE) ---
 // Cette fonction convertit une date locale en string ISO sans la convertir en UTC
@@ -178,7 +277,8 @@ export default function KPI() {
         if (Platform.OS === 'web') {
             return (
                 <View style={{ flex: 1, zIndex: 2000 }}>
-                     {/* Style injecté une seule fois via global ou ici */}
+                     {/* Ajout du style ici aussi */}
+                     <style>{MODERN_DATEPICKER_CSS}</style>
                      <style>{`.react-datepicker-popper { z-index: 9999 !important; } .react-datepicker-wrapper { width: 100%; }`}</style>
                     <DatePicker
                         selected={date}
@@ -202,18 +302,31 @@ export default function KPI() {
     };
 
     const TimeInput = ({ time, type }: any) => {
+        // Logique pour ajouter 23h59 UNIQUEMENT si c'est l'heure de fin
+        const injectedTimes = type === 'end' 
+            ? [setHours(setMinutes(new Date(), 59), 23)] // Crée un objet Date à 23:59
+            : [];
+
         if (Platform.OS === 'web') {
             return (
                 <View style={{ flex: 1, zIndex: 2000 }}>
+                     {/* Injection du CSS MODERNE */}
+                     <style>{MODERN_DATEPICKER_CSS}</style>
+                     
+                     {/* Fix pour le z-index qui passe par dessus tout */}
+                     <style>{`.react-datepicker-popper { z-index: 9999 !important; } .react-datepicker-wrapper { width: 100%; }`}</style>
+                    
                     <DatePicker
                         selected={time}
                         onChange={(d: Date) => handleTimeUpdate(d, type)}
                         showTimeSelect
                         showTimeSelectOnly
                         timeIntervals={15}
-                        timeCaption="Heure"
+                        timeCaption={type === 'start' ? "Début" : "Fin"}
                         dateFormat="HH:mm"
                         locale="fr"
+                        // C'est ici que la magie opère pour le 23:59
+                        injectTimes={injectedTimes} 
                         customInput={<CustomTimeTrigger timeDisplay={formatTimeDisplay(time)} />}
                         popperPlacement="bottom-start"
                         portalId="root-portal"
@@ -221,6 +334,7 @@ export default function KPI() {
                 </View>
             );
         }
+        // ... version mobile inchangée ...
         return (
             <TouchableOpacity style={styles.inputTrigger} onPress={() => openMobilePicker('time', type)}>
                 <ClockIcon size={18} color={COLORS.warning} style={{ marginRight: 8 }} />
