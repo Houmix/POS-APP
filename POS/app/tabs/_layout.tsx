@@ -47,9 +47,15 @@ export default function TabLayout() {
   }
 
   // Logique stricte pour déterminer l'accès
-  // On met tout en minuscule pour éviter les erreurs de casse (Manager vs manager)
   const roleLower = userRole ? userRole.toLowerCase() : '';
+
+  // 1. Droit "Manager" : Accès total (Caisse + Commandes + Stocks + Menu + Stats)
+  // Concerne : Manager et Owner
   const isManager = roleLower === 'manager' || roleLower === 'owner';
+
+  // 2. Droit "Staff" : Accès opérationnel (Caisse + Commandes + Stocks)
+  // Concerne : Manager, Owner et Cashier. (Le Customer est exclu ici)
+  const isStaff = roleLower === 'manager' || roleLower === 'owner' || roleLower === 'cashier';
 
   return (
     <Tabs
@@ -62,6 +68,7 @@ export default function TabLayout() {
         tabBarIconStyle: { marginBottom: -4 },
       }}
     >
+      {/* Tout le monde a accès à la Caisse (y compris Customer) */}
       <Tabs.Screen
         name="terminal"
         options={{
@@ -76,6 +83,8 @@ export default function TabLayout() {
         name="order"
         options={{
           title: 'Commandes',
+          // Si staff (Manager/Owner/Cashier) -> Visible, sinon (Customer) -> Caché
+          href: isStaff ? undefined : null, 
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "list-circle" : "list-circle-outline"} size={26} color={color} />
           ),
@@ -86,19 +95,19 @@ export default function TabLayout() {
         name="manageTerminal"
         options={{
           title: 'Stocks',
+          // Si staff (Manager/Owner/Cashier) -> Visible, sinon (Customer) -> Caché
+          href: isStaff ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "cube" : "cube-outline"} size={24} color={color} />
           ),
         }}
       />
 
-      {/* REGLAGE MANAGER : Si pas manager, href: null cache l'onglet */}
+      {/* Seuls Owner et Manager accèdent à l'admin du Menu */}
       <Tabs.Screen
         name="MenuAdminPage"
         options={{
           title: 'Menu',
-          // ⚠️ CORRECTION : On utilise 'undefined' au lieu du chemin '/MenuAdminPage'
-          // Cela laisse Expo Router trouver le fichier automatiquement
           href: isManager ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "restaurant" : "restaurant-outline"} size={24} color={color} />
@@ -106,11 +115,11 @@ export default function TabLayout() {
         }}
       />
 
+      {/* Seuls Owner et Manager accèdent aux Stats */}
       <Tabs.Screen
         name="kpi"
         options={{
           title: 'Stats',
-          // ⚠️ CORRECTION : Idem ici, 'undefined' si manager, 'null' sinon
           href: isManager ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "bar-chart" : "bar-chart-outline"} size={24} color={color} />
