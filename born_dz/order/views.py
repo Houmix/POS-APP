@@ -1,3 +1,7 @@
+from django.utils import timezone
+from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_datetime
+from datetime import datetime, time
 from django.shortcuts import render, get_object_or_404
 from restaurant.models import Restaurant
 from rest_framework.views import APIView
@@ -378,14 +382,47 @@ def format_order_as_ticket(order_id):
 
 class KpiView(APIView):
     def get(self, request, restaurantId):
+        # 1. Récupération des paramètres
+        start_date_str = request.query_params.get('start_date')
+        end_date_str = request.query_params.get('end_date')
+
+        print(f"DEBUG KPI - Reçu: Start={start_date_str}, End={end_date_str}")
+
         orders = Order.objects.filter(restaurant_id=restaurantId).prefetch_related(
             'items__menu', 
             'items__options__option'
         )
+
+        # 2. Application du filtre
+        if start_date_str and end_date_str:
+            try:
+                # Conversion des chaînes en objets datetime
+                start_datetime = parse_datetime(start_date_str)
+                end_datetime = parse_datetime(end_date_str)
+
+                if start_datetime and end_datetime:
+                    # Gestion des fuseaux horaires (Timezone Aware vs Naive)
+                    # Si le serveur utilise les timezones (USE_TZ=True), on s'assure que les dates le sont aussi
+                    if timezone.is_naive(start_datetime):
+                        start_datetime = timezone.make_aware(start_datetime)
+                    if timezone.is_naive(end_datetime):
+                        end_datetime = timezone.make_aware(end_datetime)
+                    
+                    # FILTRE
+                    orders = orders.filter(created_at__range=(start_datetime, end_datetime))
+                    print(f"DEBUG KPI - Filtre appliqué. Commandes: {orders.count()}")
+                else:
+                    print("DEBUG KPI - Erreur de parsing des dates")
+            except Exception as e:
+                print(f"DEBUG KPI - Erreur CRITIQUE date: {str(e)}")
+                # En cas d'erreur, on continue sans filtrer pour ne pas bloquer l'appli
+
+        # 3. Calculs (Code inchangé)
         paid_orders = orders.filter(paid=True)
-        total_revenue = sum(order.total_price() for order in paid_orders)
-        total_orders_count = orders.count()
+        total_revenue = sum(order.total_price() for order in paid_orders) or 0
+        total_orders_count = orders.count() or 0
         paid_orders_count = paid_orders.count()
+        
         average_cart = (total_revenue / paid_orders_count) if paid_orders_count > 0 else 0
 
         context = {
