@@ -1,42 +1,128 @@
 import React, { useEffect, useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, ActivityIndicator, 
-  RefreshControl, SafeAreaView, Dimensions 
+  RefreshControl, SafeAreaView, Dimensions, TouchableOpacity, Platform, Modal, Button, Switch 
 } from 'react-native';
 import { 
   TrendingUp, ShoppingBag, CreditCard, 
-  Package, CheckCircle2, XCircle, ChevronRight 
+  Package, CheckCircle2, XCircle, Calendar as CalendarIcon, Clock as ClockIcon, X as XIcon, Filter 
 } from 'lucide-react-native';
 import axios from 'axios';
 import { POS_URL, idRestaurant } from '@/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+// --- IMPORTS WEB ---
+import DatePicker, { registerLocale } from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css"; 
+import { fr } from 'date-fns/locale';
+
+registerLocale('fr', fr);
 
 const { width } = Dimensions.get('window');
 
-// Thème de couleurs "Modern Dashboard"
 const COLORS = {
-  primary: "#6366F1", // Indigo moderne
+  primary: "#6366F1", 
   success: "#10B981",
   warning: "#F59E0B",
   danger: "#EF4444",
   info: "#3B82F6",
-  bg: "#F1F5F9",
+  bg: "#F8FAFC",
   card: "#FFFFFF",
   textHeader: "#1E293B",
-  textSub: "#64748B"
+  textSub: "#64748B",
+  border: "#E2E8F0"
 };
+
+// --- DECLENCHEURS PERSONNALISÉS ---
+
+const CustomDateTrigger = React.forwardRef(({ value, onClick, dateDisplay }: any, ref: any) => (
+    <TouchableOpacity style={styles.inputTrigger} onPress={onClick} ref={ref} activeOpacity={0.7}>
+        <CalendarIcon size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
+        <Text style={styles.triggerText}>{dateDisplay}</Text>
+    </TouchableOpacity>
+));
+
+const CustomTimeTrigger = React.forwardRef(({ value, onClick, timeDisplay }: any, ref: any) => (
+    <TouchableOpacity style={styles.inputTrigger} onPress={onClick} ref={ref} activeOpacity={0.7}>
+        <ClockIcon size={18} color={COLORS.warning} style={{ marginRight: 8 }} />
+        <Text style={styles.triggerText}>{timeDisplay}</Text>
+    </TouchableOpacity>
+));
 
 export default function KPI() {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
+    // --- ETATS FILTRES DISSOCIÉS ---
+    const [useDateFilter, setUseDateFilter] = useState(false);
+    const [useTimeFilter, setUseTimeFilter] = useState(false);
+
+    // Dates (Jour/Mois/Année)
+    const [startDate, setStartDate] = useState(new Date());
+    const [endDate, setEndDate] = useState(new Date());
+
+    // Heures (hh:mm)
+    // On initialise Start à 09:00 et End à 23:00 par exemple pour l'UX
+    const [startTime, setStartTime] = useState(() => {
+        const d = new Date(); d.setHours(9, 0, 0, 0); return d;
+    });
+    const [endTime, setEndTime] = useState(() => {
+        const d = new Date(); d.setHours(23, 59, 0, 0); return d;
+    });
+
+    // Mobile States
+    const [showPicker, setShowPicker] = useState<{show: boolean, mode: 'date'|'time', type: 'start'|'end'}>({ show: false, mode: 'date', type: 'start' });
+    const [tempDate, setTempDate] = useState(new Date());
+
+    // --- FORMATAGE SÉCURISÉ ---
+    const formatDateDisplay = (date: any) => {
+        if (!date) return "";
+        const d = date instanceof Date ? date : new Date(date);
+        return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+
+    const formatTimeDisplay = (date: any) => {
+        if (!date) return "";
+        const d = date instanceof Date ? date : new Date(date);
+        return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h');
+    };
+
+    // --- RÉCUPÉRATION DONNÉES ---
     const fetchKpis = async () => {
         try {
             const token = await AsyncStorage.getItem("token");
-            const response = await axios.get(`${POS_URL}/order/api/kpi/${idRestaurant}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            let url = `${POS_URL}/order/api/kpi/${idRestaurant}`;
+            
+            // Si au moins un filtre est actif
+            if (useDateFilter || useTimeFilter) {
+                // 1. Déterminer les Jours de base
+                // Si filtre date actif : on prend les dates choisies
+                // Si filtre date INACTIF mais heure ACTIF : on prend "Aujourd'hui" par défaut
+                const baseStart = useDateFilter ? startDate : new Date();
+                const baseEnd = useDateFilter ? endDate : new Date();
+
+                // 2. Déterminer les Heures
+                // Si filtre heure actif : on prend les heures choisies
+                // Sinon : 00:00:00 pour le début, 23:59:59 pour la fin
+                const hStart = useTimeFilter ? startTime.getHours() : 0;
+                const mStart = useTimeFilter ? startTime.getMinutes() : 0;
+                
+                const hEnd = useTimeFilter ? endTime.getHours() : 23;
+                const mEnd = useTimeFilter ? endTime.getMinutes() : 59;
+
+                // 3. Fusionner (Créer les timestamps ISO complets)
+                const finalStart = new Date(baseStart);
+                finalStart.setHours(hStart, mStart, 0, 0);
+
+                const finalEnd = new Date(baseEnd);
+                finalEnd.setHours(hEnd, mEnd, 59, 999);
+
+                url += `?start_date=${finalStart.toISOString()}&end_date=${finalEnd.toISOString()}`;
+            }
+
+            const response = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
             setData(response.data);
         } catch (error) {
             console.error("Erreur KPI:", error);
@@ -46,120 +132,255 @@ export default function KPI() {
         }
     };
 
-    useEffect(() => { fetchKpis(); }, []);
+    useEffect(() => { 
+        setLoading(true);
+        fetchKpis(); 
+    }, [startDate, endDate, startTime, endTime, useDateFilter, useTimeFilter]);
 
     const onRefresh = () => {
         setRefreshing(true);
         fetchKpis();
     };
 
-    if (loading) {
+    // --- HANDLERS ---
+    
+    const handleDateUpdate = (date: Date, type: 'start' | 'end') => {
+        if (type === 'start') {
+            setStartDate(date);
+            // Synchro auto : Si début > fin, on pousse la fin
+            if (date > endDate) setEndDate(date);
+        } else {
+            setEndDate(date);
+        }
+    };
+
+    const handleTimeUpdate = (time: Date, type: 'start' | 'end') => {
+        if (type === 'start') setStartTime(time);
+        else setEndTime(time);
+    };
+
+    // --- COMPOSANTS UI WEB ---
+
+    const DateInput = ({ date, type, minDate }: any) => {
+        if (Platform.OS === 'web') {
+            return (
+                <View style={{ flex: 1, zIndex: 2000 }}>
+                     {/* Style injecté une seule fois via global ou ici */}
+                     <style>{`.react-datepicker-popper { z-index: 9999 !important; } .react-datepicker-wrapper { width: 100%; }`}</style>
+                    <DatePicker
+                        selected={date}
+                        onChange={(d: Date) => handleDateUpdate(d, type)}
+                        minDate={minDate}
+                        locale="fr"
+                        dateFormat="dd/MM/yyyy"
+                        customInput={<CustomDateTrigger dateDisplay={formatDateDisplay(date)} />}
+                        popperPlacement="bottom-start"
+                        portalId="root-portal"
+                    />
+                </View>
+            );
+        }
         return (
-            <View style={styles.loaderContainer}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={styles.loaderText}>Chargement des performances...</Text>
-            </View>
+            <TouchableOpacity style={styles.inputTrigger} onPress={() => openMobilePicker('date', type)}>
+                <CalendarIcon size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
+                <Text style={styles.triggerText}>{formatDateDisplay(date)}</Text>
+            </TouchableOpacity>
         );
+    };
+
+    const TimeInput = ({ time, type }: any) => {
+        if (Platform.OS === 'web') {
+            return (
+                <View style={{ flex: 1, zIndex: 2000 }}>
+                    <DatePicker
+                        selected={time}
+                        onChange={(d: Date) => handleTimeUpdate(d, type)}
+                        showTimeSelect
+                        showTimeSelectOnly
+                        timeIntervals={15}
+                        timeCaption="Heure"
+                        dateFormat="HH:mm"
+                        locale="fr"
+                        customInput={<CustomTimeTrigger timeDisplay={formatTimeDisplay(time)} />}
+                        popperPlacement="bottom-start"
+                        portalId="root-portal"
+                    />
+                </View>
+            );
+        }
+        return (
+            <TouchableOpacity style={styles.inputTrigger} onPress={() => openMobilePicker('time', type)}>
+                <ClockIcon size={18} color={COLORS.warning} style={{ marginRight: 8 }} />
+                <Text style={styles.triggerText}>{formatTimeDisplay(time)}</Text>
+            </TouchableOpacity>
+        );
+    };
+
+    // --- MOBILE PICKER LOGIC ---
+    const openMobilePicker = (mode: 'date'|'time', type: 'start'|'end') => {
+        const base = mode === 'date' ? (type === 'start' ? startDate : endDate) : (type === 'start' ? startTime : endTime);
+        setTempDate(base);
+        setShowPicker({ show: true, mode, type });
+    };
+
+    const onMobileChange = (event: any, selected?: Date) => {
+        if (Platform.OS === 'android') setShowPicker({ ...showPicker, show: false });
+        if (selected) {
+            if (Platform.OS === 'android') {
+                 if (showPicker.mode === 'date') handleDateUpdate(selected, showPicker.type);
+                 else handleTimeUpdate(selected, showPicker.type);
+            } else {
+                setTempDate(selected);
+            }
+        }
+    };
+    
+    const closeIosPicker = () => {
+        if (showPicker.mode === 'date') handleDateUpdate(tempDate, showPicker.type);
+        else handleTimeUpdate(tempDate, showPicker.type);
+        setShowPicker({ ...showPicker, show: false });
+    };
+
+
+    if (loading && !data) {
+        return (<View style={styles.loaderContainer}><ActivityIndicator size="large" color={COLORS.primary} /></View>);
     }
 
     return (
         <SafeAreaView style={styles.safeArea}>
-            <ScrollView 
-                style={styles.container}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
-            >
-                {/* HEADER */}
+            <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 80 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}>
+                
+                {/* HEADER & TOGGLES */}
                 <View style={styles.headerSection}>
-                    <Text style={styles.headerSubtitle}>Résumé des ventes</Text>
+                    <Text style={styles.headerSubtitle}>Statistiques</Text>
                     <Text style={styles.headerTitle}>Tableau de Bord</Text>
+                    
+                    <View style={styles.togglesContainer}>
+                        {/* Toggle DATE */}
+                        <TouchableOpacity style={[styles.toggleBtn, useDateFilter && styles.toggleBtnActive]} onPress={() => setUseDateFilter(!useDateFilter)}>
+                            <CalendarIcon size={16} color={useDateFilter ? "white" : COLORS.textSub} />
+                            <Text style={[styles.toggleText, useDateFilter && styles.toggleTextActive]}>Dates</Text>
+                        </TouchableOpacity>
+
+                        {/* Toggle HEURE */}
+                        <TouchableOpacity style={[styles.toggleBtn, useTimeFilter && styles.toggleBtnActive]} onPress={() => setUseTimeFilter(!useTimeFilter)}>
+                            <ClockIcon size={16} color={useTimeFilter ? "white" : COLORS.textSub} />
+                            <Text style={[styles.toggleText, useTimeFilter && styles.toggleTextActive]}>Heures</Text>
+                        </TouchableOpacity>
+
+                        {(useDateFilter || useTimeFilter) && (
+                            <TouchableOpacity onPress={() => { setUseDateFilter(false); setUseTimeFilter(false); }} style={styles.clearBtn}>
+                                <XIcon size={16} color={COLORS.danger} />
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
 
-                {/* MAIN KPI (Revenue) */}
+                {/* --- ZONE DE FILTRES --- */}
+                {(useDateFilter || useTimeFilter) && (
+                    <View style={styles.filterCard}>
+                        {/* Ligne DATE */}
+                        {useDateFilter && (
+                            <View style={styles.filterRow}>
+                                <Text style={styles.filterLabel}>Période :</Text>
+                                <View style={styles.inputsRow}>
+                                    <DateInput date={startDate} type="start" />
+                                    <Text style={styles.arrow}>→</Text>
+                                    <DateInput date={endDate} type="end" minDate={startDate} />
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Séparateur si les deux sont actifs */}
+                        {useDateFilter && useTimeFilter && <View style={styles.divider} />}
+
+                        {/* Ligne HEURE */}
+                        {useTimeFilter && (
+                            <View style={styles.filterRow}>
+                                <Text style={styles.filterLabel}>Créneau :</Text>
+                                <View style={styles.inputsRow}>
+                                    <TimeInput time={startTime} type="start" />
+                                    <Text style={styles.arrow}>→</Text>
+                                    <TimeInput time={endTime} type="end" />
+                                </View>
+                            </View>
+                        )}
+                    </View>
+                )}
+
+                {/* INFO TEXT CORRIGÉ */}
+                <Text style={styles.rangeInfo}>
+                    {!useDateFilter && !useTimeFilter ? "Données globales" : 
+                     (() => {
+                         // On prépare les dates par défaut proprement
+                         const defaultStart = new Date(); defaultStart.setHours(0,0,0,0);
+                         const defaultEnd = new Date(); defaultEnd.setHours(23,59,59,999);
+                         
+                         return (
+                            `Du ${formatDateDisplay(useDateFilter ? startDate : new Date())} à ${formatTimeDisplay(useTimeFilter ? startTime : defaultStart)}` + 
+                            ` au ${formatDateDisplay(useDateFilter ? endDate : new Date())} à ${formatTimeDisplay(useTimeFilter ? endTime : defaultEnd)}`
+                         );
+                     })()
+                    }
+                </Text>
+
+                {/* MAIN KPI */}
                 <View style={styles.mainCard}>
                     <View style={styles.mainCardContent}>
                         <View>
-                            <Text style={styles.mainCardLabel}>Chiffre d'Affaires Total</Text>
-                            <Text style={styles.mainCardValue}>
-                                {data?.total_revenue?.toLocaleString()} <Text style={styles.currency}>DA</Text>
-                            </Text>
+                            <Text style={styles.mainCardLabel}>Chiffre d'Affaires</Text>
+                            <Text style={styles.mainCardValue}>{(data?.total_revenue || 0).toLocaleString('fr-FR')} <Text style={styles.currency}>DA</Text></Text>
                         </View>
-                        <View style={styles.iconCircle}>
-                            <TrendingUp color="white" size={28} />
-                        </View>
-                    </View>
-                    <View style={styles.mainCardFooter}>
-                        <Text style={styles.footerText}>Mise à jour en temps réel</Text>
+                        <View style={styles.iconCircle}><TrendingUp color="white" size={28} /></View>
                     </View>
                 </View>
 
                 {/* GRID KPI */}
                 <View style={styles.grid}>
-                    <KpiCard 
-                        label="Commandes" 
-                        value={data?.total_orders} 
-                        icon={<ShoppingBag size={20} color={COLORS.info} />}
-                        color={COLORS.info}
-                    />
-                    <KpiCard 
-                        label="Panier Moyen" 
-                        value={`${data?.average_cart?.toFixed(0)} DA`} 
-                        icon={<CreditCard size={20} color={COLORS.warning} />}
-                        color={COLORS.warning}
-                    />
-                    <KpiCard 
-                        label="À Emporter" 
-                        value={data?.take_away_count} 
-                        icon={<Package size={20} color={COLORS.primary} />}
-                        color={COLORS.primary}
-                    />
-                    <KpiCard 
-                        label="Taux Succès" 
-                        value={data?.total_orders > 0 ? `${((data.completed_orders / data.total_orders) * 100).toFixed(0)}%` : "0%"} 
-                        icon={<CheckCircle2 size={20} color={COLORS.success} />}
-                        color={COLORS.success}
-                    />
+                    <KpiCard label="Commandes" value={data?.total_orders || 0} icon={<ShoppingBag size={20} color={COLORS.info} />} color={COLORS.info} />
+                    <KpiCard label="Panier Moyen" value={`${(data?.average_cart || 0).toFixed(0)} DA`} icon={<CreditCard size={20} color={COLORS.warning} />} color={COLORS.warning} />
+                    <KpiCard label="À Emporter" value={data?.take_away_count || 0} icon={<Package size={20} color={COLORS.primary} />} color={COLORS.primary} />
+                    <KpiCard label="Taux Succès" value={(data?.total_orders || 0) > 0 ? `${(((data?.completed_orders || 0) / (data?.total_orders || 1)) * 100).toFixed(0)}%` : "0%"} icon={<CheckCircle2 size={20} color={COLORS.success} />} color={COLORS.success} />
                 </View>
 
-                {/* STATUS BREAKDOWN */}
-                <Text style={styles.sectionTitle}>Détails des opérations</Text>
-                <View style={styles.statusContainer}>
-                    <StatusRow 
-                        label="Commandes Complétées" 
-                        count={data?.completed_orders} 
-                        color={COLORS.success} 
-                        icon={<CheckCircle2 size={18} color={COLORS.success} />}
-                    />
-                    <View style={styles.divider} />
-                    <StatusRow 
-                        label="Commandes Annulées" 
-                        count={data?.cancelled_orders} 
-                        color={COLORS.danger} 
-                        icon={<XCircle size={18} color={COLORS.danger} />}
-                    />
-                </View>
             </ScrollView>
+
+            {/* MODAL PICKER MOBILE (iOS/Android) */}
+            {Platform.OS !== 'web' && showPicker.show && (
+                Platform.OS === 'android' ? (
+                    <DateTimePicker 
+                        value={tempDate} 
+                        mode={showPicker.mode} 
+                        display="default" 
+                        onChange={onMobileChange} 
+                        minimumDate={showPicker.mode === 'date' && showPicker.type === 'end' ? startDate : undefined}
+                    /> 
+                ) : (
+                    <Modal transparent animationType="slide" visible={showPicker.show}>
+                        <View style={styles.modalOverlay}>
+                            <View style={styles.modalContent}>
+                                <DateTimePicker 
+                                    value={tempDate} 
+                                    mode={showPicker.mode} 
+                                    display="spinner" 
+                                    onChange={onMobileChange} 
+                                    locale="fr-FR"
+                                />
+                                <Button title="Valider" onPress={closeIosPicker} />
+                            </View>
+                        </View>
+                    </Modal>
+                )
+            )}
         </SafeAreaView>
     );
 }
 
-// Composants internes pour la lisibilité
-const KpiCard = ({ label, value, icon, color }) => (
+const KpiCard = ({ label, value, icon, color }: any) => (
     <View style={styles.smallCard}>
-        <View style={[styles.smallIconBg, { backgroundColor: color + '15' }]}>
-            {icon}
-        </View>
+        <View style={[styles.smallIconBg, { backgroundColor: color + '15' }]}>{icon}</View>
         <Text style={styles.smallLabel}>{label}</Text>
         <Text style={styles.smallValue}>{value}</Text>
-    </View>
-);
-
-const StatusRow = ({ label, count, color, icon }) => (
-    <View style={styles.statusRow}>
-        <View style={styles.statusInfo}>
-            {icon}
-            <Text style={styles.statusLabel}>{label}</Text>
-        </View>
-        <Text style={[styles.statusCount, { color }]}>{count}</Text>
     </View>
 );
 
@@ -167,41 +388,63 @@ const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: COLORS.bg },
     container: { flex: 1, padding: 20 },
     loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.bg },
-    loaderText: { marginTop: 10, color: COLORS.textSub, fontWeight: '500' },
     
-    headerSection: { marginBottom: 25 },
-    headerSubtitle: { color: COLORS.textSub, fontSize: 14, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-    headerTitle: { color: COLORS.textHeader, fontSize: 28, fontWeight: '800' },
+    headerSection: { marginBottom: 15 },
+    headerSubtitle: { color: COLORS.textSub, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
+    headerTitle: { color: COLORS.textHeader, fontSize: 28, fontWeight: '800', marginBottom: 15 },
 
+    // NOUVEAUX TOGGLES
+    togglesContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    toggleBtn: { 
+        flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, 
+        borderRadius: 25, borderWidth: 1, borderColor: COLORS.border, backgroundColor: 'white' 
+    },
+    toggleBtnActive: { backgroundColor: COLORS.textHeader, borderColor: COLORS.textHeader },
+    toggleText: { marginLeft: 6, fontSize: 13, fontWeight: '600', color: COLORS.textSub },
+    toggleTextActive: { color: 'white' },
+    clearBtn: { padding: 8, backgroundColor: '#FEE2E2', borderRadius: 20 },
+
+    // CONTAINER FILTRES
+    filterCard: { 
+        backgroundColor: 'white', borderRadius: 16, padding: 15, marginBottom: 15,
+        borderWidth: 1, borderColor: COLORS.border 
+    },
+    filterRow: { flexDirection: 'column', marginBottom: 0 },
+    filterLabel: { fontSize: 12, color: COLORS.textSub, fontWeight: '600', marginBottom: 8 },
+    inputsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    arrow: { marginHorizontal: 10, color: COLORS.textSub },
+    divider: { height: 1, backgroundColor: COLORS.bg, marginVertical: 12 },
+
+    // CHAMPS INPUTS STYLISÉS
+    inputTrigger: { 
+        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: COLORS.bg, paddingVertical: 10, borderRadius: 10,
+        borderWidth: 1, borderColor: COLORS.border
+    },
+    triggerText: { marginLeft: 8, color: COLORS.textHeader, fontWeight: '600', fontSize: 13 },
+
+    rangeInfo: { fontSize: 12, color: COLORS.textSub, textAlign: 'center', marginBottom: 15, fontStyle: 'italic' },
+
+    // CARDS (inchangés)
     mainCard: { 
-        backgroundColor: COLORS.primary, 
-        borderRadius: 20, 
-        padding: 20, 
-        marginBottom: 20,
-        elevation: 8, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10
+        backgroundColor: COLORS.primary, borderRadius: 20, padding: 20, marginBottom: 20,
+        elevation: 8, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 12
     },
     mainCardContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    mainCardLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '600' },
-    mainCardValue: { color: 'white', fontSize: 32, fontWeight: '800', marginTop: 5 },
-    currency: { fontSize: 16, fontWeight: '400' },
-    iconCircle: { backgroundColor: 'rgba(255,255,255,0.2)', padding: 12, borderRadius: 15 },
-    mainCardFooter: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
-    footerText: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
-
+    mainCardLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 14, fontWeight: '500' },
+    mainCardValue: { color: 'white', fontSize: 30, fontWeight: '800', marginTop: 5 },
+    currency: { fontSize: 16, fontWeight: '500', opacity: 0.8 },
+    iconCircle: { backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: 14 },
+    
     grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
     smallCard: { 
-        backgroundColor: 'white', width: (width - 55) / 2, padding: 16, borderRadius: 18, marginBottom: 15,
-        elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5
+        backgroundColor: 'white', width: (width - 50) / 2, padding: 16, borderRadius: 18, marginBottom: 15,
+        borderWidth: 1, borderColor: COLORS.border, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.02, shadowRadius: 5
     },
-    smallIconBg: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-    smallLabel: { color: COLORS.textSub, fontSize: 13, fontWeight: '600' },
-    smallValue: { color: COLORS.textHeader, fontSize: 18, fontWeight: '700', marginTop: 4 },
+    smallIconBg: { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+    smallLabel: { color: COLORS.textSub, fontSize: 12, fontWeight: '600' },
+    smallValue: { color: COLORS.textHeader, fontSize: 17, fontWeight: '700', marginTop: 4 },
 
-    sectionTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textHeader, marginTop: 10, marginBottom: 15 },
-    statusContainer: { backgroundColor: 'white', borderRadius: 18, padding: 5, marginBottom: 30 },
-    statusRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15 },
-    statusInfo: { flexDirection: 'row', alignItems: 'center' },
-    statusLabel: { marginLeft: 12, color: COLORS.textHeader, fontWeight: '600', fontSize: 15 },
-    statusCount: { fontSize: 16, fontWeight: '700' },
-    divider: { height: 1, backgroundColor: COLORS.bg, marginHorizontal: 15 }
+    modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+    modalContent: { backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }
 });
