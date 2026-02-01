@@ -1,28 +1,32 @@
-from django.utils import timezone
-from django.utils.dateparse import parse_date
-from django.utils.dateparse import parse_datetime
-from datetime import datetime, time
+# --- 1. Bibliothèque Standard Python ---
+import base64
+import io
+import traceback
+from datetime import datetime, time, timedelta
+
+# --- 2. Django Core ---
+from django.db.models import Sum, Count, F
 from django.shortcuts import render, get_object_or_404
-from restaurant.models import Restaurant
-from rest_framework.views import APIView
-from rest_framework.response import Response
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
+from django.utils.timezone import make_naive, now
+
+# --- 3. Bibliothèques Tierces (DRF, QRCode) ---
+import qrcode
 from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.generics import RetrieveAPIView
-from .serializers import OrderSerializer
-from .models import Order, OrderItem, OrderItemOption
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+# --- 4. Imports Locaux (Tes apps) ---
 from customer.models import Loyalty
 from menu.models import Menu, Step, Option, StepOption
-from rest_framework.permissions import IsAuthenticated
-from datetime import timedelta, datetime
+from restaurant.models import Restaurant
 from user.models import User
-from django.utils.timezone import now
-from django.db.models import Sum, Count, F
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-import qrcode
-import io
-import base64
-import traceback
+from .models import Order, OrderItem, OrderItemOption
+from .serializers import OrderSerializer
 
 # ==========================================
 # 1. ORDER CREATION (CORRECTED)
@@ -380,49 +384,73 @@ def format_order_as_ticket(order_id):
 # 4. KPI & UTILS
 # ==========================================
 
+# Dans views.py
+
+# Dans views.py
+
 class KpiView(APIView):
+    permission_classes = [AllowAny]
+    
     def get(self, request, restaurantId):
-        # 1. Récupération des paramètres
+        from django.db.models import Q  # Nécessaire pour gérer minuit (22h-02h)
+
+        # 1. On récupère les paramètres séparément
         start_date_str = request.query_params.get('start_date')
         end_date_str = request.query_params.get('end_date')
+        
+        start_time_str = request.query_params.get('start_time') # Format attendu "HH:MM"
+        end_time_str = request.query_params.get('end_time')     # Format attendu "HH:MM"
 
-        print(f"DEBUG KPI - Reçu: Start={start_date_str}, End={end_date_str}")
+        print(f"DEBUG KPI - Date: {start_date_str}-{end_date_str} | Heure: {start_time_str}-{end_time_str}")
 
         orders = Order.objects.filter(restaurant_id=restaurantId).prefetch_related(
-            'items__menu', 
-            'items__options__option'
+            'items__menu', 'items__options__option'
         )
 
-        # 2. Application du filtre
+        # 2. FILTRE DATE (Période Globale)
+        # S'applique seulement si l'utilisateur a choisi des dates. 
+        # Sinon, on prend tout l'historique par défaut.
         if start_date_str and end_date_str:
             try:
-                # Conversion des chaînes en objets datetime
                 start_datetime = parse_datetime(start_date_str)
                 end_datetime = parse_datetime(end_date_str)
 
-                if start_datetime and end_datetime:
-                    # Gestion des fuseaux horaires (Timezone Aware vs Naive)
-                    # Si le serveur utilise les timezones (USE_TZ=True), on s'assure que les dates le sont aussi
-                    if timezone.is_naive(start_datetime):
-                        start_datetime = timezone.make_aware(start_datetime)
-                    if timezone.is_naive(end_datetime):
-                        end_datetime = timezone.make_aware(end_datetime)
-                    
-                    # FILTRE
-                    orders = orders.filter(created_at__range=(start_datetime, end_datetime))
-                    print(f"DEBUG KPI - Filtre appliqué. Commandes: {orders.count()}")
-                else:
-                    print("DEBUG KPI - Erreur de parsing des dates")
-            except Exception as e:
-                print(f"DEBUG KPI - Erreur CRITIQUE date: {str(e)}")
-                # En cas d'erreur, on continue sans filtrer pour ne pas bloquer l'appli
+                # Nettoyage Timezone
+                if start_datetime and timezone.is_aware(start_datetime):
+                    start_datetime = make_naive(start_datetime)
+                if end_datetime and timezone.is_aware(end_datetime):
+                    end_datetime = make_naive(end_datetime)
 
-        # 3. Calculs (Code inchangé)
+                if start_datetime and end_datetime:
+                    orders = orders.filter(created_at__range=(start_datetime, end_datetime))
+            except Exception as e:
+                print(f"Erreur filtre date: {e}")
+
+        # 3. FILTRE HEURE (Créneau Récurrent)
+        # S'applique indépendamment de la date (ex: "Tous les midis")
+        if start_time_str and end_time_str:
+            try:
+                sh, sm = map(int, start_time_str.split(':'))
+                eh, em = map(int, end_time_str.split(':'))
+                s_time = time(sh, sm)
+                e_time = time(eh, em)
+                
+                # Gestion classique (ex: 12:00 -> 14:00)
+                if s_time <= e_time:
+                    orders = orders.filter(created_at__time__range=(s_time, e_time))
+                # Gestion nuit (ex: 22:00 -> 02:00)
+                else:
+                    orders = orders.filter(Q(created_at__time__gte=s_time) | Q(created_at__time__lte=e_time))
+                    
+                print(f"Filtre heure appliqué: {s_time} à {e_time}")
+            except Exception as e:
+                print(f"Erreur filtre heure: {e}")
+
+        # 4. Calculs KPI
         paid_orders = orders.filter(paid=True)
         total_revenue = sum(order.total_price() for order in paid_orders) or 0
         total_orders_count = orders.count() or 0
         paid_orders_count = paid_orders.count()
-        
         average_cart = (total_revenue / paid_orders_count) if paid_orders_count > 0 else 0
 
         context = {
