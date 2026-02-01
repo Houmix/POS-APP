@@ -34,6 +34,16 @@ const COLORS = {
   border: "#E2E8F0"
 };
 
+// --- FONCTION UTILITAIRE POUR LES DATES (CORRECTION FILTRE) ---
+// Cette fonction convertit une date locale en string ISO sans la convertir en UTC
+// Ex: Si il est 15:00 en France, toISOString() donnerait 14:00Z.
+// Cette fonction renverra "2026-02-01T15:00:00.000" (L'heure murale exacte)
+const toLocalIsoString = (date: Date) => {
+  const tzOffset = date.getTimezoneOffset() * 60000; // offset en minutes -> ms
+  const localTime = new Date(date.getTime() - tzOffset); 
+  return localTime.toISOString().slice(0, -1); // On retire le 'Z' final
+};
+
 // --- DECLENCHEURS PERSONNALISÉS ---
 
 const CustomDateTrigger = React.forwardRef(({ value, onClick, dateDisplay }: any, ref: any) => (
@@ -93,34 +103,37 @@ export default function KPI() {
     const fetchKpis = async () => {
         try {
             const token = await AsyncStorage.getItem("token");
-            let url = `${POS_URL}/order/api/kpi/${idRestaurant}`;
+            // On commence l'URL avec un '?' pour pouvoir concaténer les paramètres proprement
+            let url = `${POS_URL}/order/api/kpi/${idRestaurant}?`; 
             
-            // Si au moins un filtre est actif
-            if (useDateFilter || useTimeFilter) {
-                // 1. Déterminer les Jours de base
-                // Si filtre date actif : on prend les dates choisies
-                // Si filtre date INACTIF mais heure ACTIF : on prend "Aujourd'hui" par défaut
-                const baseStart = useDateFilter ? startDate : new Date();
-                const baseEnd = useDateFilter ? endDate : new Date();
-
-                // 2. Déterminer les Heures
-                // Si filtre heure actif : on prend les heures choisies
-                // Sinon : 00:00:00 pour le début, 23:59:59 pour la fin
-                const hStart = useTimeFilter ? startTime.getHours() : 0;
-                const mStart = useTimeFilter ? startTime.getMinutes() : 0;
+            // --- 1. Gestion du Filtre DATE (Période) ---
+            if (useDateFilter) {
+                // On force le début à 00:00:00 et la fin à 23:59:59 pour couvrir toute la période choisie
+                const dStart = new Date(startDate); 
+                dStart.setHours(0, 0, 0, 0);
                 
-                const hEnd = useTimeFilter ? endTime.getHours() : 23;
-                const mEnd = useTimeFilter ? endTime.getMinutes() : 59;
+                const dEnd = new Date(endDate); 
+                dEnd.setHours(23, 59, 59, 999);
 
-                // 3. Fusionner (Créer les timestamps ISO complets)
-                const finalStart = new Date(baseStart);
-                finalStart.setHours(hStart, mStart, 0, 0);
-
-                const finalEnd = new Date(baseEnd);
-                finalEnd.setHours(hEnd, mEnd, 59, 999);
-
-                url += `?start_date=${finalStart.toISOString()}&end_date=${finalEnd.toISOString()}`;
+                // On ajoute les params de date
+                url += `start_date=${encodeURIComponent(toLocalIsoString(dStart))}&end_date=${encodeURIComponent(toLocalIsoString(dEnd))}&`;
             }
+
+            // --- 2. Gestion du Filtre HEURE (Créneau) ---
+            if (useTimeFilter) {
+                // On extrait juste l'heure et les minutes (HH:MM)
+                // padStart(2, '0') assure qu'on envoie "09:00" et pas "9:0"
+                const hStart = startTime.getHours().toString().padStart(2, '0');
+                const mStart = startTime.getMinutes().toString().padStart(2, '0');
+                
+                const hEnd = endTime.getHours().toString().padStart(2, '0');
+                const mEnd = endTime.getMinutes().toString().padStart(2, '0');
+
+                // On ajoute les params d'heure
+                url += `start_time=${hStart}:${mStart}&end_time=${hEnd}:${mEnd}`;
+            }
+
+            console.log("Fetching KPI URL:", url); // Pour vérifier ce qu'on envoie
 
             const response = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
             setData(response.data);
