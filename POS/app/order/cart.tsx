@@ -76,6 +76,11 @@ export default function CartPage() {
     const formattedOrder = orderList.map(order => ({
       menu: order.menuId,
       quantity: order.quantity,
+      // --- CORRECTION ICI ---
+      // On transfère bien les propriétés solo et extra
+      solo: order.solo || false, 
+      extra: order.extra || false,
+      // ---------------------
       options: order.steps?.flatMap(s => s.selectedOptions.map(o => ({ step: s.stepId, option: o.optionId }))) || []
     }));
     await AsyncStorage.setItem("pendingOrder", JSON.stringify(formattedOrder));
