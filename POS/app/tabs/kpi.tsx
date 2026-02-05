@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, ActivityIndicator, 
-  RefreshControl, SafeAreaView, Dimensions, TouchableOpacity, Platform, Modal, Button, Switch 
+  RefreshControl, SafeAreaView, Dimensions, TouchableOpacity, Platform, Modal, Button 
 } from 'react-native';
 import { 
   TrendingUp, ShoppingBag, CreditCard, 
-  Package, CheckCircle2, XCircle, Calendar as CalendarIcon, Clock as ClockIcon, X as XIcon, Filter 
+  Package, CheckCircle2, XCircle, Calendar as CalendarIcon, Clock as ClockIcon, X as XIcon, Filter, Check 
 } from 'lucide-react-native';
 import axios from 'axios';
 import { POS_URL, idRestaurant } from '@/config';
@@ -32,10 +32,19 @@ const COLORS = {
   card: "#FFFFFF",
   textHeader: "#1E293B",
   textSub: "#64748B",
-  border: "#E2E8F0"
+  border: "#E2E8F0",
+  overlay: "rgba(0,0,0,0.5)"
 };
 
-// --- STYLES MODERNES POUR LE CALENDRIER WEB ---
+// --- CONFIG FILTRES TYPES ---
+const TYPE_FILTERS = [
+    { id: 'paid', label: 'Payée', color: COLORS.success, icon: CheckCircle2 },
+    { id: 'unpaid', label: 'Non Payée', color: COLORS.warning, icon: ClockIcon },
+    { id: 'cancelled', label: 'Annulée', color: COLORS.danger, icon: XCircle },
+    { id: 'refunded', label: 'Remboursée', color: COLORS.info, icon: Filter }
+];
+
+// --- CSS DATEPICKER WEB (Inchangé) ---
 const MODERN_DATEPICKER_CSS = `
   .react-datepicker {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -44,107 +53,31 @@ const MODERN_DATEPICKER_CSS = `
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
     overflow: hidden;
   }
-  
-  /* HEADER (Mois/Année) */
-  .react-datepicker__header {
-    background-color: white !important;
-    border-bottom: 1px solid ${COLORS.border} !important;
-    padding-top: 15px !important;
-  }
-  .react-datepicker__current-month {
-    color: ${COLORS.textHeader} !important;
-    font-weight: 800 !important;
-    font-size: 1rem !important;
-    margin-bottom: 10px;
-  }
-  .react-datepicker__day-name {
-    color: ${COLORS.textSub} !important;
-    font-weight: 600 !important;
-    width: 2.5rem !important;
-  }
-
-  /* JOURS */
-  .react-datepicker__day {
-    width: 2.5rem !important;
-    line-height: 2.5rem !important;
-    margin: 0.1rem !important;
-    border-radius: 50% !important;
-    font-weight: 500;
-    transition: all 0.2s ease;
-  }
-  .react-datepicker__day:hover {
-    background-color: ${COLORS.bg} !important;
-    border-radius: 50% !important;
-  }
-  .react-datepicker__day--selected, 
-  .react-datepicker__day--keyboard-selected {
-    background-color: ${COLORS.primary} !important;
-    color: white !important;
-    box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4);
-  }
-  .react-datepicker__day--today {
-    color: ${COLORS.primary};
-    font-weight: 800;
-    position: relative;
-  }
-  .react-datepicker__day--today::after {
-    content: '';
-    position: absolute;
-    bottom: 4px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 4px;
-    height: 4px;
-    background-color: ${COLORS.primary};
-    border-radius: 50%;
-  }
-  /* Override pour le jour sélectionné qui est aussi aujourd'hui */
-  .react-datepicker__day--selected.react-datepicker__day--today::after {
-    background-color: white;
-  }
-
-  /* SELECTEUR D'HEURE (Time) */
-  .react-datepicker__time-container {
-    border-left: 1px solid ${COLORS.border} !important;
-    width: 100px !important;
-  }
-  .react-datepicker__header--time {
-    background-color: white !important;
-    border-bottom: 1px solid ${COLORS.border} !important;
-  }
-  .react-datepicker__time-list-item {
-    height: auto !important;
-    padding: 10px !important;
-    font-weight: 500;
-  }
-  .react-datepicker__time-list-item:hover {
-    background-color: ${COLORS.bg} !important;
-  }
-  .react-datepicker__time-list-item--selected {
-    background-color: ${COLORS.primary} !important;
-    color: white !important;
-    font-weight: 700 !important;
-  }
-
-  /* FLÈCHES NAVIGATION */
-  .react-datepicker__navigation-icon::before {
-    border-color: ${COLORS.textSub} !important;
-    border-width: 2px 2px 0 0 !important;
-  }
+  .react-datepicker__header { background-color: white !important; border-bottom: 1px solid ${COLORS.border} !important; padding-top: 15px !important; }
+  .react-datepicker__current-month { color: ${COLORS.textHeader} !important; font-weight: 800 !important; font-size: 1rem !important; margin-bottom: 10px; }
+  .react-datepicker__day-name { color: ${COLORS.textSub} !important; font-weight: 600 !important; width: 2.5rem !important; }
+  .react-datepicker__day { width: 2.5rem !important; line-height: 2.5rem !important; margin: 0.1rem !important; border-radius: 50% !important; font-weight: 500; transition: all 0.2s ease; }
+  .react-datepicker__day:hover { background-color: ${COLORS.bg} !important; border-radius: 50% !important; }
+  .react-datepicker__day--selected, .react-datepicker__day--keyboard-selected { background-color: ${COLORS.primary} !important; color: white !important; box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.4); }
+  .react-datepicker__day--today { color: ${COLORS.primary}; font-weight: 800; position: relative; }
+  .react-datepicker__day--today::after { content: ''; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; background-color: ${COLORS.primary}; border-radius: 50%; }
+  .react-datepicker__day--selected.react-datepicker__day--today::after { background-color: white; }
+  .react-datepicker__time-container { border-left: 1px solid ${COLORS.border} !important; width: 100px !important; }
+  .react-datepicker__header--time { background-color: white !important; border-bottom: 1px solid ${COLORS.border} !important; }
+  .react-datepicker__time-list-item { height: auto !important; padding: 10px !important; font-weight: 500; }
+  .react-datepicker__time-list-item:hover { background-color: ${COLORS.bg} !important; }
+  .react-datepicker__time-list-item--selected { background-color: ${COLORS.primary} !important; color: white !important; font-weight: 700 !important; }
+  .react-datepicker__navigation-icon::before { border-color: ${COLORS.textSub} !important; border-width: 2px 2px 0 0 !important; }
 `;
 
-// --- FONCTION UTILITAIRE POUR LES DATES (CORRECTION FILTRE) ---
-// Cette fonction convertit une date locale en string ISO sans la convertir en UTC
-// Ex: Si il est 15:00 en France, toISOString() donnerait 14:00Z.
-// Cette fonction renverra "2026-02-01T15:00:00.000" (L'heure murale exacte)
+// --- FONCTION UTILITAIRE POUR LES DATES ---
 const toLocalIsoString = (date: Date) => {
-  const tzOffset = date.getTimezoneOffset() * 60000; // offset en minutes -> ms
+  const tzOffset = date.getTimezoneOffset() * 60000; 
   const localTime = new Date(date.getTime() - tzOffset); 
-  return localTime.toISOString().slice(0, -1); // On retire le 'Z' final
+  return localTime.toISOString().slice(0, -1); 
 };
 
 // --- DECLENCHEURS PERSONNALISÉS ---
-
 const CustomDateTrigger = React.forwardRef(({ value, onClick, dateDisplay }: any, ref: any) => (
     <TouchableOpacity style={styles.inputTrigger} onPress={onClick} ref={ref} activeOpacity={0.7}>
         <CalendarIcon size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
@@ -167,25 +100,22 @@ export default function KPI() {
     // --- ETATS FILTRES DISSOCIÉS ---
     const [useDateFilter, setUseDateFilter] = useState(false);
     const [useTimeFilter, setUseTimeFilter] = useState(false);
+    
+    // --- NOUVEAU : ETATS TYPES & MODALE ---
+    const [selectedTypes, setSelectedTypes] = useState<string[]>(['paid']); // Par défaut: Payée
+    const [showTypeModal, setShowTypeModal] = useState(false);
 
-    // Dates (Jour/Mois/Année)
+    // Dates & Heures
     const [startDate, setStartDate] = useState(new Date());
     const [endDate, setEndDate] = useState(new Date());
+    const [startTime, setStartTime] = useState(() => { const d = new Date(); d.setHours(9, 0, 0, 0); return d; });
+    const [endTime, setEndTime] = useState(() => { const d = new Date(); d.setHours(23, 59, 0, 0); return d; });
 
-    // Heures (hh:mm)
-    // On initialise Start à 09:00 et End à 23:00 par exemple pour l'UX
-    const [startTime, setStartTime] = useState(() => {
-        const d = new Date(); d.setHours(9, 0, 0, 0); return d;
-    });
-    const [endTime, setEndTime] = useState(() => {
-        const d = new Date(); d.setHours(23, 59, 0, 0); return d;
-    });
-
-    // Mobile States
+    // Mobile Picker States
     const [showPicker, setShowPicker] = useState<{show: boolean, mode: 'date'|'time', type: 'start'|'end'}>({ show: false, mode: 'date', type: 'start' });
     const [tempDate, setTempDate] = useState(new Date());
 
-    // --- FORMATAGE SÉCURISÉ ---
+    // --- FORMATAGE ---
     const formatDateDisplay = (date: any) => {
         if (!date) return "";
         const d = date instanceof Date ? date : new Date(date);
@@ -198,41 +128,47 @@ export default function KPI() {
         return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h');
     };
 
-    // --- RÉCUPÉRATION DONNÉES ---
+    // --- HELPER LABEL TYPES (Version Courte pour le bouton) ---
+    const getTypeLabel = () => {
+        if (selectedTypes.length === 0) return "Aucun";
+        if (selectedTypes.length === 4) return "Tous";
+        if (selectedTypes.length === 1) {
+            const found = TYPE_FILTERS.find(t => t.id === selectedTypes[0]);
+            return found?.label; // Ex: "Payée" tout court
+        }
+        return `Types (${selectedTypes.length})`;
+    };
+
+    // --- HELPER : Est-ce que le filtre type est personnalisé (différent du défaut) ?
+    const isTypeCustom = selectedTypes.length !== 1 || selectedTypes[0] !== 'paid';
+
+    // --- FETCH DATA ---
     const fetchKpis = async () => {
         try {
             const token = await AsyncStorage.getItem("token");
-            // On commence l'URL avec un '?' pour pouvoir concaténer les paramètres proprement
             let url = `${POS_URL}/order/api/kpi/${idRestaurant}?`; 
             
-            // --- 1. Gestion du Filtre DATE (Période) ---
             if (useDateFilter) {
-                // On force le début à 00:00:00 et la fin à 23:59:59 pour couvrir toute la période choisie
-                const dStart = new Date(startDate); 
-                dStart.setHours(0, 0, 0, 0);
-                
-                const dEnd = new Date(endDate); 
-                dEnd.setHours(23, 59, 59, 999);
-
-                // On ajoute les params de date
+                const dStart = new Date(startDate); dStart.setHours(0, 0, 0, 0);
+                const dEnd = new Date(endDate); dEnd.setHours(23, 59, 59, 999);
                 url += `start_date=${encodeURIComponent(toLocalIsoString(dStart))}&end_date=${encodeURIComponent(toLocalIsoString(dEnd))}&`;
             }
 
-            // --- 2. Gestion du Filtre HEURE (Créneau) ---
             if (useTimeFilter) {
-                // On extrait juste l'heure et les minutes (HH:MM)
-                // padStart(2, '0') assure qu'on envoie "09:00" et pas "9:0"
                 const hStart = startTime.getHours().toString().padStart(2, '0');
                 const mStart = startTime.getMinutes().toString().padStart(2, '0');
-                
                 const hEnd = endTime.getHours().toString().padStart(2, '0');
                 const mEnd = endTime.getMinutes().toString().padStart(2, '0');
-
-                // On ajoute les params d'heure
-                url += `start_time=${hStart}:${mStart}&end_time=${hEnd}:${mEnd}`;
+                url += `start_time=${hStart}:${mStart}&end_time=${hEnd}:${mEnd}&`;
             }
 
-            console.log("Fetching KPI URL:", url); // Pour vérifier ce qu'on envoie
+            if (selectedTypes.length > 0) {
+                url += `types=${selectedTypes.join(',')}`;
+            } else {
+                url += `types=${selectedTypes.join(',')}`;
+            }
+
+            console.log("Fetching KPI URL:", url);
 
             const response = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
             setData(response.data);
@@ -247,19 +183,16 @@ export default function KPI() {
     useEffect(() => { 
         setLoading(true);
         fetchKpis(); 
-    }, [startDate, endDate, startTime, endTime, useDateFilter, useTimeFilter]);
+    }, [startDate, endDate, startTime, endTime, useDateFilter, useTimeFilter, selectedTypes]);
 
     const onRefresh = () => {
         setRefreshing(true);
         fetchKpis();
     };
 
-    // --- HANDLERS ---
-    
     const handleDateUpdate = (date: Date, type: 'start' | 'end') => {
         if (type === 'start') {
             setStartDate(date);
-            // Synchro auto : Si début > fin, on pousse la fin
             if (date > endDate) setEndDate(date);
         } else {
             setEndDate(date);
@@ -271,13 +204,21 @@ export default function KPI() {
         else setEndTime(time);
     };
 
-    // --- COMPOSANTS UI WEB ---
+    const toggleType = (id: string) => {
+        setSelectedTypes(prev => {
+            if (prev.includes(id)) {
+                return prev.filter(t => t !== id);
+            } else {
+                return [...prev, id];
+            }
+        });
+    };
 
+    // --- UI HELPERS (DateInput/TimeInput) ---
     const DateInput = ({ date, type, minDate }: any) => {
         if (Platform.OS === 'web') {
             return (
                 <View style={{ flex: 1, zIndex: 2000 }}>
-                     {/* Ajout du style ici aussi */}
                      <style>{MODERN_DATEPICKER_CSS}</style>
                      <style>{`.react-datepicker-popper { z-index: 9999 !important; } .react-datepicker-wrapper { width: 100%; }`}</style>
                     <DatePicker
@@ -302,20 +243,12 @@ export default function KPI() {
     };
 
     const TimeInput = ({ time, type }: any) => {
-        // Logique pour ajouter 23h59 UNIQUEMENT si c'est l'heure de fin
-        const injectedTimes = type === 'end' 
-            ? [setHours(setMinutes(new Date(), 59), 23)] // Crée un objet Date à 23:59
-            : [];
-
+        const injectedTimes = type === 'end' ? [setHours(setMinutes(new Date(), 59), 23)] : [];
         if (Platform.OS === 'web') {
             return (
                 <View style={{ flex: 1, zIndex: 2000 }}>
-                     {/* Injection du CSS MODERNE */}
                      <style>{MODERN_DATEPICKER_CSS}</style>
-                     
-                     {/* Fix pour le z-index qui passe par dessus tout */}
                      <style>{`.react-datepicker-popper { z-index: 9999 !important; } .react-datepicker-wrapper { width: 100%; }`}</style>
-                    
                     <DatePicker
                         selected={time}
                         onChange={(d: Date) => handleTimeUpdate(d, type)}
@@ -325,7 +258,6 @@ export default function KPI() {
                         timeCaption={type === 'start' ? "Début" : "Fin"}
                         dateFormat="HH:mm"
                         locale="fr"
-                        // C'est ici que la magie opère pour le 23:59
                         injectTimes={injectedTimes} 
                         customInput={<CustomTimeTrigger timeDisplay={formatTimeDisplay(time)} />}
                         popperPlacement="bottom-start"
@@ -334,7 +266,6 @@ export default function KPI() {
                 </View>
             );
         }
-        // ... version mobile inchangée ...
         return (
             <TouchableOpacity style={styles.inputTrigger} onPress={() => openMobilePicker('time', type)}>
                 <ClockIcon size={18} color={COLORS.warning} style={{ marginRight: 8 }} />
@@ -343,7 +274,6 @@ export default function KPI() {
         );
     };
 
-    // --- MOBILE PICKER LOGIC ---
     const openMobilePicker = (mode: 'date'|'time', type: 'start'|'end') => {
         const base = mode === 'date' ? (type === 'start' ? startDate : endDate) : (type === 'start' ? startTime : endTime);
         setTempDate(base);
@@ -368,7 +298,6 @@ export default function KPI() {
         setShowPicker({ ...showPicker, show: false });
     };
 
-
     if (loading && !data) {
         return (<View style={styles.loaderContainer}><ActivityIndicator size="large" color={COLORS.primary} /></View>);
     }
@@ -383,30 +312,44 @@ export default function KPI() {
                     <Text style={styles.headerTitle}>Tableau de Bord</Text>
                     
                     <View style={styles.togglesContainer}>
-                        {/* Toggle DATE */}
+                        {/* 1. Dates Button */}
                         <TouchableOpacity style={[styles.toggleBtn, useDateFilter && styles.toggleBtnActive]} onPress={() => setUseDateFilter(!useDateFilter)}>
                             <CalendarIcon size={16} color={useDateFilter ? "white" : COLORS.textSub} />
                             <Text style={[styles.toggleText, useDateFilter && styles.toggleTextActive]}>Dates</Text>
                         </TouchableOpacity>
 
-                        {/* Toggle HEURE */}
+                        {/* 2. Heures Button */}
                         <TouchableOpacity style={[styles.toggleBtn, useTimeFilter && styles.toggleBtnActive]} onPress={() => setUseTimeFilter(!useTimeFilter)}>
                             <ClockIcon size={16} color={useTimeFilter ? "white" : COLORS.textSub} />
                             <Text style={[styles.toggleText, useTimeFilter && styles.toggleTextActive]}>Heures</Text>
                         </TouchableOpacity>
 
-                        {(useDateFilter || useTimeFilter) && (
-                            <TouchableOpacity onPress={() => { setUseDateFilter(false); setUseTimeFilter(false); }} style={styles.clearBtn}>
+                        {/* 3. NOUVEAU : Type Button (Intégré comme un toggle) */}
+                        {/* Il s'allume si le filtre n'est pas celui par défaut */}
+                        <TouchableOpacity 
+                            style={[styles.toggleBtn, isTypeCustom && styles.toggleBtnActive]} 
+                            onPress={() => setShowTypeModal(true)}
+                        >
+                            <Filter size={16} color={isTypeCustom ? "white" : COLORS.textSub} />
+                            <Text style={[styles.toggleText, isTypeCustom && styles.toggleTextActive]}>
+                                {getTypeLabel()}
+                            </Text>
+                        </TouchableOpacity>
+
+                        {/* 4. Clear Button */}
+                        {(useDateFilter || useTimeFilter || isTypeCustom) && (
+                            <TouchableOpacity onPress={() => { setUseDateFilter(false); setUseTimeFilter(false); setSelectedTypes(['paid']); }} style={styles.clearBtn}>
                                 <XIcon size={16} color={COLORS.danger} />
                             </TouchableOpacity>
                         )}
                     </View>
                 </View>
 
-                {/* --- ZONE DE FILTRES --- */}
+                {/* --- SUPPRESSION DE L'ANCIENNE BARRE DE FILTRE --- */}
+
+                {/* --- ZONE DE FILTRES DATE/HEURE (CONDITIONNELLE) --- */}
                 {(useDateFilter || useTimeFilter) && (
                     <View style={styles.filterCard}>
-                        {/* Ligne DATE */}
                         {useDateFilter && (
                             <View style={styles.filterRow}>
                                 <Text style={styles.filterLabel}>Période :</Text>
@@ -417,11 +360,7 @@ export default function KPI() {
                                 </View>
                             </View>
                         )}
-
-                        {/* Séparateur si les deux sont actifs */}
                         {useDateFilter && useTimeFilter && <View style={styles.divider} />}
-
-                        {/* Ligne HEURE */}
                         {useTimeFilter && (
                             <View style={styles.filterRow}>
                                 <Text style={styles.filterLabel}>Créneau :</Text>
@@ -435,14 +374,12 @@ export default function KPI() {
                     </View>
                 )}
 
-                {/* INFO TEXT CORRIGÉ */}
+                {/* INFO TEXT */}
                 <Text style={styles.rangeInfo}>
                     {!useDateFilter && !useTimeFilter ? "Données globales" : 
                      (() => {
-                         // On prépare les dates par défaut proprement
                          const defaultStart = new Date(); defaultStart.setHours(0,0,0,0);
                          const defaultEnd = new Date(); defaultEnd.setHours(23,59,59,999);
-                         
                          return (
                             `Du ${formatDateDisplay(useDateFilter ? startDate : new Date())} à ${formatTimeDisplay(useTimeFilter ? startTime : defaultStart)}` + 
                             ` au ${formatDateDisplay(useDateFilter ? endDate : new Date())} à ${formatTimeDisplay(useTimeFilter ? endTime : defaultEnd)}`
@@ -472,7 +409,58 @@ export default function KPI() {
 
             </ScrollView>
 
-            {/* MODAL PICKER MOBILE (iOS/Android) */}
+            {/* --- MODALE DE SÉLECTION DE TYPES --- */}
+            <Modal
+                transparent={true}
+                visible={showTypeModal}
+                animationType="fade"
+                onRequestClose={() => setShowTypeModal(false)}
+            >
+                <TouchableOpacity 
+                    style={styles.modalOverlay} 
+                    activeOpacity={1} 
+                    onPress={() => setShowTypeModal(false)}
+                >
+                    <View style={styles.modalContainer}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Filtrer par type</Text>
+                            <TouchableOpacity onPress={() => setShowTypeModal(false)}>
+                                <XIcon size={24} color={COLORS.textSub} />
+                            </TouchableOpacity>
+                        </View>
+                        
+                        <View style={styles.modalBody}>
+                            {TYPE_FILTERS.map((type) => {
+                                const isSelected = selectedTypes.includes(type.id);
+                                const Icon = type.icon;
+                                return (
+                                    <TouchableOpacity 
+                                        key={type.id} 
+                                        style={[styles.typeRow, isSelected && styles.typeRowSelected]}
+                                        onPress={() => toggleType(type.id)}
+                                    >
+                                        <View style={styles.typeRowLeft}>
+                                            <View style={[styles.iconBox, {backgroundColor: type.color + '20'}]}>
+                                                <Icon size={18} color={type.color} />
+                                            </View>
+                                            <Text style={styles.typeRowText}>{type.label}</Text>
+                                        </View>
+                                        <View style={[styles.checkbox, isSelected && {backgroundColor: COLORS.primary, borderColor: COLORS.primary}]}>
+                                            {isSelected && <Check size={14} color="white" />}
+                                        </View>
+                                    </TouchableOpacity>
+                                )
+                            })}
+                        </View>
+
+                        <TouchableOpacity style={styles.modalBtn} onPress={() => setShowTypeModal(false)}>
+                            <Text style={styles.modalBtnText}>Valider</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* MODAL PICKER MOBILE */}
             {Platform.OS !== 'web' && showPicker.show && (
                 Platform.OS === 'android' ? (
                     <DateTimePicker 
@@ -484,8 +472,8 @@ export default function KPI() {
                     /> 
                 ) : (
                     <Modal transparent animationType="slide" visible={showPicker.show}>
-                        <View style={styles.modalOverlay}>
-                            <View style={styles.modalContent}>
+                        <View style={styles.iosPickerOverlay}>
+                            <View style={styles.iosPickerContent}>
                                 <DateTimePicker 
                                     value={tempDate} 
                                     mode={showPicker.mode} 
@@ -520,8 +508,8 @@ const styles = StyleSheet.create({
     headerSubtitle: { color: COLORS.textSub, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
     headerTitle: { color: COLORS.textHeader, fontSize: 28, fontWeight: '800', marginBottom: 15 },
 
-    // NOUVEAUX TOGGLES
-    togglesContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    // --- TOGGLES CONTAINER (Boutons alignés) ---
+    togglesContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
     toggleBtn: { 
         flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 16, 
         borderRadius: 25, borderWidth: 1, borderColor: COLORS.border, backgroundColor: 'white' 
@@ -531,9 +519,30 @@ const styles = StyleSheet.create({
     toggleTextActive: { color: 'white' },
     clearBtn: { padding: 8, backgroundColor: '#FEE2E2', borderRadius: 20 },
 
-    // CONTAINER FILTRES
+    // --- MODAL STYLES ---
+    modalOverlay: { flex: 1, backgroundColor: COLORS.overlay, justifyContent: 'center', alignItems: 'center', padding: 20 },
+    modalContainer: { backgroundColor: 'white', borderRadius: 20, width: '100%', maxWidth: 350, padding: 20, elevation: 10 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textHeader },
+    modalBody: { gap: 10, marginBottom: 20 },
+    
+    typeRow: { 
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', 
+        padding: 12, borderRadius: 12, backgroundColor: COLORS.bg, borderWidth: 1, borderColor: 'transparent'
+    },
+    typeRowSelected: { backgroundColor: COLORS.primary + '10', borderColor: COLORS.primary },
+    typeRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    iconBox: { padding: 6, borderRadius: 8 },
+    typeRowText: { fontSize: 15, fontWeight: '600', color: COLORS.textHeader },
+    
+    checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: COLORS.border, justifyContent: 'center', alignItems: 'center', backgroundColor: 'white' },
+    
+    modalBtn: { backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+    modalBtnText: { color: 'white', fontWeight: '700', fontSize: 16 },
+
+    // --- FILTER CARD ---
     filterCard: { 
-        backgroundColor: 'white', borderRadius: 16, padding: 15, marginBottom: 15,
+        backgroundColor: 'white', borderRadius: 16, padding: 15, marginBottom: 15, marginTop: 10,
         borderWidth: 1, borderColor: COLORS.border 
     },
     filterRow: { flexDirection: 'column', marginBottom: 0 },
@@ -542,7 +551,6 @@ const styles = StyleSheet.create({
     arrow: { marginHorizontal: 10, color: COLORS.textSub },
     divider: { height: 1, backgroundColor: COLORS.bg, marginVertical: 12 },
 
-    // CHAMPS INPUTS STYLISÉS
     inputTrigger: { 
         flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
         backgroundColor: COLORS.bg, paddingVertical: 10, borderRadius: 10,
@@ -552,7 +560,6 @@ const styles = StyleSheet.create({
 
     rangeInfo: { fontSize: 12, color: COLORS.textSub, textAlign: 'center', marginBottom: 15, fontStyle: 'italic' },
 
-    // CARDS (inchangés)
     mainCard: { 
         backgroundColor: COLORS.primary, borderRadius: 20, padding: 20, marginBottom: 20,
         elevation: 8, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.25, shadowRadius: 12
@@ -572,6 +579,6 @@ const styles = StyleSheet.create({
     smallLabel: { color: COLORS.textSub, fontSize: 12, fontWeight: '600' },
     smallValue: { color: COLORS.textHeader, fontSize: 17, fontWeight: '700', marginTop: 4 },
 
-    modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
-    modalContent: { backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }
+    iosPickerOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+    iosPickerContent: { backgroundColor: 'white', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 }
 });
