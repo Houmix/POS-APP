@@ -399,87 +399,95 @@ class KpiView(APIView):
     permission_classes = [AllowAny]
     
     def get(self, request, restaurantId):
-        from django.db.models import Q  # Nécessaire pour gérer minuit (22h-02h)
+        from django.db.models import Q 
 
-        # 1. On récupère les paramètres séparément
+        # 1. Paramètres existants
         start_date_str = request.query_params.get('start_date')
         end_date_str = request.query_params.get('end_date')
+        start_time_str = request.query_params.get('start_time')
+        end_time_str = request.query_params.get('end_time')
         
-        start_time_str = request.query_params.get('start_time') # Format attendu "HH:MM"
-        end_time_str = request.query_params.get('end_time')     # Format attendu "HH:MM"
+        # --- NOUVEAU : Paramètre Types ---
+        # Format attendu : "paid,cancelled"
+        types_param = request.query_params.get('types', 'paid') # 'paid' par défaut
+        selected_types = types_param.split(',')
 
-        print(f"DEBUG KPI - Date: {start_date_str}-{end_date_str} | Heure: {start_time_str}-{end_time_str}")
+        print(f"DEBUG KPI - Types: {selected_types}")
 
         orders = Order.objects.filter(restaurant_id=restaurantId).prefetch_related(
             'items__menu', 'items__options__option'
         )
 
-        # 2. FILTRE DATE (Période Globale)
-        # S'applique seulement si l'utilisateur a choisi des dates. 
-        # Sinon, on prend tout l'historique par défaut.
+        # 2. FILTRE DATE (inchangé)
         if start_date_str and end_date_str:
             try:
                 start_datetime = parse_datetime(start_date_str)
                 end_datetime = parse_datetime(end_date_str)
-
-                # Nettoyage Timezone
                 if start_datetime and timezone.is_aware(start_datetime):
                     start_datetime = make_naive(start_datetime)
                 if end_datetime and timezone.is_aware(end_datetime):
                     end_datetime = make_naive(end_datetime)
-
                 if start_datetime and end_datetime:
                     orders = orders.filter(created_at__range=(start_datetime, end_datetime))
             except Exception as e:
                 print(f"Erreur filtre date: {e}")
 
-        # 3. FILTRE HEURE (Créneau Récurrent)
-        # S'applique indépendamment de la date (ex: "Tous les midis")
+        # 3. FILTRE HEURE (inchangé)
         if start_time_str and end_time_str:
             try:
                 sh, sm = map(int, start_time_str.split(':'))
                 eh, em = map(int, end_time_str.split(':'))
                 s_time = time(sh, sm)
                 e_time = time(eh, em)
-                
-                # Gestion classique (ex: 12:00 -> 14:00)
                 if s_time <= e_time:
                     orders = orders.filter(created_at__time__range=(s_time, e_time))
-                # Gestion nuit (ex: 22:00 -> 02:00)
                 else:
                     orders = orders.filter(Q(created_at__time__gte=s_time) | Q(created_at__time__lte=e_time))
-                    
-                print(f"Filtre heure appliqué: {s_time} à {e_time}")
             except Exception as e:
                 print(f"Erreur filtre heure: {e}")
 
-        # 4. Calculs KPI CORRIGÉS
+        # --- 4. FILTRE PAR TYPE (NOUVEAU) ---
+        type_filter = Q()
         
-        # On définit ce qu'est une commande qui rapporte de l'argent :
-        # Elle doit être PAYÉE, NON REMBOURSÉE et NON ANNULÉE.
-        valid_sales = orders.filter(paid=True, refund=False, cancelled=False)
+        if 'paid' in selected_types:
+            # Payée, non remboursée, non annulée
+            type_filter |= Q(paid=True, refund=False, cancelled=False)
+            
+        if 'unpaid' in selected_types:
+            # Non payée, non remboursée, non annulée
+            type_filter |= Q(paid=False, refund=False, cancelled=False)
+            
+        if 'cancelled' in selected_types:
+            type_filter |= Q(cancelled=True)
+            
+        if 'refunded' in selected_types:
+            type_filter |= Q(refund=True)
+            
+        # On applique le filtre combiné
+        orders = orders.filter(type_filter)
+
+
+        # 5. Calculs KPI (Adaptés aux données filtrées)
+        # Maintenant, 'orders' contient déjà uniquement ce qu'on veut voir.
         
-        # Calcul du CA sur les ventes valides uniquement
-        total_revenue = sum(order.total_price() for order in valid_sales) or 0
+        # Le CA est la somme des commandes affichées (ex: si on affiche 'cancelled', on voit le montant perdu)
+        total_revenue = sum(order.total_price() for order in orders) or 0
         
-        # Total global des commandes (pour le volume)
+        # Nombre total dans la sélection
         total_orders_count = orders.count() or 0
         
-        # Nombre de ventes réelles (pour le panier moyen)
-        valid_sales_count = valid_sales.count()
-        
-        # Panier moyen basé sur les ventes valides (éviter division par zéro)
-        average_cart = (total_revenue / valid_sales_count) if valid_sales_count > 0 else 0
+        # Panier moyen de la sélection
+        average_cart = (total_revenue / total_orders_count) if total_orders_count > 0 else 0
 
-        # Taux de succès (Ventes valides / Total des commandes entrantes)
-        # completed_orders était basé sur le statut 'completed' souvent non utilisé
-        completed_count = valid_sales_count 
+        # Pour le taux de succès, on compte combien sont réellement des ventes valides PARMI la sélection
+        valid_sales_in_selection = orders.filter(paid=True, refund=False, cancelled=False).count()
 
         context = {
             "total_revenue": total_revenue,
             "total_orders": total_orders_count,
             "average_cart": average_cart,
-            "completed_orders": completed_count, # Plus précis que status='completed'
+            "completed_orders": valid_sales_in_selection, 
+            # On garde ces compteurs informatifs s'ils font partie de la sélection
             "cancelled_orders": orders.filter(cancelled=True).count(), 
             "take_away_count": orders.filter(take_away=True).count(),
         }
