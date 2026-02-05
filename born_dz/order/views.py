@@ -74,14 +74,30 @@ class OrderCreate(APIView):
 
         # 3. CRÉATION DE LA COMMANDE
         print(f"\n  Création de l'objet Order...")
+
+        # --- MODIFICATION ICI ---
+        # Définir le statut et l'état de paiement selon le mode de règlement
+        if card:
+            # Si Carte : On valide directement et on marque comme payé
+            initial_status = 'in_progress'
+            is_paid = True
+        else:
+            # Si Espèce : On attend la confirmation (A confirmer) et le paiement
+            initial_status = 'pending'
+            is_paid = False
+        # ------------------------
+
         try:
             order = Order.objects.create(
-                user=user_instance,         # On passe l'objet User, pas l'ID
+                user=user_instance,
                 restaurant=restaurant,
-                cash=not card,              # Si card=True, alors cash=False
-                take_away=data.get("takeaway", False)
+                cash=not card,
+                take_away=data.get("takeaway", False),
+                # On applique les nouvelles variables ici :
+                status=initial_status, 
+                paid=is_paid
             )
-            print(f"  Commande créée: ID={order.id}")
+            print(f"  Commande créée: ID={order.id} | Status={initial_status} | Payé={is_paid}")
             
         except Exception as e:
             print(f"  ERREUR CRITIQUE creation Order: {e}")
