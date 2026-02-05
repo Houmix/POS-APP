@@ -132,8 +132,10 @@ export default function OrderScreen() {
     return orders.filter(order => {
       const orderDateStr = new Date(order.created_at).toLocaleDateString("fr-FR");
       const isSameDay = orderDateStr === todayStr;
-      const isFinished = order.paid || order.cancelled || order.refund;
-      return isSameDay && isFinished;
+      
+      // MODIFICATION : On retourne toutes les commandes du jour, peu importe leur état
+      return isSameDay; 
+      
     }).sort((a, b) => {
         const dateA = new Date(a.last_updated || a.created_at).getTime();
         const dateB = new Date(b.last_updated || b.created_at).getTime();
@@ -314,18 +316,23 @@ export default function OrderScreen() {
                         <View style={styles.historyIdRow}>
                             <Text style={styles.historyId}>#{order.order_id}</Text>
                             {order.refund ? (
-                                <View style={[styles.miniBadge, {backgroundColor: '#FEE2E2'}]}>
-                                    <Text style={{color: '#EF4444', fontSize: 10, fontWeight: '700'}}>REMBOURSÉ</Text>
-                                </View>
-                            ) : order.cancelled ? (
-                                <View style={[styles.miniBadge, {backgroundColor: '#FEF3C7'}]}>
-                                    <Text style={{color: '#D97706', fontSize: 10, fontWeight: '700'}}>ANNULÉ</Text>
-                                </View>
-                            ) : (
-                                <View style={[styles.miniBadge, {backgroundColor: '#DCFCE7'}]}>
-                                    <Text style={{color: '#166534', fontSize: 10, fontWeight: '700'}}>PAYÉ</Text>
-                                </View>
-                            )}
+                            <View style={[styles.miniBadge, {backgroundColor: '#FEE2E2'}]}>
+                                <Text style={{color: '#EF4444', fontSize: 10, fontWeight: '700'}}>REMBOURSÉ</Text>
+                            </View>
+                        ) : order.cancelled ? (
+                            <View style={[styles.miniBadge, {backgroundColor: '#FEF3C7'}]}>
+                                <Text style={{color: '#D97706', fontSize: 10, fontWeight: '700'}}>ANNULÉ</Text>
+                            </View>
+                        ) : order.paid ? (
+                            <View style={[styles.miniBadge, {backgroundColor: '#DCFCE7'}]}>
+                                <Text style={{color: '#166534', fontSize: 10, fontWeight: '700'}}>PAYÉ</Text>
+                            </View>
+                        ) : (
+                            // NOUVEAU BADGE POUR LES COMMANDES NON PAYÉES (A CONFIRMER)
+                            <View style={[styles.miniBadge, {backgroundColor: '#FFEDD5'}]}>
+                                <Text style={{color: '#C2410C', fontSize: 10, fontWeight: '700'}}>NON PAYÉE</Text>
+                            </View>
+                        )}
                         </View>
                         <Text style={styles.historyTime}>
                             {new Date(order.created_at).toLocaleTimeString("fr-FR", {hour: '2-digit', minute:'2-digit'})} • {order.items.length} articles
