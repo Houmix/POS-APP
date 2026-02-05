@@ -75,7 +75,20 @@ class OrderCreate(APIView):
         # 3. CRÉATION DE LA COMMANDE
         print(f"\n  Création de l'objet Order...")
 
-        # --- MODIFICATION ICI ---
+        # --- CORRECTION : Gestion robuste de 'take_away' ---
+        # 1. On cherche la clé 'takeaway' OU 'take_away'
+        raw_takeaway = data.get("takeaway", data.get("take_away", False))
+        
+        # 2. On convertit en booléen de manière sécurisée (comme pour solo/extra)
+        # Si c'est une chaine ("true", "1"), on le détecte. Si c'est déjà un bool, ça marche.
+        take_away_bool = str(raw_takeaway).lower() in ['true', '1', 'yes'] if raw_takeaway is not True else True
+        # Note: la ligne ci-dessus gère le cas où raw_takeaway est le booléen True directement.
+        # Une version plus simple et explicite :
+        if isinstance(raw_takeaway, str):
+             take_away_bool = raw_takeaway.lower() in ['true', '1', 'yes']
+        else:
+             take_away_bool = bool(raw_takeaway)
+             
         # Définir le statut et l'état de paiement selon le mode de règlement
         if card:
             # Si Carte : On valide directement et on marque comme payé
@@ -92,7 +105,7 @@ class OrderCreate(APIView):
                 user=user_instance,
                 restaurant=restaurant,
                 cash=not card,
-                take_away=data.get("takeaway", False),
+                take_away=take_away_bool,
                 # On applique les nouvelles variables ici :
                 status=initial_status, 
                 paid=is_paid
@@ -466,31 +479,46 @@ class KpiView(APIView):
         # On applique le filtre combiné
         orders = orders.filter(type_filter)
 
-
+        # Optimisation : On s'assure que tout est préchargé pour éviter les requêtes N+1 dans la boucle total_price
+        orders = orders.select_related('restaurant').prefetch_related(
+        'items__menu', 
+        'items__options__option' # Assure-toi que ce chemin est correct selon tes models
+)
+       
         # 5. Calculs KPI (Adaptés aux données filtrées)
-        # Maintenant, 'orders' contient déjà uniquement ce qu'on veut voir.
         
-        # Le CA est la somme des commandes affichées (ex: si on affiche 'cancelled', on voit le montant perdu)
-        total_revenue = sum(order.total_price() for order in orders) or 0
+        # Optimisation : On évalue le QuerySet une seule fois dans une liste
+        orders_list = list(orders)
         
-        # Nombre total dans la sélection
-        total_orders_count = orders.count() or 0
+        # Calcul du CA selon la logique demandée
+        if 'paid' in selected_types:
+            # Si le filtre "Payée" est actif, on ne somme QUE les commandes réellement payées
+            # (on exclut les montants annulés/remboursés même si sélectionnés)
+            total_revenue = sum(o.total_price() for o in orders_list if o.paid and not o.cancelled and not o.refund) or 0
+        else:
+            # Si "Payée" n'est PAS sélectionné (ex: que Annulée), on somme tout ce qui est affiché
+            total_revenue = sum(o.total_price() for o in orders_list) or 0
         
-        # Panier moyen de la sélection
+        # Nombre total dans la sélection (inclut tous les types sélectionnés)
+        total_orders_count = len(orders_list)
+        
+        # Panier moyen
         average_cart = (total_revenue / total_orders_count) if total_orders_count > 0 else 0
 
-        # Pour le taux de succès, on compte combien sont réellement des ventes valides PARMI la sélection
-        valid_sales_in_selection = orders.filter(paid=True, refund=False, cancelled=False).count()
+        # Autres compteurs calculés en Python sur la liste (plus rapide que N requêtes SQL)
+        valid_sales_in_selection = len([o for o in orders_list if o.paid and not o.refund and not o.cancelled])
+        cancelled_orders_count = len([o for o in orders_list if o.cancelled])
+        take_away_count = len([o for o in orders_list if o.take_away])
 
         context = {
             "total_revenue": total_revenue,
             "total_orders": total_orders_count,
             "average_cart": average_cart,
             "completed_orders": valid_sales_in_selection, 
-            # On garde ces compteurs informatifs s'ils font partie de la sélection
-            "cancelled_orders": orders.filter(cancelled=True).count(), 
-            "take_away_count": orders.filter(take_away=True).count(),
+            "cancelled_orders": cancelled_orders_count, 
+            "take_away_count": take_away_count,
         }
+
         return Response(context)
 
 def generate_order_qr(order_id):

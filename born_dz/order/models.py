@@ -27,14 +27,14 @@ class Order(models.Model):
     def total_price(self):
         total = 0
         for item in self.items.all():
-            if item.menu:
-                # CORRECTION MAJEURE ICI
-                # Si l'item est marqué Solo OU Extra, on utilise le prix unitaire (solo_price)
+            if item.menu: # Sécurité critique
                 if item.solo or item.extra:
-                    total += item.menu.solo_price * item.quantity
-                # Sinon (ni solo, ni extra), c'est un menu complet, on utilise le prix du menu
+                    # Utiliser getattr pour éviter le crash si solo_price est null
+                    price = getattr(item.menu, 'solo_price', 0) or 0 
+                    total += price * item.quantity
                 else:
-                    total += item.menu.price * item.quantity
+                    price = getattr(item.menu, 'price', 0) or 0
+                    total += price * item.quantity
             
             # Ajout des suppléments (options)
             for option_rel in self.items.options.all() if hasattr(self.items, 'options') else item.options.all():
