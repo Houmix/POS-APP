@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { 
   TrendingUp, ShoppingBag, CreditCard, 
-  Package, CheckCircle2, XCircle, Calendar as CalendarIcon, Clock as ClockIcon, X as XIcon, Filter, Check 
+  Package, CheckCircle2, XCircle, Calendar as CalendarIcon, Clock as ClockIcon, 
+  X as XIcon, Filter, Check, RefreshCw 
 } from 'lucide-react-native';
 import axios from 'axios';
 import { POS_URL, idRestaurant } from '@/config';
@@ -163,9 +164,10 @@ export default function KPI() {
             }
 
             if (selectedTypes.length > 0) {
-                url += `types=${selectedTypes.join(',')}`;
+            url += `types=${selectedTypes.join(',')}`;
             } else {
-                url += `types=${selectedTypes.join(',')}`;
+                // Si aucun type sélectionné, on décide d'un défaut ou on envoie 'paid'
+                url += `types=paid`; 
             }
 
             console.log("Fetching KPI URL:", url);
@@ -308,8 +310,27 @@ export default function KPI() {
                 
                 {/* HEADER & TOGGLES */}
                 <View style={styles.headerSection}>
-                    <Text style={styles.headerSubtitle}>Statistiques</Text>
-                    <Text style={styles.headerTitle}>Tableau de Bord</Text>
+                    
+                    {/* NOUVEAU : Ligne du haut avec Titre + Bouton Refresh */}
+                    <View style={styles.headerTopRow}>
+                        <View>
+                            <Text style={styles.headerSubtitle}>Statistiques</Text>
+                            <Text style={styles.headerTitle}>Tableau de Bord</Text>
+                        </View>
+                        
+                        <TouchableOpacity 
+                            style={styles.refreshBtn} 
+                            onPress={onRefresh}
+                            activeOpacity={0.7}
+                            disabled={refreshing || loading}
+                        >
+                            <RefreshCw 
+                                size={20} 
+                                color={COLORS.textHeader} 
+                                style={{ opacity: (refreshing || loading) ? 0.3 : 1 }} 
+                            />
+                        </TouchableOpacity>
+                    </View>
                     
                     <View style={styles.togglesContainer}>
                         {/* 1. Dates Button */}
@@ -324,8 +345,7 @@ export default function KPI() {
                             <Text style={[styles.toggleText, useTimeFilter && styles.toggleTextActive]}>Heures</Text>
                         </TouchableOpacity>
 
-                        {/* 3. NOUVEAU : Type Button (Intégré comme un toggle) */}
-                        {/* Il s'allume si le filtre n'est pas celui par défaut */}
+                        {/* 3. Type Button */}
                         <TouchableOpacity 
                             style={[styles.toggleBtn, isTypeCustom && styles.toggleBtnActive]} 
                             onPress={() => setShowTypeModal(true)}
@@ -344,8 +364,6 @@ export default function KPI() {
                         )}
                     </View>
                 </View>
-
-                {/* --- SUPPRESSION DE L'ANCIENNE BARRE DE FILTRE --- */}
 
                 {/* --- ZONE DE FILTRES DATE/HEURE (CONDITIONNELLE) --- */}
                 {(useDateFilter || useTimeFilter) && (
@@ -392,7 +410,17 @@ export default function KPI() {
                 <View style={styles.mainCard}>
                     <View style={styles.mainCardContent}>
                         <View>
-                            <Text style={styles.mainCardLabel}>Chiffre d'Affaires</Text>
+                            <Text style={styles.mainCardLabel}>
+                                {selectedTypes.includes('cancelled') && selectedTypes.length === 1 
+                                ? "Montant Annulé (Perte)" 
+                                : selectedTypes.includes('refunded') && selectedTypes.length === 1
+                                ? "Montant Remboursé"
+                                : selectedTypes.includes('unpaid') && selectedTypes.length === 1
+                                ? "Montant Non payée"
+                                : !selectedTypes.includes('paid') && selectedTypes.length > 1
+                                ? "Montant perdu"
+                                : "Chiffre d'Affaires"}
+                            </Text>
                             <Text style={styles.mainCardValue}>{(data?.total_revenue || 0).toLocaleString('fr-FR')} <Text style={styles.currency}>DA</Text></Text>
                         </View>
                         <View style={styles.iconCircle}><TrendingUp color="white" size={28} /></View>
@@ -505,8 +533,31 @@ const styles = StyleSheet.create({
     loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.bg },
     
     headerSection: { marginBottom: 15 },
+    
+    // --- STYLES MODIFIÉS POUR LE HEADER ---
+    headerTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: 10,
+    },
+    refreshBtn: {
+        backgroundColor: 'white',
+        padding: 10,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+        elevation: 3,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 5,
+    },
     headerSubtitle: { color: COLORS.textSub, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
-    headerTitle: { color: COLORS.textHeader, fontSize: 28, fontWeight: '800', marginBottom: 15 },
+    headerTitle: { color: COLORS.textHeader, fontSize: 28, fontWeight: '800', marginBottom: 5 }, // Marge réduite
 
     // --- TOGGLES CONTAINER (Boutons alignés) ---
     togglesContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' },
