@@ -17,6 +17,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { POS_URL } from "@/config";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
+
 export default function OrderScreen() {
   // 1. Interface
   interface Order {
@@ -128,13 +129,21 @@ export default function OrderScreen() {
 
   // --- FILTRE HISTORIQUE ---
   const getHistoryOrders = () => {
-    const todayStr = new Date().toLocaleDateString("fr-FR");
+    // Calcul des dates de référence
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const todayStr = today.toLocaleDateString("fr-FR");
+    const yesterdayStr = yesterday.toLocaleDateString("fr-FR");
+
     return orders.filter(order => {
       const orderDateStr = new Date(order.created_at).toLocaleDateString("fr-FR");
-      const isSameDay = orderDateStr === todayStr;
       
-      // MODIFICATION : On retourne toutes les commandes du jour, peu importe leur état
-      return isSameDay; 
+      // On vérifie si la date de la commande correspond à aujourd'hui OU hier
+      const isRecent = orderDateStr === todayStr || orderDateStr === yesterdayStr;
+      
+      return isRecent; 
       
     }).sort((a, b) => {
         const dateA = new Date(a.last_updated || a.created_at).getTime();
@@ -277,8 +286,10 @@ export default function OrderScreen() {
   };
 
   // --- RENDER: HISTORIQUE MODAL ---
+// --- RENDER: HISTORIQUE MODAL (Complet) ---
   const renderHistoryModal = () => {
     const historyOrders = getHistoryOrders();
+    
     return (
       <Modal
         animationType="slide"
@@ -288,14 +299,16 @@ export default function OrderScreen() {
       >
         <View style={styles.historyOverlay}>
           <View style={styles.historyContent}>
+            
+            {/* --- HEADER --- */}
             <View style={styles.historyHeader}>
               <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
                 <View style={styles.historyIconBadge}>
                     <MaterialCommunityIcons name="history" size={24} color="#6366F1" />
                 </View>
                 <View>
-                    <Text style={styles.historyTitle}>Historique du Jour</Text>
-                    <Text style={styles.historySubtitle}>{historyOrders.length} commandes aujourd'hui</Text>
+                    <Text style={styles.historyTitle}>Historique </Text>
+                    <Text style={styles.historySubtitle}>{historyOrders.length} commandes récentes</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={() => setHistoryVisible(false)} style={styles.closeHistoryBtn}>
@@ -303,73 +316,95 @@ export default function OrderScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* --- LISTE --- */}
             <ScrollView style={styles.historyList} contentContainerStyle={{paddingBottom: 20}}>
               {historyOrders.length === 0 ? (
                  <View style={styles.emptyHistory}>
                     <MaterialCommunityIcons name="receipt-text-outline" size={48} color="#CBD5E1" />
-                    <Text style={{color: "#94A3B8", marginTop: 10}}>Aucune commande terminée aujourd'hui</Text>
+                    <Text style={{color: "#94A3B8", marginTop: 10}}>Aucune commande récente</Text>
                  </View>
               ) : (
-                historyOrders.map((order) => (
-                  <View key={order.order_id} style={styles.historyCard}>
-                    <View style={styles.historyInfo}>
-                        <View style={styles.historyIdRow}>
-                            <Text style={styles.historyId}>#{order.order_id}</Text>
-                            {order.refund ? (
-                            <View style={[styles.miniBadge, {backgroundColor: '#FEE2E2'}]}>
-                                <Text style={{color: '#EF4444', fontSize: 10, fontWeight: '700'}}>REMBOURSÉ</Text>
-                            </View>
-                        ) : order.cancelled ? (
-                            <View style={[styles.miniBadge, {backgroundColor: '#FEF3C7'}]}>
-                                <Text style={{color: '#D97706', fontSize: 10, fontWeight: '700'}}>ANNULÉ</Text>
-                            </View>
-                        ) : order.paid ? (
-                            <View style={[styles.miniBadge, {backgroundColor: '#DCFCE7'}]}>
-                                <Text style={{color: '#166534', fontSize: 10, fontWeight: '700'}}>PAYÉ</Text>
-                            </View>
-                        ) : (
-                            // NOUVEAU BADGE POUR LES COMMANDES NON PAYÉES (A CONFIRMER)
-                            <View style={[styles.miniBadge, {backgroundColor: '#FFEDD5'}]}>
-                                <Text style={{color: '#C2410C', fontSize: 10, fontWeight: '700'}}>NON PAYÉE</Text>
-                            </View>
-                        )}
-                        </View>
-                        <Text style={styles.historyTime}>
-                            {new Date(order.created_at).toLocaleTimeString("fr-FR", {hour: '2-digit', minute:'2-digit'})} • {order.items.length} articles
-                        </Text>
-                        <Text style={styles.historyPrice}>{order.total_price} DA</Text>
-                    </View>
+                historyOrders.map((order) => {
+                  // --- LOGIQUE DE DATE ---
+                  const orderDate = new Date(order.created_at);
+                  const today = new Date();
+                  // Comparaison stricte des dates (jour/mois/année) sans l'heure
+                  const isToday = orderDate.toDateString() === today.toDateString();
+                  const timeStr = orderDate.toLocaleTimeString("fr-FR", {hour: '2-digit', minute:'2-digit'});
 
-                    <View style={styles.historyActions}>
-                        <TouchableOpacity 
-                            style={styles.iconBtnInfo} 
-                            onPress={() => handleReprint(order.order_id)}
-                            disabled={printing}
-                        >
-                            <MaterialCommunityIcons name="printer" size={20} color="#3B82F6" />
-                        </TouchableOpacity>
+                  return (
+                    <View key={order.order_id} style={styles.historyCard}>
+                      <View style={styles.historyInfo}>
+                          
+                          {/* Ligne ID + Badges */}
+                          <View style={styles.historyIdRow}>
+                              <Text style={styles.historyId}>#{order.order_id}</Text>
+                              
+                              {order.refund ? (
+                              <View style={[styles.miniBadge, {backgroundColor: '#FEE2E2'}]}>
+                                  <Text style={{color: '#EF4444', fontSize: 10, fontWeight: '700'}}>REMBOURSÉ</Text>
+                              </View>
+                              ) : order.cancelled ? (
+                              <View style={[styles.miniBadge, {backgroundColor: '#FEF3C7'}]}>
+                                  <Text style={{color: '#D97706', fontSize: 10, fontWeight: '700'}}>ANNULÉ</Text>
+                              </View>
+                              ) : order.paid ? (
+                              <View style={[styles.miniBadge, {backgroundColor: '#DCFCE7'}]}>
+                                  <Text style={{color: '#166534', fontSize: 10, fontWeight: '700'}}>PAYÉ</Text>
+                              </View>
+                              ) : (
+                              <View style={[styles.miniBadge, {backgroundColor: '#FFEDD5'}]}>
+                                  <Text style={{color: '#C2410C', fontSize: 10, fontWeight: '700'}}>NON PAYÉE</Text>
+                              </View>
+                              )}
+                          </View>
 
-                        {!order.refund && !order.cancelled && (
-                             <TouchableOpacity 
-                                style={styles.iconBtnDanger} 
-                                onPress={() => confirmRefund(order.order_id)}
-                             >
-                                <MaterialCommunityIcons name="undo" size={20} color="#EF4444" />
-                             </TouchableOpacity>
-                        )}
-                        
-                        <TouchableOpacity 
-                            style={styles.iconBtnDefault} 
-                            onPress={() => {
-                                setHistoryVisible(false);
-                                setTimeout(() => openOrderDetails(order), 300);
-                            }}
-                        >
-                            <MaterialCommunityIcons name="chevron-right" size={24} color="#64748B" />
-                        </TouchableOpacity>
+                          {/* Ligne Heure (Modifiée) */}
+                          <Text style={styles.historyTime}>
+                              <Text style={{
+                                  fontWeight: isToday ? '400' : '700', 
+                                  color: isToday ? '#64748B' : '#6366F1' // Violet si c'était Hier
+                              }}>
+                                  {isToday ? "Auj." : "Hier"}
+                              </Text>
+                              {" " + timeStr} • {order.items.length} articles
+                          </Text>
+
+                          <Text style={styles.historyPrice}>{order.total_price} DA</Text>
+                      </View>
+
+                      {/* Actions */}
+                      <View style={styles.historyActions}>
+                          <TouchableOpacity 
+                              style={styles.iconBtnInfo} 
+                              onPress={() => handleReprint(order.order_id)}
+                              disabled={printing}
+                          >
+                              <MaterialCommunityIcons name="printer" size={20} color="#3B82F6" />
+                          </TouchableOpacity>
+
+                          {!order.refund && !order.cancelled && (
+                               <TouchableOpacity 
+                                  style={styles.iconBtnDanger} 
+                                  onPress={() => confirmRefund(order.order_id)}
+                               >
+                                  <MaterialCommunityIcons name="undo" size={20} color="#EF4444" />
+                               </TouchableOpacity>
+                          )}
+                          
+                          <TouchableOpacity 
+                              style={styles.iconBtnDefault} 
+                              onPress={() => {
+                                  setHistoryVisible(false);
+                                  setTimeout(() => openOrderDetails(order), 300);
+                              }}
+                          >
+                              <MaterialCommunityIcons name="chevron-right" size={24} color="#64748B" />
+                          </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </ScrollView>
           </View>
