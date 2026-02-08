@@ -8,11 +8,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { 
     LayoutGrid, Utensils, Settings2, Store, 
     Plus, Trash2, Save, Edit, Eye, EyeOff, X, Camera, Upload, AlertTriangle, CheckCircle 
-} from 'lucide-react-native'; // On utilise Lucide ici, c'est compatible visuellement
+} from 'lucide-react-native'; 
 import axios from 'axios';
 import { POS_URL } from '@/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Toast from 'react-native-toast-message';
+
+// 1. IMPORT MODIFIÉ POUR LE TOAST
+import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
 
 const { width, height } = Dimensions.get('window');
 
@@ -52,6 +54,30 @@ const OPTION_TYPES = [
     { value: 'base', label: 'Base' },
     { value: 'protéine', label: 'Protéine' },
 ];
+
+// 2. CONFIGURATION DU TOAST (POUR AFFICHER PLUSIEURS LIGNES)
+const toastConfig = {
+    success: (props: any) => (
+        <BaseToast
+            {...props}
+            style={{ borderLeftColor: COLORS.success, height: 'auto', minHeight: 60, paddingVertical: 10 }}
+            contentContainerStyle={{ paddingHorizontal: 15 }}
+            text1Style={{ fontSize: 16, fontWeight: '700', color: COLORS.secondary }}
+            text2Style={{ fontSize: 14, color: COLORS.muted }}
+            text2NumberOfLines={4} // Autorise 4 lignes de texte
+        />
+    ),
+    error: (props: any) => (
+        <ErrorToast
+            {...props}
+            style={{ borderLeftColor: COLORS.danger, height: 'auto', minHeight: 60, paddingVertical: 10 }}
+            contentContainerStyle={{ paddingHorizontal: 15 }}
+            text1Style={{ fontSize: 16, fontWeight: '700', color: COLORS.secondary }}
+            text2Style={{ fontSize: 14, color: COLORS.muted }}
+            text2NumberOfLines={4} // Autorise 4 lignes de texte
+        />
+    )
+};
 
 export default function MenuAdminPage() {
     const [activeTab, setActiveTab] = useState<Tab>('groups');
@@ -273,8 +299,9 @@ export default function MenuAdminPage() {
     
     // ÉTAPE 1 : Vérification et Ouverture de la Prévisualisation
     const handlePreCreateMenu = () => {
-        if (!menuForm.name || !menuForm.price || !menuForm.group_menu) {
-            return showError("Incomplet", "Veuillez remplir les champs obligatoires (Nom, Prix, Groupe)");
+        if (!menuForm.name || !menuForm.price || !menuForm.solo_price || !menuForm.group_menu || !menuForm.description) {
+            // Grâce à toastConfig, ce message s'affichera entièrement maintenant
+            return showError("Incomplet", "Veuillez remplir les champs obligatoires (Nom, Description, Prix et Groupe)");
         }
         setPreviewModalVisible(true);
     };
@@ -505,7 +532,7 @@ export default function MenuAdminPage() {
                 <TextInput style={styles.input} placeholder="Nom" value={menuForm.name} onChangeText={(t) => setMenuForm({...menuForm, name: t})} />
                 <TextInput style={styles.input} placeholder="Description" value={menuForm.description} onChangeText={(t) => setMenuForm({...menuForm, description: t})} multiline />
                 <View style={styles.row}>
-                    <TextInput style={[styles.input, {flex: 1, marginRight: 10}]} placeholder="Prix (DA)" keyboardType="numeric" value={menuForm.price} onChangeText={(t) => setMenuForm({...menuForm, price: t})} />
+                    <TextInput style={[styles.input, {flex: 1, marginRight: 10}]} placeholder="Prix Menu" keyboardType="numeric" value={menuForm.price} onChangeText={(t) => setMenuForm({...menuForm, price: t})} />
                     <TextInput style={[styles.input, {flex: 1}]} placeholder="Prix solo" keyboardType="numeric" value={menuForm.solo_price} onChangeText={(t) => setMenuForm({...menuForm, solo_price: t})} />
                 </View>
                 <View style={styles.row}>
@@ -523,7 +550,6 @@ export default function MenuAdminPage() {
                 </View>
                 {renderPhotoPicker(menuFormPhoto, setMenuFormPhoto)}
                 
-                {/* 🔥 MODIFICATION : Bouton Prévisualisation au lieu de Sauvegarder direct */}
                 <TouchableOpacity style={styles.submitBtn} onPress={handlePreCreateMenu}>
                     <Eye size={20} color="white" />
                     <Text style={styles.btnText}>Prévisualiser & Enregistrer</Text>
@@ -710,7 +736,7 @@ export default function MenuAdminPage() {
                 </View>
             </Modal>
 
-            {/* 🔥🔥 NOUVEAU: MODAL DE PRÉVISUALISATION STYLE TERMINAL (POS) */}
+            {/* 🔥🔥 MODAL DE PRÉVISUALISATION STYLE TERMINAL (POS) */}
             <Modal visible={previewModalVisible} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
                     <View style={styles.previewModalContent}>
@@ -744,10 +770,11 @@ export default function MenuAdminPage() {
                                     </Text>
                                     <View style={styles.terminalPriceContainer}>
                                         <Text style={styles.terminalPrice}>
-                                            {/* Logique identique à terminal.tsx : Si solo_price existe, on l'affiche, sinon price */}
+                                            {/* Logique d'affichage du prix identique au terminal */}
                                             {(menuForm.solo_price && parseFloat(menuForm.solo_price) > 0) 
                                                 ? menuForm.solo_price 
                                                 : menuForm.price} 
+                                            {/* Le DA en plus petit comme sur la photo */}
                                             <Text style={{fontSize: 14}}> DA</Text>
                                         </Text>
                                         <View style={styles.terminalAddButton}>
@@ -780,7 +807,8 @@ export default function MenuAdminPage() {
                 </View>
             </Modal>
 
-            <Toast position="bottom" bottomOffset={40} />
+            {/* 3. APPLICATION DE LA CONFIG AU TOAST */}
+            <Toast position="bottom" bottomOffset={40} config={toastConfig} />
         </View>
     );
 }
@@ -874,10 +902,10 @@ const styles = StyleSheet.create({
     selectPhotoText: { color: COLORS.primary, fontWeight: '600', fontSize: 14 },
 
     // =========================================================================
-    // 🔥🔥 STYLES COPIÉS ET ADAPTÉS DE terminal.tsx POUR LA PRÉVISUALISATION 🔥🔥
+    // 🔥🔥 STYLES POUR LA PRÉVISUALISATION (Alignés sur terminal.tsx) 🔥🔥
     // =========================================================================
     previewModalContent: { 
-        backgroundColor: '#F3F4F6', // Fond gris clair typique du terminal
+        backgroundColor: '#F3F4F6', 
         width: '100%', 
         maxWidth: 450, 
         borderRadius: 20, 
@@ -886,17 +914,18 @@ const styles = StyleSheet.create({
         alignItems: 'center'
     },
     previewSubtitle: { fontSize: 16, color: COLORS.muted, marginBottom: 20, textAlign: 'center' },
-    previewContainer: { marginBottom: 25, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
+    previewContainer: { marginBottom: 25 },
     previewWarning: { fontSize: 14, color: COLORS.warning, textAlign: 'center', marginBottom: 20, backgroundColor: '#FFFBEB', padding: 10, borderRadius: 8, width: '100%' },
     previewActions: { flexDirection: 'row', width: '100%', justifyContent: 'space-between' },
 
-    // La carte identique au terminal
+    // Style exact de la carte du terminal
     terminalCard: {
-        width: 220, // Largeur fixe pour l'aperçu
-        height: 275, // Ratio 0.8 aspect (approx)
+        width: 320, // Élargi (était 250)
+        height: 240, // Réduit (était 280) pour un effet rectangle net
         backgroundColor: "#fff",
         borderRadius: 20,
         overflow: 'hidden',
+        // Ombres
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.08,
@@ -905,7 +934,7 @@ const styles = StyleSheet.create({
     },
     terminalImageContainer: {
         width: "100%",
-        height: "55%", // Comme dans terminal.tsx
+        height: "60%", // Image un peu plus grande pour correspondre à votre photo
     },
     terminalImage: {
         width: "100%",
@@ -914,13 +943,13 @@ const styles = StyleSheet.create({
     terminalInfo: {
         padding: 15,
         flex: 1,
-        justifyContent: 'space-between',
+        justifyContent: 'space-between', // Pousse le titre en haut et le prix en bas
     },
     terminalTitle: {
         fontSize: 17,
         fontWeight: "700",
         textAlign: "left",
-        color: "#1e293b", // Couleur exacte du terminal
+        color: "#1e293b", 
         marginBottom: 5,
     },
     terminalPriceContainer: {
@@ -930,11 +959,11 @@ const styles = StyleSheet.create({
     },
     terminalPrice: {
         fontSize: 20,
-        color: "#0056b3", // Couleur exacte du terminal
+        color: "#0056b3", 
         fontWeight: "800",
     },
     terminalAddButton: {
-        backgroundColor: "#ff69b4", // Couleur exacte du terminal (Rose)
+        backgroundColor: "#ff69b4", 
         width: 36,
         height: 36,
         borderRadius: 18,
