@@ -25,68 +25,94 @@ function log(message, type = 'info') {
   const emoji = { info: ' info', success: ' OK', error: ' NO', warning: ' ATTENTION' }[type] || '•';
   console.log(`${emoji} ${message}`);
 }
-
-const POS_PRINTER_NAME = "POS-80"; // ⬅️ AJUSTEZ CE NOM EXACTEMENT
 // ==========================================
-//   HANDLER D'IMPRESSION (TEXTE BRUT RAW)
+//   HANDLER D'IMPRESSION (MULTI-IMPRIMANTES)
 // ==========================================
 ipcMain.handle("print-ticket", async (event, ticketText) => {
-    // Utiliser un nom de fichier unique pour éviter les erreurs d'accès concurrents
+    // 1. Création du fichier temporaire unique
     const tempFilePath = path.join(os.tmpdir(), `ticket-${Date.now()}.txt`);
 
     try {
-        log(`[Impression] Tentative RAW sur "${POS_PRINTER_NAME}"`, 'info');
-// 1️⃣ Définition des commandes ESC/POS
+        log(`[Impression] Préparation du ticket pour TOUTES les imprimantes...`, 'info');
+
+        // --- Préparation du contenu (ESC/POS) ---
+        // On ajoute les commandes de coupe et les sauts de ligne
         const ESC = '\x1B';
         const GS = '\x1D';
-        const CUT_COMMAND = GS + 'V' + '\x42' + '\x00'; // Commande "Full Cut"
-        const LINE_FEEDS = '\n\n\n\n\n'; // Espace pour que le texte dépasse la lame
-
-        // 2️⃣ Assemblage du contenu (Texte + Espaces + Découpe)
+        const CUT_COMMAND = GS + 'V' + '\x42' + '\x00'; 
+        const LINE_FEEDS = '\n\n\n\n\n\n'; 
         const fullContent = ticketText + LINE_FEEDS + CUT_COMMAND;
-        // 1️⃣ Écriture du fichier en encodage 'latin1' (ou 'cp437')
-        // Cela garantit que les caractères spéciaux de l'imprimante (lignes, euros) passent bien
+
+        // --- Écriture du fichier ---
+        // Encodage latin1 pour les accents
         fs.writeFileSync(tempFilePath, fullContent, { encoding: 'latin1' });
 
-        // 2️⃣ Commande d'envoi direct (Mode RAW)
-        // Note: Pour que '\\127.0.0.1\POS-80' fonctionne, l'imprimante DOIT être partagée dans Windows.
-        const printerPath = `\\\\127.0.0.1\\${POS_PRINTER_NAME}`;
+        // 2. Récupérer la liste dynamique des imprimantes
+        if (!mainWindow) {
+            throw new Error("La fenêtre principale n'est pas active.");
+        }
         
-        // On utilise la commande 'type' vers le chemin réseau local du spooler
-        const commandRaw = `cmd /c "type ${tempFilePath} > ${printerPath}"`;
-
-        log('[Impression] Envoi direct au spooler (0 marges)...', 'info');
+        const printers = await mainWindow.webContents.getPrintersAsync();
         
-        // Exécution de la commande
-        execSync(commandRaw, { windowsHide: true });
+        // 3. Filtrer pour ne garder que les imprimantes physiques
+        // On retire PDF, Fax, OneNote, XPS pour ne pas bloquer la borne
+        const physicalPrinters = printers.filter(p => {
+             const name = p.name.toLowerCase();
+             return !name.includes('pdf') && 
+                    !name.includes('xps') && 
+                    !name.includes('fax') && 
+                    !name.includes('onenote') &&
+                    !name.includes('microsoft');
+        });
 
-        log('[Impression]  OK Ticket envoyé avec succès lalalala', 'success');
+        if (physicalPrinters.length === 0) {
+            log('[Impression] Aucune imprimante physique trouvée.', 'warning');
+            return { success: false, error: "Aucune imprimante disponible" };
+        }
 
-        // 3️⃣ Nettoyage asynchrone pour ne pas ralentir le retour UI
+        log(`[Impression] Lancement sur ${physicalPrinters.length} imprimante(s)...`, 'info');
+
+        // 4. Boucle d'impression sur chaque imprimante trouvée
+        const printPromises = physicalPrinters.map(async (printer) => {
+            const printerName = printer.name;
+            log(`  -> Envoi vers : "${printerName}"`, 'info');
+
+            try {
+                // On utilise PowerShell car c'est le plus robuste pour les noms avec espaces
+                // et cela ne nécessite pas de partager l'imprimante sur le réseau
+                const command = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${printerName}'"`;
+                
+                execSync(command, { windowsHide: true });
+                log(`     [OK] Succès sur ${printerName}`, 'success');
+                return { printer: printerName, status: 'success' };
+
+            } catch (err) {
+                log(`     [ERREUR] Échec sur ${printerName}: ${err.message}`, 'error');
+                return { printer: printerName, status: 'error', error: err.message };
+            }
+        });
+
+        // On attend que toutes les impressions soient finies
+        await Promise.all(printPromises);
+
+        // 5. Nettoyage du fichier temporaire
         setTimeout(() => {
             if (fs.existsSync(tempFilePath)) {
                 try { fs.unlinkSync(tempFilePath); } catch (e) {}
             }
-        }, 1000);
+        }, 2000);
 
         return { success: true };
 
     } catch (error) {
-        log(`[Impression]  NO Erreur: ${error.message}`, 'error');
-        
-        // Tentative de secours automatique si le partage réseau n'est pas actif
-        try {
-            log('[Impression]  ATTENTION Repli sur PowerShell (Out-Printer)...', 'warning');
-            const commandAlt = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${POS_PRINTER_NAME}'"`;
-            execSync(commandAlt, { windowsHide: true });
-            return { success: true, warning: "Repli PowerShell utilisé" };
-        } catch (altError) {
-            log(`[Impression]  NO Échec total: ${altError.message}`, 'error');
-            return { success: false, error: altError.message };
+        log(`[Impression] ERREUR GÉNÉRALE: ${error.message}`, 'error');
+        // Nettoyage d'urgence
+        if (fs.existsSync(tempFilePath)) {
+             try { fs.unlinkSync(tempFilePath); } catch (e) {}
         }
+        return { success: false, error: error.message };
     }
 });
-
 function getLocalIpAddress() {
     const interfaces = os.networkInterfaces();
     for (const name in interfaces) {

@@ -79,8 +79,8 @@
  [],
  False,
  False,
- 1768798157,
+ 1770846014,
  [('run.exe',
    'C:\\Users\\HoumameLachache\\Documents\\POS-APP\\born_dz\\venv\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\run.exe',
    'EXECUTABLE')],
- 'C:\\Python314\\python314.dll')
+ 'C:\\Users\\HoumameLachache\\AppData\\Local\\Programs\\Python\\Python312\\python312.dll')
