@@ -135,49 +135,39 @@ export default function MenuScreen() {
     setIsModalVisible(true);
   };
   
-  const handleSoloAdd = async () => {
+  const handleSoloAdd = () => {
     if (!selectedItemForModal) return;
     handleUserActivity();
-    try {
-      const item = selectedItemForModal;
-      const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
+    const item = selectedItemForModal;
+    setIsModalVisible(false);
 
-      const existingIndex = existingOrders.findIndex(order => 
-        order.menuId === item.id && order.solo === true
-      );
+    // On envoie le client vers la composition AVEC le mode Solo activé
+    router.push({
+        pathname: "/order/step",
+        params: { 
+            menuId: item.id, 
+            menuName: item.name, 
+            price: item.solo_price || item.price || 0, 
+            isSolo: 'true' // <--- C'est ce mot magique qui dira à step.tsx de cacher les boissons/frites
+        },
+    });
+  };
 
-      if (existingIndex !== -1) {
-        existingOrders[existingIndex].quantity += 1;
-      } else {
-        existingOrders.push({ 
-          menuId: item.id, 
-          menuName: item.name, 
-          solo: true, 
-          quantity: 1, 
-          price: item.solo_price || item.price || 0, 
-          steps: [] 
-        });
-      }
-
-      await AsyncStorage.setItem("orderList", JSON.stringify(existingOrders));
-      await updateCartCount();
-      setIsModalVisible(false);
-      
-      Alert.alert(t('terminal.added_success'), `${item.name} ${t('terminal.added_solo')}`, [{ text: "OK", onPress: resetInactivityTimer }]);
-    } catch (error) {
-      Alert.alert(t('error'), t('terminal.error_add'));
-    }
-};
-  
   const handleMenuAdd = () => {
     if (!selectedItemForModal) return;
     handleUserActivity(); 
     const item = selectedItemForModal;
     setIsModalVisible(false);
 
+    // On envoie le client vers la composition en mode Menu complet (par défaut)
     router.push({
         pathname: "/order/step",
-        params: { menuId: item.id, menuName: item.name, price: item.price || 0 },
+        params: { 
+            menuId: item.id, 
+            menuName: item.name, 
+            price: item.price || 0, 
+            isSolo: 'false'
+        },
     });
   };
 
@@ -186,10 +176,28 @@ export default function MenuScreen() {
     if (item.extra) {
       try {
         const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
-        const updatedOrders = [...existingOrders, { 
-            menuId: item.id, menuName: item.name, extra: true, quantity: 1, price: item.price || 0 
-        }];
-        await AsyncStorage.setItem("orderList", JSON.stringify(updatedOrders));
+        
+        // On vérifie si cet Extra existe déjà dans le panier
+        const existingIndex = existingOrders.findIndex(order => 
+            order.menuId === item.id && order.extra === true
+        );
+
+        if (existingIndex !== -1) {
+            // S'il existe, on augmente la quantité
+            existingOrders[existingIndex].quantity += 1;
+        } else {
+            // Sinon on crée une nouvelle entrée
+            existingOrders.push({ 
+                menuId: item.id, 
+                menuName: item.name, 
+                extra: true, 
+                quantity: 1, 
+                price: item.price || 0,
+                steps: [] // Toujours mettre un array vide pour éviter les erreurs de lecture
+            });
+        }
+
+        await AsyncStorage.setItem("orderList", JSON.stringify(existingOrders));
         await updateCartCount();
         
         Alert.alert(t('terminal.added_success'), `${item.name} ${t('terminal.added_extra')}`, [{ text: "OK", onPress: resetInactivityTimer }]);
@@ -368,10 +376,10 @@ export default function MenuScreen() {
                       <Text style={styles.menuPrice}>
                         {/* CORRECTION : On affiche item.solo_price s'il existe, sinon on se rabat sur item.price */}
                         {item.extra == 1 
-                          ? `+${item.price}` 
-                          : (item.solo_price && parseFloat(item.solo_price) > 0) 
-                              ? `${item.solo_price}` 
-                              : `${item.price}`
+                          ? `+${item.solo_price}` 
+                          : (item.price && parseFloat(item.price) > 0) 
+                              ? `${item.price}` 
+                              : `${item.solo_price}`
                         } 
                         <Text style={{fontSize: 14}}> DA</Text>
                       </Text>

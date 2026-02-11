@@ -25,7 +25,7 @@ class User(AbstractUser):
     username = models.CharField(max_length=150, blank=True, null=True, unique=False)
     
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True)
-    phone = models.CharField(max_length=13, unique=True)
+    phone = models.CharField(max_length=10, unique=True)
     email = models.EmailField(unique=True, blank=True, null=True)
     
     # ❌ SUPPRIMÉ : password = models.CharField(...) 

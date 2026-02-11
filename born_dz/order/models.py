@@ -27,20 +27,21 @@ class Order(models.Model):
     def total_price(self):
         total = 0
         for item in self.items.all():
+            item_price = 0
             if item.menu: # Sécurité critique
+                # 1. On prend le prix de base (Solo ou Menu)
                 if item.solo or item.extra:
-                    # Utiliser getattr pour éviter le crash si solo_price est null
-                    price = getattr(item.menu, 'solo_price', 0) or 0 
-                    total += price * item.quantity
+                    item_price = getattr(item.menu, 'solo_price', 0) or 0 
                 else:
-                    price = getattr(item.menu, 'price', 0) or 0
-                    total += price * item.quantity
+                    item_price = getattr(item.menu, 'price', 0) or 0
             
-            # Ajout des suppléments (options)
-            for option_rel in self.items.options.all() if hasattr(self.items, 'options') else item.options.all():
-                # Vérification de sécurité pour éviter les erreurs si l'option a été supprimée
-                if option_rel.option and option_rel.option.extra_price:
-                    total += option_rel.option.extra_price
+            # 2. On y ajoute le prix des options/suppléments de CET item
+            for option_rel in item.options.all():
+                if option_rel.option and getattr(option_rel.option, 'extra_price', 0):
+                    item_price += option_rel.option.extra_price
+            
+            # 3. On multiplie le prix unitaire complet par la quantité, puis on ajoute au total de la commande
+            total += item_price * item.quantity
                     
         return total
 
