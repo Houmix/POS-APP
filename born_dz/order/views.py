@@ -10,7 +10,7 @@ from django.shortcuts import render, get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.timezone import make_naive, now
-
+from django.db import models
 # --- 3. Bibliothèques Tierces (DRF, QRCode) ---
 import qrcode
 from rest_framework import status
@@ -119,49 +119,62 @@ class OrderCreate(APIView):
 
         # 4. AJOUT DES ITEMS
         print(f"\n  Ajout des items...")
-        items_count = 0
         
         try:
             for item_data in data.get('items', []):
-                # Récupération du menu (code existant...)
+                # Récupération du menu
                 try:
-                    menu = Menu.objects.get(id=item_data.get("id") or item_data.get("menu"))
+                    menu_id = item_data.get("menuId") or item_data.get("menu") or item_data.get("id")
+                    menu = Menu.objects.get(id=menu_id)
                 except Menu.DoesNotExist:
+                    print(f"  Erreur: Menu {menu_id} introuvable")
                     continue
 
+                # --- SÉCURISATION SOLO / EXTRA ---
+                raw_solo = str(item_data.get("solo", "")).lower()
+                is_solo = raw_solo in ['true', '1', 'yes'] or item_data.get("solo") is True
+
+                raw_extra = str(item_data.get("extra", "")).lower()
+                is_extra = raw_extra in ['true', '1', 'yes'] or item_data.get("extra") is True
+
+                # --- CRÉATION DE L'ITEM ---
                 order_item = OrderItem.objects.create(
                     order=order, 
                     menu=menu, 
-                    quantity=item_data.get("quantity", 1)
+                    quantity=item_data.get("quantity", 1),
+                    solo=is_solo,    # Parfaitement sécurisé
+                    extra=is_extra   # Parfaitement sécurisé
                 )
 
-                # --- CORRECTION DE LA LOGIQUE SOLO / EXTRA ---
-                # On convertit en chaîne et en minuscule pour être sûr de capter "true", "True", true, 1...
-                raw_solo = str(item_data.get("solo", "")).lower()
-                raw_extra = str(item_data.get("extra", "")).lower()
-
-                # On vérifie si ça ressemble à du "vrai"
-                is_solo = raw_solo in ['true', '1', 'yes']
-                is_extra = raw_extra in ['true', '1', 'yes']
-
-                if is_solo:
-                    order_item.solo = True
-                elif is_extra:
-                    order_item.extra = True
-                
-                order_item.save()
-                # ---------------------------------------------
-
-                # Gérer les Options (code existant inchangé...)
+                # --- ENREGISTREMENT DES OPTIONS (CORRIGÉ) ---
                 for opt in item_data.get("options", []):
-                     # ... votre code existant pour les options ...
-                     pass
+                    try:
+                        opt_id = opt.get("option")
+                        step_id = opt.get("step")
+                        
+                        # Recherche intelligente : cherche l'ID du StepOption OU de l'Option
+                        step_option = StepOption.objects.filter(
+                            models.Q(id=opt_id) | models.Q(step_id=step_id, option_id=opt_id)
+                        ).first()
+                        
+                        if step_option:
+                            OrderItemOption.objects.create(
+                                order_item=order_item, 
+                                option=step_option
+                            )
+                        else:
+                            print(f"  Erreur: Option {opt_id} introuvable en base de données")
+                    except Exception as option_error:
+                        print(f"  Erreur boucle option: {option_error}")
+                        continue
+                    except StepOption.DoesNotExist:
+                        print(f"  Erreur: Option {opt.get('option')} introuvable pour l'étape {opt.get('step')}")
+                        continue
 
         except Exception as items_error:
             print(f"  ERREUR ajout items: {items_error}")
             order.delete() # On nettoie si ça plante
             return Response({"error": "Erreur ajout items", "details": str(items_error)}, status=status.HTTP_400_BAD_REQUEST)
-
         # 5. FIDÉLITÉ (APRES LES ITEMS)
         # On calcule les points maintenant que le prix total est connu
         if user_instance:
@@ -243,21 +256,21 @@ class POSOrderGet(APIView):
                 order_items = []
                 for item in order.items.all():
                     options = []
-                    if not item.solo and not item.extra:
-                        for option_relation in item.options.all():
-                            step_option = option_relation.option
-                            options.append({
-                                "step_name": step_option.step.name,
-                                "option_name": step_option.option.name,
-                                "option_price": float(step_option.option.extra_price),
-                            })
+                    # SANS AUCUNE CONDITION LIMITANTE :
+                    for option_relation in item.options.all():
+                        step_option = option_relation.option
+                        options.append({
+                            "step_name": step_option.step.name if step_option.step else "Option",
+                            "option_name": step_option.option.name if step_option.option else "Option",
+                            "option_price": float(step_option.extra_price or 0),
+                        })
 
                     order_items.append({
-                        "menu_name": f"Extra/Solo {item.menu.name}" if item.solo or item.extra else item.menu.name,
+                        "menu_name": item.menu.name,
                         "quantity": item.quantity,
                         "solo": item.solo,
                         "extra": item.extra,
-                        "composition": options,
+                        "composition": options,  # La composition est maintenant envoyée !
                     })
 
                 response_data.append({
@@ -355,7 +368,10 @@ def format_order_as_ticket(order_id):
         if item.menu:
             quantity = item.quantity
             menu_name = item.menu.name[:25]
-            menu_price = float(item.menu.price)
+            if item.solo or item.extra:
+                menu_price = float(getattr(item.menu, 'solo_price', 0) or 0)
+            else:
+                menu_price = float(getattr(item.menu, 'price', 0) or 0)
             item_total = quantity * menu_price
             
             left_part = f"{quantity}x {menu_name}"
@@ -536,3 +552,48 @@ def generate_order_qr(order_id):
 @permission_classes([AllowAny])
 def test_ticket_format(request):
     return Response({"message": "Test OK"})
+
+
+
+
+import csv
+from django.http import HttpResponse
+from .models import Order
+
+def export_orders_csv(request, restaurant_id):
+    # 1. On récupère les mêmes filtres que le Dashboard
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+    types = request.GET.get('types', 'paid').split(',')
+
+    orders = Order.objects.filter(restaurant_id=restaurant_id)
+
+    if start_date and end_date:
+        orders = orders.filter(created_at__range=[start_date, end_date])
+    
+    if types:
+        # On filtre selon le statut (payé, annulé, etc.)
+        # Note: Adaptez selon votre logique de filtrage (ex: paid=True)
+        pass 
+
+    # 2. Préparation de la réponse CSV
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="extraction_commandes_{restaurant_id}.csv"'
+    response.write(u'\ufeff'.encode('utf8')) # Pour le support des accents sous Excel
+
+    writer = csv.writer(response, delimiter=';')
+    # En-têtes
+    writer.writerow(['ID Commande', 'Date', 'Statut', 'Prix Total', 'Mode Paiement', 'Type'])
+
+    # 3. Remplissage des données
+    for order in orders:
+        writer.writerow([
+            order.id,
+            order.created_at.strftime('%d/%m/%Y %H:%M'),
+            order.status,
+            order.total_price(), # Utilise votre méthode de calcul
+            "Cash" if order.cash else "Carte",
+            "A emporter" if order.take_away else "Sur place"
+        ])
+
+    return response

@@ -26,64 +26,113 @@ function log(message, type = 'info') {
   console.log(`${emoji} ${message}`);
 }
 
-const POS_PRINTER_NAME = "POS-80"; // ⬅️ AJUSTEZ CE NOM EXACTEMENT
 // ==========================================
-//   HANDLER D'IMPRESSION (TEXTE BRUT RAW)
+//   HANDLER D'IMPRESSION BROADCAST (TOUTES LES IMPRIMANTES)
 // ==========================================
+// Liste des mots-clés pour exclure les imprimantes virtuelles
+const VIRTUAL_PRINTER_KEYWORDS = ['PDF', 'Fax', 'OneNote', 'XPS', 'Microsoft', 'Send to', 'Cloud'];
+
+/**
+ * Récupère la liste des imprimantes physiques connectées
+ * Exclut automatiquement les imprimantes virtuelles (PDF, Fax, etc.)
+ */
+function getPhysicalPrinters() {
+    const listCommand = `powershell -Command "Get-Printer | Select-Object -ExpandProperty Name"`;
+    const output = execSync(listCommand, { encoding: 'utf-8', windowsHide: true, timeout: 5000 });
+
+    return output
+        .split(/\r?\n/)
+        .map(p => p.trim())
+        .filter(p => p && !VIRTUAL_PRINTER_KEYWORDS.some(kw => p.toLowerCase().includes(kw.toLowerCase())));
+}
+
+/**
+ * Envoie un fichier RAW à une imprimante via le partage réseau local (\\127.0.0.1\NomImprimante)
+ * C'est la méthode qui préserve les commandes ESC/POS (coupe, etc.)
+ * Prérequis : l'imprimante doit être partagée dans Windows
+ */
+function sendRawToPrinter(filePath, printerName) {
+    const printerPath = `\\\\127.0.0.1\\${printerName}`;
+    const command = `cmd /c "type "${filePath}" > "${printerPath}""`;
+    execSync(command, { windowsHide: true, timeout: 8000 });
+}
+
+/**
+ * Fallback : envoie via PowerShell Out-Printer (passe par le driver GDI)
+ * Les commandes ESC/POS (coupe) ne fonctionneront PAS avec cette méthode
+ * Mais au moins le texte s'imprime
+ */
+function sendViaPowerShell(filePath, printerName) {
+    const command = `powershell -Command "Get-Content '${filePath}' | Out-Printer -Name '${printerName}'"`;
+    execSync(command, { windowsHide: true, timeout: 8000 });
+}
+
 ipcMain.handle("print-ticket", async (event, ticketText) => {
-    // Utiliser un nom de fichier unique pour éviter les erreurs d'accès concurrents
     const tempFilePath = path.join(os.tmpdir(), `ticket-${Date.now()}.txt`);
 
     try {
-        log(`[Impression] Tentative RAW sur "${POS_PRINTER_NAME}"`, 'info');
-// 1️⃣ Définition des commandes ESC/POS
-        const ESC = '\x1B';
-        const GS = '\x1D';
-        const CUT_COMMAND = GS + 'V' + '\x42' + '\x00'; // Commande "Full Cut"
-        const LINE_FEEDS = '\n\n\n\n\n'; // Espace pour que le texte dépasse la lame
+        log('[Impression] Préparation envoi broadcast...', 'info');
 
-        // 2️⃣ Assemblage du contenu (Texte + Espaces + Découpe)
+        // 1. Commandes ESC/POS
+        const GS = '\x1D';
+        const CUT_COMMAND = GS + 'V' + '\x42' + '\x00'; // Full Cut
+        const LINE_FEEDS = '\n\n\n\n\n';
+
+        // 2. Écriture fichier en latin1 (préserve les octets binaires ESC/POS)
         const fullContent = ticketText + LINE_FEEDS + CUT_COMMAND;
-        // 1️⃣ Écriture du fichier en encodage 'latin1' (ou 'cp437')
-        // Cela garantit que les caractères spéciaux de l'imprimante (lignes, euros) passent bien
         fs.writeFileSync(tempFilePath, fullContent, { encoding: 'latin1' });
 
-        // 2️⃣ Commande d'envoi direct (Mode RAW)
-        // Note: Pour que '\\127.0.0.1\POS-80' fonctionne, l'imprimante DOIT être partagée dans Windows.
-        const printerPath = `\\\\127.0.0.1\\${POS_PRINTER_NAME}`;
-        
-        // On utilise la commande 'type' vers le chemin réseau local du spooler
-        const commandRaw = `cmd /c "type ${tempFilePath} > ${printerPath}"`;
+        // 3. Récupérer les imprimantes physiques
+        let printers;
+        try {
+            printers = getPhysicalPrinters();
+        } catch (e) {
+            throw new Error(`Impossible de lister les imprimantes : ${e.message}`);
+        }
 
-        log('[Impression] Envoi direct au spooler (0 marges)...', 'info');
-        
-        // Exécution de la commande
-        execSync(commandRaw, { windowsHide: true });
+        if (printers.length === 0) {
+            throw new Error('Aucune imprimante physique trouvée.');
+        }
 
-        log('[Impression]  OK Ticket envoyé avec succès lalalala', 'success');
+        log(`[Impression] ${printers.length} imprimante(s) détectée(s) : ${printers.join(', ')}`, 'info');
 
-        // 3️⃣ Nettoyage asynchrone pour ne pas ralentir le retour UI
-        setTimeout(() => {
-            if (fs.existsSync(tempFilePath)) {
-                try { fs.unlinkSync(tempFilePath); } catch (e) {}
+        // 4. Envoi à CHAQUE imprimante (RAW d'abord, fallback PowerShell)
+        const results = [];
+
+        for (const printerName of printers) {
+            try {
+                log(`[Impression] --> Envoi RAW vers "${printerName}"...`, 'info');
+                sendRawToPrinter(tempFilePath, printerName);
+                log(`[Impression] OK "${printerName}"`, 'success');
+                results.push({ printer: printerName, status: 'OK', method: 'RAW' });
+            } catch (rawErr) {
+                // Fallback PowerShell si le partage réseau n'est pas configuré
+                try {
+                    log(`[Impression] RAW échoué sur "${printerName}", repli PowerShell...`, 'warning');
+                    sendViaPowerShell(tempFilePath, printerName);
+                    log(`[Impression] OK "${printerName}" (via PowerShell)`, 'success');
+                    results.push({ printer: printerName, status: 'OK', method: 'PowerShell' });
+                } catch (psErr) {
+                    log(`[Impression] Échec total sur "${printerName}": ${psErr.message}`, 'error');
+                    results.push({ printer: printerName, status: 'ERROR', error: psErr.message });
+                }
             }
-        }, 1000);
+        }
 
-        return { success: true };
+        // 5. Nettoyage différé
+        setTimeout(() => {
+            try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch (e) {}
+        }, 2000);
+
+        const successCount = results.filter(r => r.status === 'OK').length;
+        log(`[Impression] Terminé : ${successCount}/${printers.length} imprimante(s) OK`, 'info');
+
+        return { success: successCount > 0, details: results };
 
     } catch (error) {
-        log(`[Impression]  NO Erreur: ${error.message}`, 'error');
-        
-        // Tentative de secours automatique si le partage réseau n'est pas actif
-        try {
-            log('[Impression]  ATTENTION Repli sur PowerShell (Out-Printer)...', 'warning');
-            const commandAlt = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${POS_PRINTER_NAME}'"`;
-            execSync(commandAlt, { windowsHide: true });
-            return { success: true, warning: "Repli PowerShell utilisé" };
-        } catch (altError) {
-            log(`[Impression]  NO Échec total: ${altError.message}`, 'error');
-            return { success: false, error: altError.message };
-        }
+        log(`[Impression] Erreur critique: ${error.message}`, 'error');
+        try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch (e) {}
+        return { success: false, error: error.message };
     }
 });
 
@@ -369,10 +418,8 @@ function createMainWindow() {
       console.log('\n  === IMPRIMANTES DISPONIBLES ===');
       printers.forEach((p, i) => {
         console.log(`[${i+1}] "${p.name}" ${p.isDefault ? '  (Par défaut)' : ''}`);
-        if (p.name === POS_PRINTER_NAME) {
-          console.log('     OK IMPRIMANTE POS TROUVÉE !');
-        }
       });
+      console.log(`  Total: ${printers.length} imprimante(s)`);
       console.log('===================================\n');
     } catch (err) {
       console.error(' NO Erreur récupération imprimantes:', err);

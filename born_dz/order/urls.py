@@ -12,6 +12,7 @@ urlpatterns = [
     path('api/generateTicket/<int:order_id>/', generate_ticket_content, name='generate_ticket'),
     path('api/Updateorder/<int:order_id>/', OrderUpdate.as_view(), name='order-update'),
     path('api/kpi/<int:restaurantId>', KpiView.as_view(), name='api_get_kpi'),
+    path('api/export/<int:restaurant_id>/', export_orders_csv, name='export_orders'),
 ]
 
 """ urlpatterns = [

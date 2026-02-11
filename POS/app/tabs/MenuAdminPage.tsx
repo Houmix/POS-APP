@@ -228,7 +228,15 @@ export default function MenuAdminPage() {
 
     // ============= GROUP FUNCTIONS =============
     const handleCreateGroup = async () => {
-        if (!newGroupName.trim()) return showError("Attention", "Le nom du groupe est obligatoire");
+        if (!newGroupName.trim() || !newGroupDescription.trim()) {
+            Toast.show({
+                type: 'error',
+                text1: 'Champs obligatoires',
+                text2: 'Le nom et la description sont requis.'
+            });
+            return;
+        }
+        
         const token = await AsyncStorage.getItem("token");
         try {
             const formData = new FormData();
