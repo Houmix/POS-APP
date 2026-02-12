@@ -8,11 +8,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { 
     LayoutGrid, Utensils, Settings2, Store, 
     Plus, Trash2, Save, Edit, Eye, EyeOff, X, Camera, Upload, AlertTriangle, CheckCircle 
-} from 'lucide-react-native';
+} from 'lucide-react-native'; 
 import axios from 'axios';
 import { POS_URL } from '@/config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Toast from 'react-native-toast-message'; // 👈 IMPORT IMPORTANT
+
+// 1. IMPORT MODIFIÉ POUR LE TOAST
+import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
 
 const { width, height } = Dimensions.get('window');
 
@@ -53,6 +55,30 @@ const OPTION_TYPES = [
     { value: 'protéine', label: 'Protéine' },
 ];
 
+// 2. CONFIGURATION DU TOAST (POUR AFFICHER PLUSIEURS LIGNES)
+const toastConfig = {
+    success: (props: any) => (
+        <BaseToast
+            {...props}
+            style={{ borderLeftColor: COLORS.success, height: 'auto', minHeight: 60, paddingVertical: 10 }}
+            contentContainerStyle={{ paddingHorizontal: 15 }}
+            text1Style={{ fontSize: 16, fontWeight: '700', color: COLORS.secondary }}
+            text2Style={{ fontSize: 14, color: COLORS.muted }}
+            text2NumberOfLines={4} // Autorise 4 lignes de texte
+        />
+    ),
+    error: (props: any) => (
+        <ErrorToast
+            {...props}
+            style={{ borderLeftColor: COLORS.danger, height: 'auto', minHeight: 60, paddingVertical: 10 }}
+            contentContainerStyle={{ paddingHorizontal: 15 }}
+            text1Style={{ fontSize: 16, fontWeight: '700', color: COLORS.secondary }}
+            text2Style={{ fontSize: 14, color: COLORS.muted }}
+            text2NumberOfLines={4} // Autorise 4 lignes de texte
+        />
+    )
+};
+
 export default function MenuAdminPage() {
     const [activeTab, setActiveTab] = useState<Tab>('groups');
     const [loading, setLoading] = useState(false);
@@ -67,12 +93,9 @@ export default function MenuAdminPage() {
     const [editMenuModal, setEditMenuModal] = useState(false);
     const [editOptionModal, setEditOptionModal] = useState(false);
 
-    // Confirmation Modal State (Pour remplacer window.confirm)
+    // Confirmation Modal State
     const [confirmModal, setConfirmModal] = useState({
-        visible: false,
-        title: '',
-        message: '',
-        onConfirm: async () => {}
+        visible: false, title: '', message: '', onConfirm: async () => {}
     });
 
     // Photo states
@@ -101,37 +124,26 @@ export default function MenuAdminPage() {
     const [editingMenu, setEditingMenu] = useState<any>(null);
     const [editingOption, setEditingOption] = useState<any>(null);
 
+    // 🔥 ETATS POUR LA PRÉVISUALISATION
+    const [previewModalVisible, setPreviewModalVisible] = useState(false);
+    const [isSubmittingMenu, setIsSubmittingMenu] = useState(false);
+
     useEffect(() => { fetchInitialData(); }, []);
 
-    // ============= UTILS: TOASTS & ALERTS =============
+    // ============= UTILS =============
 
     const showSuccess = (title: string, message: string) => {
-        Toast.show({
-            type: 'success',
-            text1: title,
-            text2: message,
-            visibilityTime: 4000,
-        });
+        Toast.show({ type: 'success', text1: title, text2: message, visibilityTime: 4000 });
     };
 
     const showError = (title: string, message: string) => {
-        Toast.show({
-            type: 'error',
-            text1: title,
-            text2: message,
-            visibilityTime: 5000,
-        });
+        Toast.show({ type: 'error', text1: title, text2: message, visibilityTime: 5000 });
     };
 
     const askConfirmation = (title: string, message: string, onConfirm: () => Promise<void>) => {
         setConfirmModal({
-            visible: true,
-            title,
-            message,
-            onConfirm: async () => {
-                await onConfirm();
-                setConfirmModal(prev => ({ ...prev, visible: false }));
-            }
+            visible: true, title, message,
+            onConfirm: async () => { await onConfirm(); setConfirmModal(prev => ({ ...prev, visible: false })); }
         });
     };
 
@@ -160,11 +172,8 @@ export default function MenuAdminPage() {
         } finally { setLoading(false); }
     };
 
-    // Fonction utilitaire pour gérer l'upload d'image Windows vs Mobile
     const appendImageToFormData = async (formData: FormData, key: string, photo: any) => {
         if (!photo) return;
-
-        // 💻 WINDOWS / WEB : Conversion en Blob obligatoire
         if (Platform.OS === 'web' || Platform.OS === 'windows' || Platform.OS === 'macos') {
             try {
                 const response = await fetch(photo.uri);
@@ -175,18 +184,11 @@ export default function MenuAdminPage() {
                 console.error("Erreur conversion Blob:", err);
                 throw new Error("Impossible de traiter l'image pour Windows");
             }
-        } 
-        // 📱 MOBILE (Android/iOS) : Objet standard React Native
-        else {
+        } else {
             const filename = photo.uri.split('/').pop();
             const match = /\.(\w+)$/.exec(filename || '');
             const type = match ? `image/${match[1]}` : 'image/jpeg';
-            
-            formData.append(key, {
-                uri: photo.uri,
-                name: filename || `photo_${Date.now()}.jpg`,
-                type: type,
-            } as any);
+            formData.append(key, { uri: photo.uri, name: filename || `photo_${Date.now()}.jpg`, type: type } as any);
         }
     };
 
@@ -207,29 +209,35 @@ export default function MenuAdminPage() {
 
             if (!result.canceled && result.assets[0]) {
                 const asset = result.assets[0];
-                setter({
-                    uri: asset.uri,
-                    type: 'image/jpeg',
-                    name: `photo_${Date.now()}.jpg`
-                });
+                const MIN_WIDTH = 500;
+                const MIN_HEIGHT = 500;
+
+                if (asset.width < MIN_WIDTH || asset.height < MIN_HEIGHT) {
+                    showError('Qualité insuffisante', `L'image est trop pixelisée. Min: ${MIN_WIDTH}x${MIN_HEIGHT}px.`);
+                    return;
+                }
+
+                setter({ uri: asset.uri, type: 'image/jpeg', name: `photo_${Date.now()}.jpg` });
             }
         } catch (error) {
             showError('Erreur', 'Impossible de sélectionner l\'image');
         }
     };
 
-    const removeImage = (setter: Function) => {
-        setter(null);
-    };
+    const removeImage = (setter: Function) => setter(null);
 
     // ============= GROUP FUNCTIONS =============
     const handleCreateGroup = async () => {
-        if (!newGroupName.trim()) {
-            return showError("Attention", "Le nom du groupe est obligatoire");
+        if (!newGroupName.trim() || !newGroupDescription.trim()) {
+            Toast.show({
+                type: 'error',
+                text1: 'Champs obligatoires',
+                text2: 'Le nom et la description sont requis.'
+            });
+            return;
         }
         
         const token = await AsyncStorage.getItem("token");
-        
         try {
             const formData = new FormData();
             formData.append('name', newGroupName);
@@ -238,43 +246,24 @@ export default function MenuAdminPage() {
             formData.append('avalaible', 'true');
             formData.append('extra', 'false');
             formData.append('position', '0');
-            
-            if (newGroupPhoto) {
-                await appendImageToFormData(formData, 'photo', newGroupPhoto);
-            }
+            if (newGroupPhoto) await appendImageToFormData(formData, 'photo', newGroupPhoto);
             
             const response = await fetch(`${POS_URL}/menu/api/createGroupMenu/`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
+                method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
     
             if (response.ok) {
                 showSuccess("Succès", "Groupe créé avec succès");
-                setNewGroupName('');
-                setNewGroupDescription('');
-                setNewGroupPhoto(null);
+                setNewGroupName(''); setNewGroupDescription(''); setNewGroupPhoto(null);
                 fetchInitialData();
-            } else {
-                const text = await response.text();
-                showError("Erreur", "Le serveur a refusé la création");
-                console.error(text);
-            }
-            
-        } catch (e: any) { 
-            showError("Erreur Réseau", e.message);
-        }
+            } else { showError("Erreur", "Le serveur a refusé la création"); }
+        } catch (e: any) { showError("Erreur Réseau", e.message); }
     };
 
-    const openEditGroup = (group: any) => {
-        setEditingGroup({ ...group });
-        setSelectedGroupPhoto(null);
-        setEditGroupModal(true);
-    };
+    const openEditGroup = (group: any) => { setEditingGroup({ ...group }); setSelectedGroupPhoto(null); setEditGroupModal(true); };
 
     const handleUpdateGroup = async () => {
         if (!editingGroup) return;
-        
         const token = await AsyncStorage.getItem("token");
         try {
             const formData = new FormData();
@@ -283,71 +272,51 @@ export default function MenuAdminPage() {
             formData.append('description', editingGroup.description || '');
             formData.append('restaurant', editingGroup.restaurant.toString());
             formData.append('avalaible', editingGroup.avalaible.toString());
-            
-            if (selectedGroupPhoto) {
-                await appendImageToFormData(formData, 'photo', selectedGroupPhoto);
-            }
+            if (selectedGroupPhoto) await appendImageToFormData(formData, 'photo', selectedGroupPhoto);
             
             const response = await fetch(`${POS_URL}/menu/api/updateGroupMenu/`, {
-                method: 'PUT',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
+                method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
-    
             if (response.ok) {
                 showSuccess("Succès", "Groupe mis à jour");
-                setEditGroupModal(false);
-                setEditingGroup(null);
-                setSelectedGroupPhoto(null);
+                setEditGroupModal(false); setEditingGroup(null); setSelectedGroupPhoto(null);
                 fetchInitialData();
-            } else {
-                showError("Erreur", "Mise à jour échouée");
-            }
-        } catch (e: any) { 
-            showError("Erreur", e.message);
-        }
+            } else { showError("Erreur", "Mise à jour échouée"); }
+        } catch (e: any) { showError("Erreur", e.message); }
     };
 
     const handleDeleteGroup = (groupId: number) => {
-        askConfirmation(
-            "Supprimer le groupe ?",
-            "Cette action supprimera le groupe et TOUS les menus associés. Cette action est irréversible.",
-            async () => {
-                const token = await AsyncStorage.getItem("token");
-                try {
-                    await axios.delete(`${POS_URL}/menu/api/deleteGroupMenu/${groupId}/`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    showSuccess("Succès", "Groupe supprimé");
-                    fetchInitialData();
-                } catch (e: any) { 
-                    showError("Erreur", "Impossible de supprimer le groupe");
-                }
-            }
-        );
+        askConfirmation("Supprimer le groupe ?", "Cette action supprimera le groupe et TOUS les menus associés.", async () => {
+            const token = await AsyncStorage.getItem("token");
+            try {
+                await axios.delete(`${POS_URL}/menu/api/deleteGroupMenu/${groupId}/`, { headers: { Authorization: `Bearer ${token}` } });
+                showSuccess("Succès", "Groupe supprimé"); fetchInitialData();
+            } catch (e: any) { showError("Erreur", "Impossible de supprimer le groupe"); }
+        });
     };
 
     const toggleGroupAvailability = async (group: any) => {
         const token = await AsyncStorage.getItem("token");
         try {
-            await axios.put(`${POS_URL}/menu/api/updateGroupMenu/`, {
-                id: group.id,
-                avalaible: !group.avalaible
-            }, { headers: { Authorization: `Bearer ${token}` } });
-            fetchInitialData();
-            showSuccess("Succès", `Groupe ${!group.avalaible ? 'activé' : 'désactivé'}`);
-        } catch (e: any) { 
-            showError("Erreur", "Erreur lors du changement de disponibilité");
-        }
+            await axios.put(`${POS_URL}/menu/api/updateGroupMenu/`, { id: group.id, avalaible: !group.avalaible }, { headers: { Authorization: `Bearer ${token}` } });
+            fetchInitialData(); showSuccess("Succès", `Groupe ${!group.avalaible ? 'activé' : 'désactivé'}`);
+        } catch (e: any) { showError("Erreur", "Erreur lors du changement de disponibilité"); }
     };
 
-    // ============= MENU FUNCTIONS =============
+    // ============= 🔥 MENU FUNCTIONS (MODIFIED) =============
     
-    const handleCreateMenu = async () => {
-        if (!menuForm.name || !menuForm.price || !menuForm.group_menu) {
-            return showError("Incomplet", "Veuillez remplir les champs obligatoires (Nom, Prix, Groupe)");
+    // ÉTAPE 1 : Vérification et Ouverture de la Prévisualisation
+    const handlePreCreateMenu = () => {
+        if (!menuForm.name || !menuForm.price || !menuForm.solo_price || !menuForm.group_menu || !menuForm.description) {
+            // Grâce à toastConfig, ce message s'affichera entièrement maintenant
+            return showError("Incomplet", "Veuillez remplir les champs obligatoires (Nom, Description, Prix et Groupe)");
         }
-        
+        setPreviewModalVisible(true);
+    };
+
+    // ÉTAPE 2 : Envoi final au serveur (Appelé depuis la Modal)
+    const handleFinalizeCreateMenu = async () => {
+        setIsSubmittingMenu(true);
         const token = await AsyncStorage.getItem("token");
         try {
             const formData = new FormData();
@@ -373,44 +342,33 @@ export default function MenuAdminPage() {
     
             if (response.ok) {
                 showSuccess("Succès", "Article ajouté au menu");
-                setMenuForm({ name: '', price: '', solo_price: '', group_menu: '', 
-                             type: 'burger', description: '', avalaible: true });
+                setMenuForm({ name: '', price: '', solo_price: '', group_menu: '', type: 'burger', description: '', avalaible: true });
                 setMenuFormPhoto(null);
+                setPreviewModalVisible(false); // Fermer la modal
                 fetchInitialData();
             } else {
                 showError("Erreur", "Création échouée");
             }
         } catch (e: any) { 
             showError("Erreur", e.message);
+        } finally {
+            setIsSubmittingMenu(false);
         }
     };
 
     const openEditMenu = (menu: any) => {
-        // Sécurité : On récupère l'ID que ce soit un objet ou juste un ID
         let groupId = '';
         if (menu.group_menu) {
-            // Si c'est un objet (ex: {id: 5, name: 'Burger'}), on prend .id
-            if (typeof menu.group_menu === 'object') {
-                groupId = menu.group_menu.id ? menu.group_menu.id.toString() : '';
-            } 
-            // Si c'est déjà un nombre ou une string, on le convertit en string
-            else {
-                groupId = menu.group_menu.toString();
-            }
+            if (typeof menu.group_menu === 'object') groupId = menu.group_menu.id ? menu.group_menu.id.toString() : '';
+            else groupId = menu.group_menu.toString();
         }
-
-        setEditingMenu({
-            ...menu,
-            price: menu.price.toString(),
-            solo_price: menu.solo_price ? menu.solo_price.toString() : '0',
-            group_menu: groupId, // On stocke l'ID en format texte pour le Picker
-            type: menu.type // On garde le type
-        });
+        setEditingMenu({ ...menu, price: menu.price.toString(), solo_price: menu.solo_price ? menu.solo_price.toString() : '0', group_menu: groupId, type: menu.type });
         setSelectedMenuPhoto(null);
         setEditMenuModal(true);
-    };const handleUpdateMenu = async () => {
+    };
+
+    const handleUpdateMenu = async () => {
         if (!editingMenu) return;
-        
         const token = await AsyncStorage.getItem("token");
         try {
             const formData = new FormData();
@@ -421,77 +379,41 @@ export default function MenuAdminPage() {
             formData.append('solo_price', (editingMenu.solo_price || '0').toString());
             formData.append('type', editingMenu.type);
             formData.append('avalaible', editingMenu.avalaible.toString());
-
-            // 👇 CORRECTION : On envoie l'ID du groupe au serveur 👇
-            if (editingMenu.group_menu) {
-                formData.append('group_menu', editingMenu.group_menu); 
-            }
-
-            if (selectedMenuPhoto) {
-                await appendImageToFormData(formData, 'photo', selectedMenuPhoto);
-            }
+            if (editingMenu.group_menu) formData.append('group_menu', editingMenu.group_menu); 
+            if (selectedMenuPhoto) await appendImageToFormData(formData, 'photo', selectedMenuPhoto);
             
             const response = await fetch(`${POS_URL}/menu/api/updateMenu/`, {
-                method: 'PUT',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
+                method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
-    
             if (response.ok) {
                 showSuccess("Succès", "Article mis à jour");
-                setEditMenuModal(false);
-                setEditingMenu(null);
-                setSelectedMenuPhoto(null);
+                setEditMenuModal(false); setEditingMenu(null); setSelectedMenuPhoto(null);
                 fetchInitialData();
-            } else {
-                const errorText = await response.text();
-                console.log("Erreur update:", errorText); // Pour le debug
-                showError("Erreur", "Mise à jour échouée");
-            }
-        } catch (e: any) { 
-            showError("Erreur", e.message);
-        }
+            } else { showError("Erreur", "Mise à jour échouée"); }
+        } catch (e: any) { showError("Erreur", e.message); }
     };
+
     const handleDeleteMenu = (menuId: number) => {
-        askConfirmation(
-            "Supprimer l'article ?",
-            "Êtes-vous sûr de vouloir supprimer cet article définitivement ?",
-            async () => {
-                const token = await AsyncStorage.getItem("token");
-                try {
-                    await axios.delete(`${POS_URL}/menu/api/deleteMenu/${menuId}/`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    showSuccess("Succès", "Article supprimé");
-                    fetchInitialData();
-                } catch (e: any) { 
-                    showError("Erreur", "Impossible de supprimer l'article");
-                }
-            }
-        );
+        askConfirmation("Supprimer l'article ?", "Êtes-vous sûr de vouloir supprimer cet article définitivement ?", async () => {
+            const token = await AsyncStorage.getItem("token");
+            try {
+                await axios.delete(`${POS_URL}/menu/api/deleteMenu/${menuId}/`, { headers: { Authorization: `Bearer ${token}` } });
+                showSuccess("Succès", "Article supprimé"); fetchInitialData();
+            } catch (e: any) { showError("Erreur", "Impossible de supprimer l'article"); }
+        });
     };
 
     const toggleMenuAvailability = async (menu: any) => {
         const token = await AsyncStorage.getItem("token");
         try {
-            await axios.put(`${POS_URL}/menu/api/updateMenu/`, {
-                id: menu.id,
-                avalaible: !menu.avalaible
-            }, { headers: { Authorization: `Bearer ${token}` } });
-            fetchInitialData();
-            showSuccess("Succès", "Disponibilité mise à jour");
-        } catch (e: any) { 
-            showError("Erreur", "Erreur lors du changement de disponibilité");
-        }
+            await axios.put(`${POS_URL}/menu/api/updateMenu/`, { id: menu.id, avalaible: !menu.avalaible }, { headers: { Authorization: `Bearer ${token}` } });
+            fetchInitialData(); showSuccess("Succès", "Disponibilité mise à jour");
+        } catch (e: any) { showError("Erreur", "Erreur lors du changement de disponibilité"); }
     };
 
     // ============= OPTION FUNCTIONS =============
-    
     const handleCreateOption = async () => {
-        if (!optionForm.name || !optionForm.type) {
-            return showError("Incomplet", "Nom et Type obligatoires");
-        }
-        
+        if (!optionForm.name || !optionForm.type) return showError("Incomplet", "Nom et Type obligatoires");
         const token = await AsyncStorage.getItem("token");
         try {
             const formData = new FormData();
@@ -499,42 +421,23 @@ export default function MenuAdminPage() {
             formData.append('type', optionForm.type);
             formData.append('extra_price', optionForm.extra_price || '0');
             formData.append('avalaible', 'true');
-            
-            if (optionFormPhoto) {
-                await appendImageToFormData(formData, 'photo', optionFormPhoto);
-            }
+            if (optionFormPhoto) await appendImageToFormData(formData, 'photo', optionFormPhoto);
             
             const response = await fetch(`${POS_URL}/menu/api/createOption/`, {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
+                method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
-    
             if (response.ok) {
                 showSuccess("Succès", "Option créée");
-                setOptionForm({ name: '', type: 'pain', extra_price: '0.00', avalaible: true });
-                setOptionFormPhoto(null);
+                setOptionForm({ name: '', type: 'pain', extra_price: '0.00', avalaible: true }); setOptionFormPhoto(null);
                 fetchInitialData();
-            } else {
-                showError("Erreur", "Création échouée");
-            }
-        } catch (e: any) { 
-            showError("Erreur", e.message);
-        }
+            } else { showError("Erreur", "Création échouée"); }
+        } catch (e: any) { showError("Erreur", e.message); }
     };
 
-    const openEditOption = (option: any) => {
-        setEditingOption({
-            ...option,
-            extra_price: option.extra_price.toString()
-        });
-        setSelectedOptionPhoto(null);
-        setEditOptionModal(true);
-    };
+    const openEditOption = (option: any) => { setEditingOption({ ...option, extra_price: option.extra_price.toString() }); setSelectedOptionPhoto(null); setEditOptionModal(true); };
 
     const handleUpdateOption = async () => {
         if (!editingOption) return;
-        
         const token = await AsyncStorage.getItem("token");
         try {
             const formData = new FormData();
@@ -543,62 +446,35 @@ export default function MenuAdminPage() {
             formData.append('type', editingOption.type);
             formData.append('extra_price', (editingOption.extra_price || '0').toString());
             formData.append('avalaible', editingOption.avalaible.toString());
-            
-            if (selectedOptionPhoto) {
-                await appendImageToFormData(formData, 'photo', selectedOptionPhoto);
-            }
+            if (selectedOptionPhoto) await appendImageToFormData(formData, 'photo', selectedOptionPhoto);
             
             const response = await fetch(`${POS_URL}/menu/api/updateOption/`, {
-                method: 'PUT',
-                headers: { Authorization: `Bearer ${token}` },
-                body: formData,
+                method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
-            
             if (response.ok) {
                 showSuccess("Succès", "Option mise à jour");
-                setEditOptionModal(false);
-                setEditingOption(null);
-                setSelectedOptionPhoto(null);
+                setEditOptionModal(false); setEditingOption(null); setSelectedOptionPhoto(null);
                 fetchInitialData();
-            } else {
-                showError("Erreur", "Mise à jour échouée");
-            }
-        } catch (e: any) { 
-            showError("Erreur", e.message);
-        }
+            } else { showError("Erreur", "Mise à jour échouée"); }
+        } catch (e: any) { showError("Erreur", e.message); }
     };
 
     const handleDeleteOption = (optionId: number) => {
-        askConfirmation(
-            "Supprimer l'option ?",
-            "Voulez-vous vraiment supprimer cette option ?",
-            async () => {
-                const token = await AsyncStorage.getItem("token");
-                try {
-                    await axios.delete(`${POS_URL}/menu/api/deleteOption/${optionId}/`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    showSuccess("Succès", "Option supprimée");
-                    fetchInitialData();
-                } catch (e: any) { 
-                    showError("Erreur", "Impossible de supprimer l'option");
-                }
-            }
-        );
+        askConfirmation("Supprimer l'option ?", "Voulez-vous vraiment supprimer cette option ?", async () => {
+            const token = await AsyncStorage.getItem("token");
+            try {
+                await axios.delete(`${POS_URL}/menu/api/deleteOption/${optionId}/`, { headers: { Authorization: `Bearer ${token}` } });
+                showSuccess("Succès", "Option supprimée"); fetchInitialData();
+            } catch (e: any) { showError("Erreur", "Impossible de supprimer l'option"); }
+        });
     };
 
     const toggleOptionAvailability = async (option: any) => {
         const token = await AsyncStorage.getItem("token");
         try {
-            await axios.put(`${POS_URL}/menu/api/updateOption/`, {
-                id: option.id,
-                avalaible: !option.avalaible
-            }, { headers: { Authorization: `Bearer ${token}` } });
-            fetchInitialData();
-            showSuccess("Succès", "Disponibilité mise à jour");
-        } catch (e: any) { 
-            showError("Erreur", "Impossible de modifier la disponibilité");
-        }
+            await axios.put(`${POS_URL}/menu/api/updateOption/`, { id: option.id, avalaible: !option.avalaible }, { headers: { Authorization: `Bearer ${token}` } });
+            fetchInitialData(); showSuccess("Succès", "Disponibilité mise à jour");
+        } catch (e: any) { showError("Erreur", "Impossible de modifier la disponibilité"); }
     };
 
     // ============= RENDERERS =============
@@ -609,49 +485,26 @@ export default function MenuAdminPage() {
             <View style={styles.photoPreviewContainer}>
                 {photo || currentPhotoUrl ? (
                     <View style={styles.photoWrapper}>
-                        <Image 
-                            source={{ uri: photo ? photo.uri : `${POS_URL}${currentPhotoUrl}` }}
-                            style={styles.photoPreview}
-                        />
-                        {photo && (
-                            <TouchableOpacity 
-                                style={styles.removePhotoBtn}
-                                onPress={() => removeImage(setPhoto)}
-                            >
-                                <X size={16} color="white" />
-                            </TouchableOpacity>
-                        )}
+                        <Image source={{ uri: photo ? photo.uri : `${POS_URL}${currentPhotoUrl}` }} style={styles.photoPreview} />
+                        {photo && <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removeImage(setPhoto)}><X size={16} color="white" /></TouchableOpacity>}
                     </View>
                 ) : (
-                    <View style={styles.photoPlaceholder}>
-                        <Camera size={40} color={COLORS.muted} />
-                        <Text style={styles.photoPlaceholderText}>Aucune photo</Text>
-                    </View>
+                    <View style={styles.photoPlaceholder}><Camera size={40} color={COLORS.muted} /><Text style={styles.photoPlaceholderText}>Aucune photo</Text></View>
                 )}
             </View>
-            <TouchableOpacity 
-                style={styles.selectPhotoBtn}
-                onPress={() => pickImage(setPhoto)}
-            >
-                <Upload size={18} color={COLORS.primary} />
-                <Text style={styles.selectPhotoText}>
-                    {photo ? 'Changer la photo' : 'Sélectionner une photo'}
-                </Text>
+            <TouchableOpacity style={styles.selectPhotoBtn} onPress={() => pickImage(setPhoto)}>
+                <Upload size={18} color={COLORS.primary} /><Text style={styles.selectPhotoText}>{photo ? 'Changer la photo' : 'Sélectionner une photo'}</Text>
             </TouchableOpacity>
         </View>
     );
 
     const SidebarItem = ({ id, label, icon: Icon }: { id: Tab, label: string, icon: any }) => (
-        <TouchableOpacity 
-            style={[styles.tabBtn, activeTab === id && styles.activeTab]} 
-            onPress={() => setActiveTab(id)}
-        >
+        <TouchableOpacity style={[styles.tabBtn, activeTab === id && styles.activeTab]} onPress={() => setActiveTab(id)}>
             <Icon size={20} color={activeTab === id ? "#FFF" : COLORS.muted} />
             <Text style={[styles.tabText, activeTab === id && styles.activeTabText]}>{label}</Text>
         </TouchableOpacity>
     );
 
-    // ... Contenu des onglets (identique à avant, juste nettoyé) ...
     const renderGroupsTab = () => (
         <View>
             <View style={styles.card}>
@@ -659,10 +512,7 @@ export default function MenuAdminPage() {
                 <TextInput style={styles.input} placeholder="Nom du groupe" value={newGroupName} onChangeText={setNewGroupName} />
                 <TextInput style={styles.input} placeholder="Description" value={newGroupDescription} onChangeText={setNewGroupDescription} />
                 {renderPhotoPicker(newGroupPhoto, setNewGroupPhoto)}
-                <TouchableOpacity style={styles.submitBtn} onPress={handleCreateGroup}>
-                    <Plus size={20} color="white" />
-                    <Text style={styles.btnText}>Créer le Groupe</Text>
-                </TouchableOpacity>
+                <TouchableOpacity style={styles.submitBtn} onPress={handleCreateGroup}><Plus size={20} color="white" /><Text style={styles.btnText}>Créer le Groupe</Text></TouchableOpacity>
             </View>
             <Text style={styles.listHeader}>Groupes existants ({groups.length})</Text>
             {groups.map((g: any) => (
@@ -671,9 +521,7 @@ export default function MenuAdminPage() {
                     <View style={styles.listItemInfo}>
                         <Text style={styles.itemTitle}>{g.name}</Text>
                         <Text style={styles.itemSubTitle}>{g.description}</Text>
-                        <View style={styles.statusBadge}>
-                            <Text style={[styles.statusText, !g.avalaible && styles.unavailableText]}>{g.avalaible ? '✓ Disponible' : '✗ Indisponible'}</Text>
-                        </View>
+                        <View style={styles.statusBadge}><Text style={[styles.statusText, !g.avalaible && styles.unavailableText]}>{g.avalaible ? '✓ Disponible' : '✗ Indisponible'}</Text></View>
                     </View>
                     <View style={styles.actionButtons}>
                         <TouchableOpacity style={styles.iconBtn} onPress={() => openEditGroup(g)}><Edit size={18} color={COLORS.primary} /></TouchableOpacity>
@@ -692,26 +540,27 @@ export default function MenuAdminPage() {
                 <TextInput style={styles.input} placeholder="Nom" value={menuForm.name} onChangeText={(t) => setMenuForm({...menuForm, name: t})} />
                 <TextInput style={styles.input} placeholder="Description" value={menuForm.description} onChangeText={(t) => setMenuForm({...menuForm, description: t})} multiline />
                 <View style={styles.row}>
-                    <TextInput style={[styles.input, {flex: 1, marginRight: 10}]} placeholder="Prix (DA)" keyboardType="numeric" value={menuForm.price} onChangeText={(t) => setMenuForm({...menuForm, price: t})} />
+                    <TextInput style={[styles.input, {flex: 1, marginRight: 10}]} placeholder="Prix Menu" keyboardType="numeric" value={menuForm.price} onChangeText={(t) => setMenuForm({...menuForm, price: t})} />
                     <TextInput style={[styles.input, {flex: 1}]} placeholder="Prix solo" keyboardType="numeric" value={menuForm.solo_price} onChangeText={(t) => setMenuForm({...menuForm, solo_price: t})} />
                 </View>
                 <View style={styles.row}>
                     <View style={[styles.pickerContainer, {flex: 1, marginRight: 10}]}>
-                        <Picker selectedValue={menuForm.group_menu} onValueChange={(v) => setMenuForm({...menuForm, group_menu: v})}>
-                            <Picker.Item label="Choisir un groupe" value="" />
+                        <Picker selectedValue={menuForm.group_menu} onValueChange={(v) => setMenuForm({...menuForm, group_menu: v})} style={{ width: '100%', height: '100%', color: COLORS.secondary, backgroundColor: 'transparent' }}>
+                            <Picker.Item label="Choisir un groupe" value="" style={{color: COLORS.muted}} />
                             {groups.map((g: any) => (<Picker.Item key={g.id} label={g.name} value={g.id.toString()} />))}
                         </Picker>
                     </View>
                     <View style={[styles.pickerContainer, {flex: 1}]}>
-                        <Picker selectedValue={menuForm.type} onValueChange={(v) => setMenuForm({...menuForm, type: v})}>
+                        <Picker selectedValue={menuForm.type} onValueChange={(v) => setMenuForm({...menuForm, type: v})} style={{ width: '100%', height: '100%', color: COLORS.secondary, backgroundColor: 'transparent' }}>
                             {MENU_TYPES.map((type) => (<Picker.Item key={type.value} label={type.label} value={type.value} />))}
                         </Picker>
                     </View>
                 </View>
                 {renderPhotoPicker(menuFormPhoto, setMenuFormPhoto)}
-                <TouchableOpacity style={styles.submitBtn} onPress={handleCreateMenu}>
-                    <Save size={20} color="white" />
-                    <Text style={styles.btnText}>Enregistrer</Text>
+                
+                <TouchableOpacity style={styles.submitBtn} onPress={handlePreCreateMenu}>
+                    <Eye size={20} color="white" />
+                    <Text style={styles.btnText}>Prévisualiser & Enregistrer</Text>
                 </TouchableOpacity>
             </View>
             <Text style={styles.listHeader}>Articles existants ({menus.length})</Text>
@@ -726,9 +575,7 @@ export default function MenuAdminPage() {
                         <Text style={styles.priceTag}>{m.price} DA</Text>
                     </View>
                     <View style={styles.menuActions}>
-                        <View style={styles.statusBadge}>
-                            <Text style={[styles.statusText, !m.avalaible && styles.unavailableText]}>{m.avalaible ? '✓' : '✗'}</Text>
-                        </View>
+                        <View style={styles.statusBadge}><Text style={[styles.statusText, !m.avalaible && styles.unavailableText]}>{m.avalaible ? '✓' : '✗'}</Text></View>
                         <View style={styles.actionButtons}>
                             <TouchableOpacity style={styles.iconBtn} onPress={() => openEditMenu(m)}><Edit size={16} color={COLORS.primary} /></TouchableOpacity>
                             <TouchableOpacity style={styles.iconBtn} onPress={() => toggleMenuAvailability(m)}>{m.avalaible ? <Eye size={16} color={COLORS.success} /> : <EyeOff size={16} color={COLORS.muted} />}</TouchableOpacity>
@@ -754,10 +601,7 @@ export default function MenuAdminPage() {
                     <TextInput style={[styles.input, {flex: 1}]} placeholder="Prix +" keyboardType="numeric" value={optionForm.extra_price} onChangeText={(t) => setOptionForm({...optionForm, extra_price: t})} />
                 </View>
                 {renderPhotoPicker(optionFormPhoto, setOptionFormPhoto)}
-                <TouchableOpacity style={styles.submitBtn} onPress={handleCreateOption}>
-                    <Plus size={20} color="white" />
-                    <Text style={styles.btnText}>Créer</Text>
-                </TouchableOpacity>
+                <TouchableOpacity style={styles.submitBtn} onPress={handleCreateOption}><Plus size={20} color="white" /><Text style={styles.btnText}>Créer</Text></TouchableOpacity>
             </View>
             <Text style={styles.listHeader}>Options existantes ({options.length})</Text>
             {options.map((o: any) => (
@@ -766,9 +610,7 @@ export default function MenuAdminPage() {
                     <View style={styles.listItemInfo}>
                         <Text style={styles.itemTitle}>{o.name}</Text>
                         <Text style={styles.itemSubTitle}>{o.type} • {o.extra_price > 0 ? `+${o.extra_price} DA` : 'Inclus'}</Text>
-                        <View style={styles.statusBadge}>
-                            <Text style={[styles.statusText, !o.avalaible && styles.unavailableText]}>{o.avalaible ? '✓' : '✗'}</Text>
-                        </View>
+                        <View style={styles.statusBadge}><Text style={[styles.statusText, !o.avalaible && styles.unavailableText]}>{o.avalaible ? '✓' : '✗'}</Text></View>
                     </View>
                     <View style={styles.actionButtons}>
                         <TouchableOpacity style={styles.iconBtn} onPress={() => openEditOption(o)}><Edit size={18} color={COLORS.primary} /></TouchableOpacity>
@@ -785,10 +627,8 @@ export default function MenuAdminPage() {
             <Text style={styles.cardTitle}>Informations du Restaurant</Text>
             {restaurantInfo && (
                 <View>
-                    <Text style={styles.infoLabel}>Nom:</Text>
-                    <Text style={styles.infoValue}>{restaurantInfo.name}</Text>
-                    <Text style={styles.infoLabel}>Adresse:</Text>
-                    <Text style={styles.infoValue}>{restaurantInfo.address}</Text>
+                    <Text style={styles.infoLabel}>Nom:</Text><Text style={styles.infoValue}>{restaurantInfo.name}</Text>
+                    <Text style={styles.infoLabel}>Adresse:</Text><Text style={styles.infoValue}>{restaurantInfo.address}</Text>
                     <View style={styles.statsContainer}>
                         <View style={styles.statBox}><Text style={styles.statValue}>{groups.length}</Text><Text style={styles.statLabel}>Groupes</Text></View>
                         <View style={styles.statBox}><Text style={styles.statValue}>{menus.length}</Text><Text style={styles.statLabel}>Articles</Text></View>
@@ -801,45 +641,22 @@ export default function MenuAdminPage() {
 
     return (
         <View style={styles.container}>
-            {/* SIDEBAR */}
             <View style={styles.sidebar}>
-            <View style={styles.logoContainer}>
-    <Image 
-      source={require('@/assets/logo.png')} 
-      style={styles.logoImage} 
-      resizeMode="contain"
-    />
-    {/* Vous pouvez garder le texte à côté ou le supprimer */}
-    <Text style={styles.adminTitle}>Admin POS</Text>
-</View>
+                <View style={styles.logoContainer}><Image source={require('@/assets/logo.png')} style={styles.logoImage} resizeMode="contain" /><Text style={styles.adminTitle}>Admin POS</Text></View>
                 <SidebarItem id="restaurant" label="Restaurant" icon={Store} />
                 <SidebarItem id="groups" label="Groupes" icon={LayoutGrid} />
                 <SidebarItem id="menus" label="Articles" icon={Utensils} />
                 <SidebarItem id="options" label="Options" icon={Settings2} />
-                <View style={styles.sidebarFooter}>
-                    <Text style={styles.footerText}>Version 2.0.0</Text>
-                    <Text style={styles.footerSubText}>Mode Desktop & Mobile</Text>
-                </View>
+                <View style={styles.sidebarFooter}><Text style={styles.footerText}>Version 2.0.0</Text><Text style={styles.footerSubText}>Mode Desktop & Mobile</Text></View>
             </View>
 
-            {/* CONTENT */}
             <View style={styles.content}>
                 <View style={styles.contentHeader}>
-                    <Text style={styles.sectionTitle}>
-                        {activeTab === 'restaurant' ? 'Restaurant' : 
-                         activeTab === 'groups' ? 'Groupes de Menu' :
-                         activeTab === 'menus' ? 'Articles' : 'Options'}
-                    </Text>
-                    <TouchableOpacity onPress={fetchInitialData} style={styles.refreshBtn}>
-                        <Text style={styles.refreshBtnText}>Actualiser</Text>
-                    </TouchableOpacity>
+                    <Text style={styles.sectionTitle}>{activeTab === 'restaurant' ? 'Restaurant' : activeTab === 'groups' ? 'Groupes de Menu' : activeTab === 'menus' ? 'Articles' : 'Options'}</Text>
+                    <TouchableOpacity onPress={fetchInitialData} style={styles.refreshBtn}><Text style={styles.refreshBtnText}>Actualiser</Text></TouchableOpacity>
                 </View>
 
-                {loading ? (
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color={COLORS.primary} />
-                    </View>
-                ) : (
+                {loading ? ( <View style={styles.loadingContainer}><ActivityIndicator size="large" color={COLORS.primary} /></View> ) : (
                     <ScrollView showsVerticalScrollIndicator={false}>
                         {activeTab === 'restaurant' && renderRestaurantTab()}
                         {activeTab === 'groups' && renderGroupsTab()}
@@ -849,7 +666,7 @@ export default function MenuAdminPage() {
                 )}
             </View>
 
-            {/* MODALS EDIT (Groupe, Menu, Option) - Identiques à avant */}
+            {/* MODALS EDIT... (Groups, Menus, Options) */}
             <Modal visible={editGroupModal} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -861,100 +678,40 @@ export default function MenuAdminPage() {
                     </View>
                 </View>
             </Modal>
-            {/* MODAL EDIT MENU CORRIGÉE */}
+            
             <Modal visible={editMenuModal} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <ScrollView contentContainerStyle={{flexGrow: 1, justifyContent: 'center'}}>
                         <View style={styles.modalContent}>
-                            <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Modifier l'Article</Text>
-                                <TouchableOpacity onPress={() => setEditMenuModal(false)}>
-                                    <X size={24} color={COLORS.secondary} />
-                                </TouchableOpacity>
-                            </View>
-
+                            <View style={styles.modalHeader}><Text style={styles.modalTitle}>Modifier l'Article</Text><TouchableOpacity onPress={() => setEditMenuModal(false)}><X size={24} color={COLORS.secondary} /></TouchableOpacity></View>
                             <Text style={styles.photoLabel}>Nom de l'article</Text>
-                            <TextInput 
-                                style={styles.input} 
-                                placeholder="Nom" 
-                                value={editingMenu?.name || ''} 
-                                onChangeText={(t) => setEditingMenu({...editingMenu, name: t})} 
-                            />
-                            
+                            <TextInput style={styles.input} placeholder="Nom" value={editingMenu?.name || ''} onChangeText={(t) => setEditingMenu({...editingMenu, name: t})} />
                             <Text style={styles.photoLabel}>Description</Text>
-                            <TextInput 
-                                style={styles.input} 
-                                placeholder="Description" 
-                                value={editingMenu?.description || ''} 
-                                onChangeText={(t) => setEditingMenu({...editingMenu, description: t})} 
-                                multiline 
-                            />
-
-                            {/* 👇 SÉLECTEUR DE GROUPE (CATÉGORIE) 👇 */}
-                            <Text style={{marginBottom: 5, marginTop: 10, color: COLORS.secondary, fontWeight:'700'}}>
-                                Catégorie (Groupe)
-                            </Text>
+                            <TextInput style={styles.input} placeholder="Description" value={editingMenu?.description || ''} onChangeText={(t) => setEditingMenu({...editingMenu, description: t})} multiline />
+                            <Text style={{marginBottom: 8, marginTop: 10, color: COLORS.secondary, fontWeight:'700'}}>Catégorie (Groupe)</Text>
                             <View style={styles.pickerContainer}>
-                                <Picker 
-                                    selectedValue={editingMenu?.group_menu ? editingMenu.group_menu.toString() : ""} 
-                                    onValueChange={(v) => setEditingMenu({...editingMenu, group_menu: v})}
-                                >
-                                    <Picker.Item label="Sélectionner une catégorie..." value="" />
-                                    {groups.map((g: any) => (
-                                        <Picker.Item key={g.id} label={g.name} value={g.id.toString()} />
-                                    ))}
+                                <Picker selectedValue={editingMenu?.group_menu ? editingMenu.group_menu.toString() : ""} onValueChange={(v) => setEditingMenu({...editingMenu, group_menu: v})} style={{ width: '100%', height: '100%', color: COLORS.secondary, backgroundColor: 'transparent' }}>
+                                    <Picker.Item label="Sélectionner une catégorie..." value="" style={{color: COLORS.muted}} />
+                                    {groups.map((g: any) => (<Picker.Item key={g.id} label={g.name} value={g.id.toString()} />))}
                                 </Picker>
                             </View>
-
-                            {/* PRIX */}
                             <View style={[styles.row, {marginTop: 10}]}>
-                                <View style={{flex: 1, marginRight: 10}}>
-                                    <Text style={styles.photoLabel}>Prix Menu</Text>
-                                    <TextInput 
-                                        style={styles.input} 
-                                        placeholder="0.00" 
-                                        keyboardType="numeric" 
-                                        value={editingMenu?.price || ''} 
-                                        onChangeText={(t) => setEditingMenu({...editingMenu, price: t})} 
-                                    />
-                                </View>
-                                <View style={{flex: 1}}>
-                                    <Text style={styles.photoLabel}>Prix Solo</Text>
-                                    <TextInput 
-                                        style={styles.input} 
-                                        placeholder="0.00" 
-                                        keyboardType="numeric" 
-                                        value={editingMenu?.solo_price || ''} 
-                                        onChangeText={(t) => setEditingMenu({...editingMenu, solo_price: t})} 
-                                    />
-                                </View>
+                                <View style={{flex: 1, marginRight: 10}}><Text style={styles.photoLabel}>Prix Menu</Text><TextInput style={styles.input} placeholder="0.00" keyboardType="numeric" value={editingMenu?.price ? editingMenu.price.toString() : ''} onChangeText={(t) => setEditingMenu({...editingMenu, price: t})} /></View>
+                                <View style={{flex: 1}}><Text style={styles.photoLabel}>Prix Solo</Text><TextInput style={styles.input} placeholder="0.00" keyboardType="numeric" value={editingMenu?.solo_price ? editingMenu.solo_price.toString() : ''} onChangeText={(t) => setEditingMenu({...editingMenu, solo_price: t})} /></View>
                             </View>
-
-                            {/* 👇 SÉLECTEUR DE TYPE (BURGER, WRAP...) 👇 */}
-                            <Text style={{marginBottom: 5, marginTop: 5, color: COLORS.secondary, fontWeight:'700'}}>
-                                Type de produit
-                            </Text>
+                            <Text style={{marginBottom: 8, marginTop: 15, color: COLORS.secondary, fontWeight:'700'}}>Type de produit</Text>
                             <View style={styles.pickerContainer}>
-                                <Picker 
-                                    selectedValue={editingMenu?.type} 
-                                    onValueChange={(v) => setEditingMenu({...editingMenu, type: v})}
-                                >
-                                    {MENU_TYPES.map((type) => (
-                                        <Picker.Item key={type.value} label={type.label} value={type.value} />
-                                    ))}
+                                <Picker selectedValue={editingMenu?.type} onValueChange={(v) => setEditingMenu({...editingMenu, type: v})} style={{ width: '100%', height: '100%', color: COLORS.secondary, backgroundColor: 'transparent' }}>
+                                    {MENU_TYPES.map((type) => (<Picker.Item key={type.value} label={type.label} value={type.value} />))}
                                 </Picker>
                             </View>
-                            
                             {renderPhotoPicker(selectedMenuPhoto, setSelectedMenuPhoto, editingMenu?.photo)}
-                            
-                            <TouchableOpacity style={styles.submitBtn} onPress={handleUpdateMenu}>
-                                <Save size={20} color="white" />
-                                <Text style={styles.btnText}>Enregistrer</Text>
-                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.submitBtn} onPress={handleUpdateMenu}><Save size={20} color="white" /><Text style={styles.btnText}>Enregistrer</Text></TouchableOpacity>
                         </View>
                     </ScrollView>
                 </View>
             </Modal>
+
             <Modal visible={editOptionModal} transparent animationType="fade">
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -962,9 +719,7 @@ export default function MenuAdminPage() {
                         <TextInput style={styles.input} placeholder="Nom" value={editingOption?.name || ''} onChangeText={(t) => setEditingOption({...editingOption, name: t})} />
                         <View style={styles.row}>
                             <View style={[styles.pickerContainer, {flex: 1, marginRight: 10}]}>
-                                <Picker selectedValue={editingOption?.type} onValueChange={(v) => setEditingOption({...editingOption, type: v})}>
-                                    {OPTION_TYPES.map((type) => (<Picker.Item key={type.value} label={type.label} value={type.value} />))}
-                                </Picker>
+                                <Picker selectedValue={editingOption?.type} onValueChange={(v) => setEditingOption({...editingOption, type: v})}>{OPTION_TYPES.map((type) => (<Picker.Item key={type.value} label={type.label} value={type.value} />))}</Picker>
                             </View>
                             <TextInput style={[styles.input, {flex: 1}]} placeholder="Prix +" keyboardType="numeric" value={editingOption?.extra_price || ''} onChangeText={(t) => setEditingOption({...editingOption, extra_price: t})} />
                         </View>
@@ -974,50 +729,100 @@ export default function MenuAdminPage() {
                 </View>
             </Modal>
 
-            {/* 🔥 NOUVEAU : BELLE MODAL DE CONFIRMATION (REMPLACE window.confirm) */}
-            <Modal 
-                visible={confirmModal.visible} 
-                transparent 
-                animationType="fade"
-                onRequestClose={() => setConfirmModal(prev => ({...prev, visible: false}))}
-            >
+            {/* CONFIRM MODAL */}
+            <Modal visible={confirmModal.visible} transparent animationType="fade" onRequestClose={() => setConfirmModal(prev => ({...prev, visible: false}))}>
                 <View style={styles.confirmOverlay}>
                     <View style={styles.confirmBox}>
-                        <View style={styles.confirmIconBg}>
-                            <AlertTriangle size={32} color={COLORS.danger} />
-                        </View>
+                        <View style={styles.confirmIconBg}><AlertTriangle size={32} color={COLORS.danger} /></View>
                         <Text style={styles.confirmTitle}>{confirmModal.title}</Text>
                         <Text style={styles.confirmMessage}>{confirmModal.message}</Text>
-                        
                         <View style={styles.confirmButtons}>
-                            <TouchableOpacity 
-                                style={styles.cancelButton}
-                                onPress={() => setConfirmModal(prev => ({...prev, visible: false}))}
-                            >
-                                <Text style={styles.cancelButtonText}>Annuler</Text>
+                            <TouchableOpacity style={styles.cancelButton} onPress={() => setConfirmModal(prev => ({...prev, visible: false}))}><Text style={styles.cancelButtonText}>Annuler</Text></TouchableOpacity>
+                            <TouchableOpacity style={styles.confirmButton} onPress={confirmModal.onConfirm}><Text style={styles.confirmButtonText}>Supprimer</Text></TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* 🔥🔥 MODAL DE PRÉVISUALISATION STYLE TERMINAL (POS) */}
+            <Modal visible={previewModalVisible} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.previewModalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Aperçu Borne (Terminal)</Text>
+                            <TouchableOpacity onPress={() => setPreviewModalVisible(false)}>
+                                <X size={24} color={COLORS.secondary} />
                             </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={styles.confirmButton}
-                                onPress={confirmModal.onConfirm}
-                            >
-                                <Text style={styles.confirmButtonText}>Supprimer</Text>
+                        </View>
+
+                        <Text style={styles.previewSubtitle}>Voici exactement comment l'article s'affichera sur la borne :</Text>
+
+                        {/* 🔥 RENDU IDENTIQUE AU FICHIER terminal.tsx 🔥 */}
+                        <View style={styles.previewContainer}>
+                            <View style={styles.terminalCard}>
+                                {/* Image du terminal */}
+                                <View style={styles.terminalImageContainer}>
+                                    {menuFormPhoto ? (
+                                        <Image source={{ uri: menuFormPhoto.uri }} style={styles.terminalImage} resizeMode="cover" />
+                                    ) : (
+                                        <View style={[styles.terminalImage, {backgroundColor: '#EEE', justifyContent:'center', alignItems:'center'}]}>
+                                            <Utensils size={40} color="#94a3b8" />
+                                        </View>
+                                    )}
+                                </View>
+                                
+                                {/* Info du terminal */}
+                                <View style={styles.terminalInfo}>
+                                    <Text style={styles.terminalTitle} numberOfLines={2}>
+                                        {menuForm.name || "Nom du produit"}
+                                    </Text>
+                                    <View style={styles.terminalPriceContainer}>
+                                        <Text style={styles.terminalPrice}>
+                                            {/* Logique d'affichage du prix identique au terminal */}
+                                            {(menuForm.solo_price && parseFloat(menuForm.solo_price) > 0) 
+                                                ? menuForm.solo_price 
+                                                : menuForm.price} 
+                                            {/* Le DA en plus petit comme sur la photo */}
+                                            <Text style={{fontSize: 14}}> DA</Text>
+                                        </Text>
+                                        <View style={styles.terminalAddButton}>
+                                            <Plus size={20} color="white" />
+                                        </View>
+                                    </View>
+                                </View>
+                            </View>
+                        </View>
+
+                        <Text style={styles.previewWarning}>
+                            Vérifiez que la photo est bien cadrée et que le nom ne dépasse pas.
+                        </Text>
+
+                        <View style={styles.previewActions}>
+                            <TouchableOpacity style={[styles.cancelButton, {flex: 1, marginRight: 10}]} onPress={() => setPreviewModalVisible(false)}>
+                                <Text style={styles.cancelButtonText}>Modifier</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity style={[styles.submitBtn, {marginTop: 0, flex: 1}]} onPress={handleFinalizeCreateMenu} disabled={isSubmittingMenu}>
+                                {isSubmittingMenu ? ( <ActivityIndicator color="white" /> ) : (
+                                    <>
+                                        <CheckCircle size={20} color="white" />
+                                        <Text style={styles.btnText}>Valider et Mettre en Ligne</Text>
+                                    </>
+                                )}
                             </TouchableOpacity>
                         </View>
                     </View>
                 </View>
             </Modal>
 
-            {/* 🔔 TOAST MESSAGE (REMPLACE window.alert) */}
-            <Toast position="bottom" bottomOffset={40} />
+            {/* 3. APPLICATION DE LA CONFIG AU TOAST */}
+            <Toast position="bottom" bottomOffset={40} config={toastConfig} />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    logoImage: {
-        width: 100,  // Ajustez la largeur selon vos besoins
-        height: 25,  // Ajustez la hauteur selon vos besoins
-    },
+    logoImage: { width: 100, height: 25 },
     container: { flex: 1, flexDirection: 'row', backgroundColor: COLORS.bg },
     sidebar: { width: 260, backgroundColor: COLORS.card, padding: 20, borderRightWidth: 1, borderColor: COLORS.border },
     logoContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 40, gap: 10 },
@@ -1041,8 +846,8 @@ const styles = StyleSheet.create({
     card: { backgroundColor: COLORS.card, padding: 25, borderRadius: 16, marginBottom: 25, elevation: 4 },
     cardTitle: { fontSize: 18, fontWeight: '700', marginBottom: 20, color: COLORS.secondary },
     row: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-    input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, padding: 15, borderRadius: 12, fontSize: 16, marginBottom: 15 },
-    pickerContainer: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, marginBottom: 15 },
+    input: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: 15, borderRadius: 12, fontSize: 16, marginBottom: 15, color: COLORS.secondary, height: 55, justifyContent: 'center' },
+    pickerContainer: { backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, marginBottom: 15, height: 55, justifyContent: 'center', overflow: 'hidden' },
     
     submitBtn: { backgroundColor: COLORS.success, flexDirection: 'row', height: 60, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 10 },
     btnText: { color: '#FFF', fontWeight: '800', fontSize: 16 },
@@ -1080,7 +885,7 @@ const styles = StyleSheet.create({
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     modalTitle: { fontSize: 22, fontWeight: '800', color: COLORS.secondary },
     
-    // Confirmation Modal Styles (NEW)
+    // Confirmation Modal Styles
     confirmOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' },
     confirmBox: { backgroundColor: 'white', padding: 30, borderRadius: 24, width: 340, alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 10 },
     confirmIconBg: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
@@ -1103,4 +908,75 @@ const styles = StyleSheet.create({
     removePhotoBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: COLORS.danger, width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
     selectPhotoBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F0F4FF', padding: 12, borderRadius: 10, gap: 8 },
     selectPhotoText: { color: COLORS.primary, fontWeight: '600', fontSize: 14 },
+
+    // =========================================================================
+    // 🔥🔥 STYLES POUR LA PRÉVISUALISATION (Alignés sur terminal.tsx) 🔥🔥
+    // =========================================================================
+    previewModalContent: { 
+        backgroundColor: '#F3F4F6', 
+        width: '100%', 
+        maxWidth: 450, 
+        borderRadius: 20, 
+        padding: 25, 
+        elevation: 10,
+        alignItems: 'center'
+    },
+    previewSubtitle: { fontSize: 16, color: COLORS.muted, marginBottom: 20, textAlign: 'center' },
+    previewContainer: { marginBottom: 25 },
+    previewWarning: { fontSize: 14, color: COLORS.warning, textAlign: 'center', marginBottom: 20, backgroundColor: '#FFFBEB', padding: 10, borderRadius: 8, width: '100%' },
+    previewActions: { flexDirection: 'row', width: '100%', justifyContent: 'space-between' },
+
+    // Style exact de la carte du terminal
+    terminalCard: {
+        width: 320, // Élargi (était 250)
+        height: 240, // Réduit (était 280) pour un effet rectangle net
+        backgroundColor: "#fff",
+        borderRadius: 20,
+        overflow: 'hidden',
+        // Ombres
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+        elevation: 3,
+    },
+    terminalImageContainer: {
+        width: "100%",
+        height: "60%", // Image un peu plus grande pour correspondre à votre photo
+    },
+    terminalImage: {
+        width: "100%",
+        height: "100%",
+    },
+    terminalInfo: {
+        padding: 15,
+        flex: 1,
+        justifyContent: 'space-between', // Pousse le titre en haut et le prix en bas
+    },
+    terminalTitle: {
+        fontSize: 17,
+        fontWeight: "700",
+        textAlign: "left",
+        color: "#1e293b", 
+        marginBottom: 5,
+    },
+    terminalPriceContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    terminalPrice: {
+        fontSize: 20,
+        color: "#0056b3", 
+        fontWeight: "800",
+    },
+    terminalAddButton: {
+        backgroundColor: "#ff69b4", 
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 2,
+    },
 });

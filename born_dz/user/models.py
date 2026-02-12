@@ -2,8 +2,8 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from restaurant.models import Restaurant
 from django.conf import settings
-from django.contrib.auth.hashers import make_password
-
+# Import nécessaire pour le hachage manuel
+from django.contrib.auth.hashers import make_password, is_password_usable
 
 class Role(models.Model):
     ROLE_CHOICES = [
@@ -19,32 +19,31 @@ class Role(models.Model):
 
 
 class User(AbstractUser):
-    # ✅ CORRECTION CRITIQUE : Définir phone comme USERNAME_FIELD
     USERNAME_FIELD = 'phone'
-    REQUIRED_FIELDS = ['email']  # Champs requis en plus de USERNAME_FIELD
+    REQUIRED_FIELDS = ['email']
     
-    # ✅ CORRECTION : Rendre username non obligatoire et non unique
     username = models.CharField(max_length=150, blank=True, null=True, unique=False)
     
-    # Champs personnalisés
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True)
-    phone = models.CharField(max_length=13, unique=True)
+    phone = models.CharField(max_length=10, unique=True)
     email = models.EmailField(unique=True, blank=True, null=True)
-    password = models.CharField(max_length=256)
     
+    # ❌ SUPPRIMÉ : password = models.CharField(...) 
+    # AbstractUser possède déjà ce champ, le redéfinir ici cassait le hachage.
+
     def save(self, *args, **kwargs):
-        # ✅ Générer email automatiquement si vide
-        if not self.email or self.email == f"{self.phone}@born.dz":
-            self.email = f"{self.phone}@born.dz"
-        
-        # ✅ Générer username automatique (égal au phone)
-        if not self.username:
-            self.username = self.phone
-        
-        super().save(*args, **kwargs)
-    
-    def __str__(self):
-        return self.phone + " " + str(self.role)
+            if not self.username:
+                self.username = self.phone
+            if not self.email:
+                self.email = f"{self.phone}@born.dz"
+     
+            # Vérification de la longueur avant le hachage
+            if self.password and not (self.password.startswith('pbkdf2_') or self.password.startswith('bcrypt')):
+                if len(self.password) != 6:
+                    raise ValueError("Le mot de passe doit faire exactement 6 caractères.")
+                self.set_password(self.password)
+                
+            super().save(*args, **kwargs)
 
 
 class Employee(models.Model):

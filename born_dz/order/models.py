@@ -27,12 +27,23 @@ class Order(models.Model):
     def total_price(self):
         total = 0
         for item in self.items.all():
-            total += item.menu.price * item.quantity if item.menu and not(item.solo) else 0
-            total += item.menu.solo_price * item.quantity if item.menu and (item.solo or item.extra) else 0
-            for option in item.options.all():
-                total += option.option.extra_price if option.option.extra_price else 0
+            item_price = 0
+            if item.menu: # Sécurité critique
+                # 1. On prend le prix de base (Solo ou Menu)
+                if item.solo or item.extra:
+                    item_price = getattr(item.menu, 'solo_price', 0) or 0 
+                else:
+                    item_price = getattr(item.menu, 'price', 0) or 0
+            
+            # 2. On y ajoute le prix des options/suppléments de CET item
+            for option_rel in item.options.all():
+                if option_rel.option and getattr(option_rel.option, 'extra_price', 0):
+                    item_price += option_rel.option.extra_price
+            
+            # 3. On multiplie le prix unitaire complet par la quantité, puis on ajoute au total de la commande
+            total += item_price * item.quantity
+                    
         return total
-
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")

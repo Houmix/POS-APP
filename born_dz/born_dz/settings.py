@@ -34,12 +34,13 @@ SECRET_KEY = "django-insecure-y($ou%*05+_g)zspa#n-tol!)2p*l_6zr#@(kgomt1hv4$60eu
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS =["192.168.1.50","menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app","192.168.1.123"]
+ALLOWED_HOSTS =["127.0.0.1:60457","192.168.1.50","menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app","192.168.1.123"]
 
 
 # Application definition
 
 INSTALLED_APPS = [ #Add created app here like customer, kds...
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -167,7 +168,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "Africa/Algiers"
 
 USE_I18N = True
 
@@ -229,10 +230,12 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:8081",
     "http://127.0.0.1:8082",
     "http://localhost:8080",
+    "http://127.0.0.1:60457",
     "http://127.0.0.1:8080",
     "http://localhost:8000",
     "http://localhost:8081",
     "http://localhost:8082",
+    "http://localhost:5173",
     "http://menugo-dz.com",
     "http://www.menugo-dz.com",
     "https://borndz-production.up.railway.app",

@@ -18,56 +18,81 @@ from customer.serializers import LoyaltySerializer
 
 
 class EmployeeTokenView(APIView):
-    permission_classes = []  # ou ta permission personnalisée
-    authentication_classes = [] #Ajout de cette ligne pour pouvoir utiliser l'api sans jeton
+    permission_classes = []
+    authentication_classes = []
+    
     def post(self, request):
-        
         phone = request.data.get('phone')
         password = request.data.get('password')
-        print("Phone:", phone)
-        try :
-            employee = User.objects.get(phone=phone)
-            print("Employee found:", employee)
-            if not check_password(password, employee.password):
-                print("Password check failed for employee:", employee)
-                return Response({"erreur":"erreur mdp"})
-            refresh = RefreshToken.for_user(employee)
-            token = {
+        
+        print(f"Tentative de connexion pour : {phone}")
+        
+        # 1. Vérification des champs
+        if not phone or not password:
+            return Response(
+                {"error": "Veuillez fournir un numéro et un mot de passe"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 2. Recherche de l'utilisateur
+        try:
+            employee_user = User.objects.get(phone=phone)
+        except User.DoesNotExist:
+            # 🛑 STOP : On ne crée PAS d'utilisateur ici. On renvoie une erreur.
+            return Response(
+                {"error": "Identifiants incorrects"}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # 3. Vérification du mot de passe
+        if not check_password(password, employee_user.password):
+            print(f"Échec mot de passe pour {phone}")
+            return Response(
+                {"error": "Identifiants incorrects"}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # 4. Vérification optionnelle : est-ce bien un employé ?
+        # (Si vous voulez empêcher les clients simples de se connecter sur l'app employé)
+        if not Employee.objects.filter(user=employee_user).exists():
+             return Response(
+                {"error": "Accès réservé au personnel"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # 5. Génération du token ET sérialisation de l'utilisateur
+        refresh = RefreshToken.for_user(employee_user)
+        
+        # On utilise le sérializer pour récupérer le role_name proprement
+        user_serializer = UserSerializer(employee_user)
+
+        data = {
+            'tokens': {
                 'refresh': str(refresh),
                 'access': str(refresh.access_token),
-            }
-            print("Token:", token)
-        except User.DoesNotExist:
-            user=User.objects.create(
-                phone=phone,
-                role_id=2,  # Assigner un rôle par défaut, par exemple 'customer'
-                password=phone,  # Utiliser le téléphone comme mot de passe par défaut
-            )
-            Employee.objects.create(
-                user=user,
-                restaurant_id=1,  # Assigner un restaurant par défaut, par exemple le restaurant avec l'ID 1
-            )
-            #return Response({"erreur":"pas d'employé avec ces ID"})
-            token = get_tokens_for_user(user)
-
-        print("Token:", token)
-        return Response(token)
+            },
+            # On renvoie tout l'objet user (qui contient role_name grâce à votre serializer)
+            'user': user_serializer.data 
+        }
+        
+        print(f"Connexion réussie pour {phone} - Rôle: {user_serializer.data.get('role_name')}")
+        return Response(data, status=status.HTTP_200_OK)
     
 class EmployeeLogin(APIView):
-    permission_classes = [IsAuthenticated]
+    # L'utilisateur doit avoir un token valide
+    permission_classes = [IsAuthenticated] 
+
     def get(self, request, *args, **kwargs):
+        # request.user est automatiquement rempli par Django grâce au token JWT
+        user = request.user 
+        
+        # On vérifie quand même que c'est un employé (optionnel mais conseillé)
         try:
-            
-            phone = request.query_params.get("phone")
-            password = request.query_params.get("password")
-            user = User.objects.get(phone=phone)
-            if not check_password(password, user.password):
-                return Response({"error": "Identifiants incorrect"}, status=status.HTTP_401_UNAUTHORIZED)
-        except User.DoesNotExist:
-            return Response({"error": "Utilisateur non trouvé"}, status=status.HTTP_404_NOT_FOUND)
-        #Cheking if the user is an employee in this restaurant
-        serializer = UserSerializer(user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            employee = Employee.objects.get(user=user)
+            serializer = UserSerializer(user)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Employee.DoesNotExist:
+            return Response({"error": "Cet utilisateur n'est pas un employé"}, status=status.HTTP_403_FORBIDDEN)
     
 
 
