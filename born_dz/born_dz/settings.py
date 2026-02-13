@@ -125,7 +125,7 @@ WSGI_APPLICATION = "born_dz.wsgi.application"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 
-"""
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -144,7 +144,7 @@ DATABASES = {
         'PORT': '49671',
     }
 }
-
+"""
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
