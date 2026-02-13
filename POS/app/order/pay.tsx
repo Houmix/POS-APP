@@ -66,6 +66,16 @@ export default function PaymentScreen() {
                 await AsyncStorage.removeItem("pendingOrder");
                 await AsyncStorage.setItem("lastOrderId", response.data.order_id.toString());
                 router.push("/order/confirmation");
+                // 2. Mettre en file de sync pour le serveur distant
+                await window.syncAPI.queueChange('order', 'create', order);
+                
+                // Les order_items aussi
+                for (const item of order.items) {
+                    await window.syncAPI.queueChange('order_item', 'create', item);
+                }
+
+                // 3. Le SyncManager enverra automatiquement dès qu'il y a du réseau
+                return order;
             } else {
                 setErrorMessage(t('errors.create_order'));
                 Alert.alert(t('error'), t('errors.create_order'));

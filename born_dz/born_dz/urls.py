@@ -29,7 +29,13 @@ urlpatterns = [
 
     path('user/', include("user.urls")),
     path('order/', include("order.urls")),
-    path('menu/', include("menu.urls"))
+    path('menu/', include("menu.urls")),
+
+    # Sync
+    path('api/sync/', include('sync.urls')),
+    
+    # Licence
+    path('api/license/', include('terminal.urls')),
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

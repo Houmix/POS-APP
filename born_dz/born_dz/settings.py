@@ -62,7 +62,8 @@ INSTALLED_APPS = [ #Add created app here like customer, kds...
     "manager",
     'corsheaders',#pour pouvoir recevoir des requetes (pas sur),
     "channels", #pour les websockets,
-    "borne_sync"
+    "borne_sync",
+    'sync',
 ]
 # Configuration Channels
 # NOTE: Remplacez par un broker Redis pour la production !
@@ -89,7 +90,7 @@ SIMPLE_JWT = {
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',# pour recevoir des requetes
     "django.middleware.security.SecurityMiddleware",
-    #'whitenoise.middleware.WhiteNoiseMiddleware',#Pour debug a false et lancer : pip install whitenoise plus gerer les static files comme en bas
+    'whitenoise.middleware.WhiteNoiseMiddleware',#Pour debug a false et lancer : pip install whitenoise plus gerer les static files comme en bas
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -124,7 +125,7 @@ WSGI_APPLICATION = "born_dz.wsgi.application"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 
-
+"""
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -143,7 +144,7 @@ DATABASES = {
         'PORT': '49671',
     }
 }
-"""
+
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 

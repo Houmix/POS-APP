@@ -59,7 +59,7 @@ class EmployeeTokenView(APIView):
                 {"error": "Accès réservé au personnel"}, 
                 status=status.HTTP_403_FORBIDDEN
             )
-
+        restaurant_id = Employee.objects.get(user=employee_user).restaurant_id
         # 5. Génération du token ET sérialisation de l'utilisateur
         refresh = RefreshToken.for_user(employee_user)
         
@@ -72,7 +72,8 @@ class EmployeeTokenView(APIView):
                 'access': str(refresh.access_token),
             },
             # On renvoie tout l'objet user (qui contient role_name grâce à votre serializer)
-            'user': user_serializer.data 
+            'user': user_serializer.data ,
+            'restaurant_id': restaurant_id
         }
         
         print(f"Connexion réussie pour {phone} - Rôle: {user_serializer.data.get('role_name')}")

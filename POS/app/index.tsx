@@ -17,6 +17,13 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { POS_URL } from "@/config";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
+// Vos composants
+import LicenseActivation from './../components/LicenseActivation';
+import SyncStatusBar from './../components/SyncStatusBar';
+
+// Vos hooks
+import { useLicense } from './../hooks/useLicense';
+import { useSync } from './../hooks/useSync';
 export default function IdentificationScreen() {
   const navigation = useNavigation();
   const [errorMessage, setErrorMessage] = useState("");
@@ -28,6 +35,36 @@ export default function IdentificationScreen() {
   // Gestion du clavier visuel
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [activeField, setActiveField] = useState<"phone" | "password" | null>(null);
+
+
+  const { isValid, isActivated, loading: licenseLoading, restaurantName } = useLicense();
+  const { isElectron } = useSync();
+// // ── 1. Chargement initial ──
+// if (licenseLoading) {
+//   return (
+//       <View style={styles.splash}>
+//           <Text style={styles.splashText}>ClickGo</Text>
+//           <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 20 }} />
+//           <Text style={styles.splashSub}>Vérification de la licence...</Text>
+//       </View>
+//   );
+// }
+
+// // ── 2. Pas de licence → écran d'activation ──
+// //    (seulement si on est dans Electron)
+// if (isElectron && !isValid) {
+//   return (
+//       <LicenseActivation
+//           onActivated={() => {
+//               // Recharger l'app après activation
+//               // En Electron, window.location.reload() fonctionne
+//               if (typeof window !== 'undefined') {
+//                   window.location.reload();
+//               }
+//           }}
+//       />
+//   );
+// }
 
   useEffect(() => {
     const clearAll = async () => {
@@ -86,7 +123,7 @@ export default function IdentificationScreen() {
          // Sauvegarde legacy
          if (data.user.id) await AsyncStorage.setItem("Empoyee_id", data.user.id.toString());
          if (data.user.phone) await AsyncStorage.setItem("Empoyee_phone", data.user.phone);
-         const restaurantId = data.user.restaurant_id ? data.user.restaurant_id.toString() : "1";
+         const restaurantId = data.restaurant_id;
          await AsyncStorage.setItem("Employee_restaurant_id", restaurantId);
 
          navigation.navigate("tabs" as never);
@@ -319,4 +356,22 @@ const styles = StyleSheet.create({
   bottomDecoration: { position: "absolute", bottom: 0, width: "100%", height: 200, overflow: "hidden" },
   circle3: { position: "absolute", width: 250, height: 250, borderRadius: 125, backgroundColor: "rgba(255, 153, 0, 0.08)", bottom: -100, right: -80 },
   circle4: { position: "absolute", width: 180, height: 180, borderRadius: 90, backgroundColor: "rgba(255, 153, 0, 0.05)", bottom: -50, left: -60 },
+
+  splash: {
+    flex: 1,
+    backgroundColor: '#1a1a2e',
+    justifyContent: 'center',
+    alignItems: 'center',
+},
+splashEmoji: { fontSize: 64 },
+splashText: { fontSize: 32, fontWeight: '700', color: '#fff', marginTop: 12 },
+splashSub: { fontSize: 14, color: '#888', marginTop: 12 },
+app: { flex: 1 },
+placeholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+},
+placeholderText: { fontSize: 18, color: '#666' },
 });

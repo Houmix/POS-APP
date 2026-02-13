@@ -62,3 +62,12 @@ npm install react-native-toast-message
 
 
 npx expo install expo-av
+
+
+
+
+
+
+TIMER pour commande 
+
+

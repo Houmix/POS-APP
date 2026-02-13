@@ -6,7 +6,8 @@ const http = require('http');
 const fs = require('fs');
 const express = require('express');
 const os = require('os');
-
+const SyncManager = require('./modules/sync-manager');
+const LicenseManager = require('./modules/license-manager');
 // Correction Squirrel
 const electronSquirrelStartup = require('electron-squirrel-startup');
 if (electronSquirrelStartup) {
@@ -21,48 +22,82 @@ let splashWindow;
 
 const isDev = !app.isPackaged;
 
+// 🔑 Licence
+const licenseManager = new LicenseManager({
+  serverUrl: 'https://clickgo-interactive.com',  // ← VOTRE URL
+  gracePeriodDays: 7,
+});
+
+// 🔄 Sync
+const syncManager = new SyncManager({
+  serverUrl: 'https://clickgo-interactive.com',  // ← MÊME URL
+  localApiUrl: 'http://127.0.0.1:8000',
+  syncInterval: 30000,
+  connectivityCheckInterval: 10000,
+});
 function log(message, type = 'info') {
   const emoji = { info: ' info', success: ' OK', error: ' NO', warning: ' ATTENTION' }[type] || '•';
   console.log(`${emoji} ${message}`);
 }
 // ==========================================
-//   HANDLER D'IMPRESSION (MULTI-IMPRIMANTES)
+// 🖨️ MÉTHODE 1 : RAW via partage réseau local
 // ==========================================
+// Prérequis : chaque imprimante doit être PARTAGÉE dans Windows
+//   → Paramètres > Imprimantes > Propriétés > Partage > Partager cette imprimante
+//
+// Comment ça marche :
+//   "type fichier.bin > \\127.0.0.1\NomImprimante"
+//   → Envoie les octets bruts directement au spooler Windows
+//   → 0 marge, pleine largeur 80mm, commandes ESC/POS préservées
+//
+// À coller dans votre main.js (remplacez l'ancien handler print-ticket)
+// ==========================================
+
+const VIRTUAL_PRINTER_KEYWORDS = ['PDF', 'Fax', 'OneNote', 'XPS', 'Microsoft', 'Send to', 'Cloud'];
+
 ipcMain.handle("print-ticket", async (event, ticketText) => {
-    // 1. Création du fichier temporaire unique
-    const tempFilePath = path.join(os.tmpdir(), `ticket-${Date.now()}.txt`);
+    const tempFilePath = path.join(os.tmpdir(), `ticket-${Date.now()}.bin`);
 
     try {
-        log(`[Impression] Préparation du ticket pour TOUTES les imprimantes...`, 'info');
+        log('[Impression] Préparation du ticket...', 'info');
 
-        // --- Préparation du contenu (ESC/POS) ---
-        // On ajoute les commandes de coupe et les sauts de ligne
+        // ── 1. Commandes ESC/POS ──
         const ESC = '\x1B';
-        const GS = '\x1D';
-        const CUT_COMMAND = GS + 'V' + '\x42' + '\x00'; 
-        const LINE_FEEDS = '\n\n\n\n\n\n'; 
-        const fullContent = ticketText + LINE_FEEDS + CUT_COMMAND;
+        const GS  = '\x1D';
 
-        // --- Écriture du fichier ---
-        // Encodage latin1 pour les accents
+        const INIT           = ESC + '@';                     // Reset imprimante
+        const MARGIN_LEFT_0  = GS + 'L' + '\x00' + '\x00';  // Marge gauche = 0
+        const FULL_WIDTH     = GS + 'W' + '\x00' + '\x02';  // Zone impression = 512 dots (pleine largeur 80mm)
+        const ALIGN_LEFT     = ESC + 'a' + '\x00';           // Alignement gauche
+        const FONT_NORMAL    = ESC + '!' + '\x00';           // Police normale (Font A)
+        const LINE_SPACING   = ESC + '3' + '\x12';           // Interligne serré
+        const LINE_FEEDS     = '\n\n\n\n\n';                 // Espace avant coupe
+        const CUT_COMMAND    = GS + 'V' + '\x42' + '\x00';  // Coupe complète
+
+        const fullContent = INIT
+            + MARGIN_LEFT_0
+            + FULL_WIDTH
+            + ALIGN_LEFT
+            + FONT_NORMAL
+            + LINE_SPACING
+            + ticketText
+            + LINE_FEEDS
+            + CUT_COMMAND;
+
+        // ── 2. Écriture fichier binaire ──
+        // latin1 = chaque caractère → 1 octet, les commandes ESC/POS sont préservées
         fs.writeFileSync(tempFilePath, fullContent, { encoding: 'latin1' });
 
-        // 2. Récupérer la liste dynamique des imprimantes
+        // ── 3. Récupérer les imprimantes physiques ──
         if (!mainWindow) {
             throw new Error("La fenêtre principale n'est pas active.");
         }
-        
-        const printers = await mainWindow.webContents.getPrintersAsync();
-        
-        // 3. Filtrer pour ne garder que les imprimantes physiques
-        // On retire PDF, Fax, OneNote, XPS pour ne pas bloquer la borne
-        const physicalPrinters = printers.filter(p => {
-             const name = p.name.toLowerCase();
-             return !name.includes('pdf') && 
-                    !name.includes('xps') && 
-                    !name.includes('fax') && 
-                    !name.includes('onenote') &&
-                    !name.includes('microsoft');
+
+        const allPrinters = await mainWindow.webContents.getPrintersAsync();
+
+        const physicalPrinters = allPrinters.filter(p => {
+            const name = p.name.toLowerCase();
+            return !VIRTUAL_PRINTER_KEYWORDS.some(kw => name.includes(kw.toLowerCase()));
         });
 
         if (physicalPrinters.length === 0) {
@@ -70,49 +105,261 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
             return { success: false, error: "Aucune imprimante disponible" };
         }
 
-        log(`[Impression] Lancement sur ${physicalPrinters.length} imprimante(s)...`, 'info');
+        log(`[Impression] ${physicalPrinters.length} imprimante(s) détectée(s)`, 'info');
 
-        // 4. Boucle d'impression sur chaque imprimante trouvée
-        const printPromises = physicalPrinters.map(async (printer) => {
+        // ── 4. Envoi RAW à chaque imprimante ──
+        const results = [];
+
+        for (const printer of physicalPrinters) {
             const printerName = printer.name;
-            log(`  -> Envoi vers : "${printerName}"`, 'info');
+            log(`[Impression] --> Envoi RAW vers "${printerName}"...`, 'info');
 
             try {
-                // On utilise PowerShell car c'est le plus robuste pour les noms avec espaces
-                // et cela ne nécessite pas de partager l'imprimante sur le réseau
-                const command = `powershell -Command "Get-Content '${tempFilePath}' | Out-Printer -Name '${printerName}'"`;
-                
-                execSync(command, { windowsHide: true });
-                log(`     [OK] Succès sur ${printerName}`, 'success');
-                return { printer: printerName, status: 'success' };
+                // \\127.0.0.1\NomImprimante = chemin réseau local du partage
+                const printerPath = `\\\\127.0.0.1\\${printerName}`;
+                const cmd = `cmd /c "type "${tempFilePath}" > "${printerPath}""`;
+
+                execSync(cmd, { windowsHide: true, timeout: 8000 });
+
+                log(`[Impression] OK "${printerName}"`, 'success');
+                results.push({ printer: printerName, status: 'success' });
 
             } catch (err) {
-                log(`     [ERREUR] Échec sur ${printerName}: ${err.message}`, 'error');
-                return { printer: printerName, status: 'error', error: err.message };
+                log(`[Impression] ÉCHEC "${printerName}": ${err.message}`, 'error');
+                results.push({ printer: printerName, status: 'error', error: err.message });
             }
-        });
+        }
 
-        // On attend que toutes les impressions soient finies
-        await Promise.all(printPromises);
-
-        // 5. Nettoyage du fichier temporaire
+        // ── 5. Nettoyage ──
         setTimeout(() => {
-            if (fs.existsSync(tempFilePath)) {
-                try { fs.unlinkSync(tempFilePath); } catch (e) {}
-            }
+            try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch (e) {}
         }, 2000);
 
-        return { success: true };
+        const successCount = results.filter(r => r.status === 'success').length;
+        log(`[Impression] Terminé : ${successCount}/${physicalPrinters.length} OK`, 'info');
+
+        return { success: successCount > 0, details: results };
 
     } catch (error) {
-        log(`[Impression] ERREUR GÉNÉRALE: ${error.message}`, 'error');
-        // Nettoyage d'urgence
-        if (fs.existsSync(tempFilePath)) {
-             try { fs.unlinkSync(tempFilePath); } catch (e) {}
-        }
+        log(`[Impression] ERREUR: ${error.message}`, 'error');
+        try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch (e) {}
         return { success: false, error: error.message };
     }
 });
+
+// // ==========================================
+// // 🖨️ MÉTHODE 2 : RAW via PowerShell + .NET (winspool.drv)
+// // ==========================================
+// // Prérequis : AUCUN (pas besoin de partager l'imprimante)
+// //
+// // Comment ça marche :
+// //   PowerShell charge une classe C# qui appelle directement l'API Windows :
+// //   OpenPrinter → StartDocPrinter (mode RAW) → WritePrinter → ClosePrinter
+// //   → Les octets arrivent tels quels à l'imprimante
+// //   → 0 marge, pleine largeur 80mm, commandes ESC/POS préservées
+// //
+// // À coller dans votre main.js (remplacez l'ancien handler print-ticket)
+// // ==========================================
+
+// const VIRTUAL_PRINTER_KEYWORDS = ['PDF', 'Fax', 'OneNote', 'XPS', 'Microsoft', 'Send to', 'Cloud'];
+
+// /**
+//  * Génère le script PowerShell qui envoie des octets bruts à une imprimante
+//  * via l'API Windows winspool.drv (mode RAW, aucun reformatage GDI)
+//  */
+// function buildRawPrintScript(filePath, printerName) {
+//     // Échapper les apostrophes pour PowerShell
+//     const safePrinter = printerName.replace(/'/g, "''");
+//     const safePath = filePath.replace(/\\/g, '\\\\');
+
+//     return `
+// $ErrorActionPreference = 'Stop'
+
+// # 1. Charger la classe C# qui parle directement au spooler Windows
+// Add-Type -TypeDefinition @'
+// using System;
+// using System.Runtime.InteropServices;
+
+// public class RawPrinterHelper
+// {
+//     [StructLayout(LayoutKind.Sequential)]
+//     public struct DOCINFOA
+//     {
+//         [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+//         [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+//         [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+//     }
+
+//     [DllImport("winspool.drv", SetLastError = true, CharSet = CharSet.Ansi)]
+//     public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+
+//     [DllImport("winspool.drv", SetLastError = true)]
+//     public static extern bool StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA pDocInfo);
+
+//     [DllImport("winspool.drv", SetLastError = true)]
+//     public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+//     [DllImport("winspool.drv", SetLastError = true)]
+//     public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+//     [DllImport("winspool.drv", SetLastError = true)]
+//     public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+//     [DllImport("winspool.drv", SetLastError = true)]
+//     public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+//     [DllImport("winspool.drv", SetLastError = true)]
+//     public static extern bool ClosePrinter(IntPtr hPrinter);
+
+//     public static bool SendBytesToPrinter(string printerName, byte[] data)
+//     {
+//         IntPtr hPrinter = IntPtr.Zero;
+//         DOCINFOA docInfo = new DOCINFOA();
+//         docInfo.pDocName = "DoEat Ticket";
+//         docInfo.pDataType = "RAW";
+
+//         bool success = false;
+
+//         if (OpenPrinter(printerName, out hPrinter, IntPtr.Zero))
+//         {
+//             if (StartDocPrinter(hPrinter, 1, ref docInfo))
+//             {
+//                 if (StartPagePrinter(hPrinter))
+//                 {
+//                     IntPtr unmanagedBytes = Marshal.AllocCoTaskMem(data.Length);
+//                     Marshal.Copy(data, 0, unmanagedBytes, data.Length);
+
+//                     int bytesWritten;
+//                     success = WritePrinter(hPrinter, unmanagedBytes, data.Length, out bytesWritten);
+//                     success = success && (bytesWritten == data.Length);
+
+//                     Marshal.FreeCoTaskMem(unmanagedBytes);
+//                     EndPagePrinter(hPrinter);
+//                 }
+//                 EndDocPrinter(hPrinter);
+//             }
+//             ClosePrinter(hPrinter);
+//         }
+
+//         return success;
+//     }
+// }
+// '@ -ErrorAction SilentlyContinue
+
+// # 2. Lire le fichier binaire et l'envoyer à l'imprimante
+// $bytes = [System.IO.File]::ReadAllBytes('${safePath}')
+// $result = [RawPrinterHelper]::SendBytesToPrinter('${safePrinter}', $bytes)
+
+// # 3. Retourner le résultat (True/False)
+// Write-Output $result
+// `;
+// }
+
+// ipcMain.handle("print-ticket", async (event, ticketText) => {
+//     const tempFilePath = path.join(os.tmpdir(), `ticket-${Date.now()}.bin`);
+
+//     try {
+//         log('[Impression] Préparation du ticket...', 'info');
+
+//         // ── 1. Commandes ESC/POS ──
+//         const ESC = '\x1B';
+//         const GS  = '\x1D';
+
+//         const INIT           = ESC + '@';                     // Reset imprimante
+//         const MARGIN_LEFT_0  = GS + 'L' + '\x00' + '\x00';  // Marge gauche = 0
+//         const FULL_WIDTH     = GS + 'W' + '\x00' + '\x02';  // Zone impression = 512 dots (80mm)
+//         const ALIGN_LEFT     = ESC + 'a' + '\x00';           // Alignement gauche
+//         const FONT_NORMAL    = ESC + '!' + '\x00';           // Police normale (Font A)
+//         const LINE_SPACING   = ESC + '3' + '\x12';           // Interligne serré
+//         const LINE_FEEDS     = '\n\n\n\n\n';                 // Espace avant coupe
+//         const CUT_COMMAND    = GS + 'V' + '\x42' + '\x00';  // Coupe complète
+
+//         const fullContent = INIT
+//             + MARGIN_LEFT_0
+//             + FULL_WIDTH
+//             + ALIGN_LEFT
+//             + FONT_NORMAL
+//             + LINE_SPACING
+//             + ticketText
+//             + LINE_FEEDS
+//             + CUT_COMMAND;
+
+//         // ── 2. Écriture fichier binaire ──
+//         fs.writeFileSync(tempFilePath, fullContent, { encoding: 'latin1' });
+
+//         // ── 3. Récupérer les imprimantes physiques ──
+//         if (!mainWindow) {
+//             throw new Error("La fenêtre principale n'est pas active.");
+//         }
+
+//         const allPrinters = await mainWindow.webContents.getPrintersAsync();
+
+//         const physicalPrinters = allPrinters.filter(p => {
+//             const name = p.name.toLowerCase();
+//             return !VIRTUAL_PRINTER_KEYWORDS.some(kw => name.includes(kw.toLowerCase()));
+//         });
+
+//         if (physicalPrinters.length === 0) {
+//             log('[Impression] Aucune imprimante physique trouvée.', 'warning');
+//             return { success: false, error: "Aucune imprimante disponible" };
+//         }
+
+//         log(`[Impression] ${physicalPrinters.length} imprimante(s) détectée(s)`, 'info');
+
+//         // ── 4. Envoi RAW à chaque imprimante via winspool.drv ──
+//         const results = [];
+
+//         for (const printer of physicalPrinters) {
+//             const printerName = printer.name;
+//             log(`[Impression] --> Envoi RAW .NET vers "${printerName}"...`, 'info');
+
+//             try {
+//                 // Générer le script PowerShell
+//                 const psScript = buildRawPrintScript(tempFilePath, printerName);
+
+//                 // Sauvegarder le script dans un fichier temporaire
+//                 // (évite les problèmes d'échappement dans la ligne de commande)
+//                 const scriptPath = path.join(os.tmpdir(), `print-script-${Date.now()}.ps1`);
+//                 fs.writeFileSync(scriptPath, psScript, { encoding: 'utf-8' });
+
+//                 // Exécuter le script
+//                 const output = execSync(
+//                     `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
+//                     { windowsHide: true, timeout: 10000, encoding: 'utf-8' }
+//                 ).trim();
+
+//                 // Nettoyage du script
+//                 try { fs.unlinkSync(scriptPath); } catch (e) {}
+
+//                 if (output === 'True') {
+//                     log(`[Impression] OK "${printerName}"`, 'success');
+//                     results.push({ printer: printerName, status: 'success' });
+//                 } else {
+//                     throw new Error(`WritePrinter a retourné: ${output}`);
+//                 }
+
+//             } catch (err) {
+//                 log(`[Impression] ÉCHEC "${printerName}": ${err.message}`, 'error');
+//                 results.push({ printer: printerName, status: 'error', error: err.message });
+//             }
+//         }
+
+//         // ── 5. Nettoyage ──
+//         setTimeout(() => {
+//             try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch (e) {}
+//         }, 2000);
+
+//         const successCount = results.filter(r => r.status === 'success').length;
+//         log(`[Impression] Terminé : ${successCount}/${physicalPrinters.length} OK`, 'info');
+
+//         return { success: successCount > 0, details: results };
+
+//     } catch (error) {
+//         log(`[Impression] ERREUR: ${error.message}`, 'error');
+//         try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch (e) {}
+//         return { success: false, error: error.message };
+//     }
+// });
 function getLocalIpAddress() {
     const interfaces = os.networkInterfaces();
     for (const name in interfaces) {
@@ -463,11 +710,25 @@ function cleanup() {
   if (staticServer) {
     staticServer.close(() => log(' OK Serveur statique arrêté', 'success'));
   }
+  // 3️⃣ Arrêter la sync
+  syncManager.stop();
+  licenseManager.stop();
 }
 
 app.whenReady().then(async () => {
   if (!checkRequirements()) return;
 
+  // 1. Démarrer la licence
+  await licenseManager.start();
+
+  // 2. Si licence OK, configurer la sync
+  if (licenseManager.isValid && licenseManager.license) {
+      syncManager.restaurantId = licenseManager.license.restaurantId;
+      syncManager.terminalUuid = licenseManager.machineId;
+      syncManager.authToken = licenseManager.license.key;
+      syncManager.start();
+  }
+  // 3. Démarrer l'interface
   createSplashWindow(() => {
     startDjango(() => {
       if (fs.existsSync(webBuildPath)) {

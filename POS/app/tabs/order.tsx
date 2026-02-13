@@ -108,25 +108,52 @@ export default function OrderScreen() {
         setOrderToRefund(null);
     }
   };
+  const handlePrinting = async (ticketContent) => {
+    // Vérification de l'API exposée par preload.js
+    if (!window.electronAPI?.printTicket) {
+        console.error("❌ API Electron non disponible.");
+        return { success: false, error: "Lien avec le matériel manquant" };
+    }
 
+    try {
+        console.log("🖨️ Envoi du ticket au port COM via Electron...");
+        // On envoie le contenu brut (le main.js s'occupera de la découpe)
+        const result = await window.electronAPI.printTicket(ticketContent);
+        return result;
+    } catch (error) {
+        console.error("❌ Erreur de communication imprimante:", error);
+        return { success: false, error: error.message };
+    }
+};
   // --- IMPRESSION ---
   const handleReprint = async (orderId: number) => {
     try {
       setPrinting(true);
       const token = await AsyncStorage.getItem("token");
-      await axios.get(
+      const response = await axios.get(
         `${POS_URL}/order/api/generateTicket/${orderId}/`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      Alert.alert("Succès", "Ticket envoyé à l'imprimante");
-    } catch (error) {
-      console.error("Erreur impression:", error);
-      Alert.alert("Erreur", "Impossible de générer le ticket");
-    } finally {
-      setPrinting(false);
-    }
-  };
+      // On s'attend à recevoir ticket_content et qr_content (texte brut)
+      const { ticket_content, qr_content } = response.data;
+      const printResult = await handlePrinting(ticket_content);
 
+      Alert.alert("Succès", "Ticket envoyé à l'imprimante");
+      
+      if (printResult.success) {
+        console.log("✅ Impression et découpe terminées");
+      } else {
+          throw new Error(printResult.error);
+      }
+
+      } catch (error) {
+          console.error("❌ Erreur Process:", error);
+          Alert.alert("Erreur", "Impossible de générer le ticket");
+      } finally {
+          setPrinting(false);
+        };
+
+  }
   // --- FILTRE HISTORIQUE ---
   const getHistoryOrders = () => {
     // Calcul des dates de référence
