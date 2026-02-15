@@ -34,7 +34,7 @@ SECRET_KEY = "django-insecure-y($ou%*05+_g)zspa#n-tol!)2p*l_6zr#@(kgomt1hv4$60eu
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS =["127.0.0.1:60457","192.168.1.50","menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app","192.168.1.123"]
+ALLOWED_HOSTS =["127.0.0.1:60457","192.168.1.50","menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app","192.168.1.123","https://clickgo-siteweb-production.up.railway.app"]
 
 
 # Application definition
@@ -123,7 +123,7 @@ WSGI_APPLICATION = "born_dz.wsgi.application"
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
+"""
 
 
 DATABASES = {
@@ -144,7 +144,7 @@ DATABASES = {
         'PORT': '49671',
     }
 }
-"""
+
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
@@ -240,7 +240,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://menugo-dz.com",
     "http://www.menugo-dz.com",
     "https://borndz-production.up.railway.app",
-    "http://192.168.1.50:8000"
+    "http://192.168.1.50:8000",
+    "https://clickgo-siteweb-production.up.railway.app"
 
 ]
 
