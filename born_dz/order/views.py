@@ -41,6 +41,7 @@ class OrderCreate(APIView):
         print("="*50)
         
         data = request.data
+        print(f"  Payload reçu: {data}")
         user_id = data.get("user")
         card = bool(card)
         
@@ -84,10 +85,13 @@ class OrderCreate(APIView):
         take_away_bool = str(raw_takeaway).lower() in ['true', '1', 'yes'] if raw_takeaway is not True else True
         # Note: la ligne ci-dessus gère le cas où raw_takeaway est le booléen True directement.
         # Une version plus simple et explicite :
+        
         if isinstance(raw_takeaway, str):
              take_away_bool = raw_takeaway.lower() in ['true', '1', 'yes']
         else:
              take_away_bool = bool(raw_takeaway)
+            
+        print(f"  take_away (raw): {raw_takeaway} | take_away (bool): {take_away_bool}")
              
         # Définir le statut et l'état de paiement selon le mode de règlement
         if card:
