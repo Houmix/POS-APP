@@ -38,6 +38,29 @@ def health(request):
     })
 
 
+def discover(request):
+    """
+    Endpoint de découverte automatique pour les bornes.
+    La borne scanne le réseau local et appelle GET /api/sync/discover/
+    pour identifier le serveur caisse.
+    """
+    import socket
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+    except Exception:
+        local_ip = '127.0.0.1'
+        hostname = 'caisse'
+
+    return JsonResponse({
+        'server': 'caisse',
+        'app': 'ClickGo POS',
+        'version': '1.0',
+        'host': hostname,
+        'ip': local_ip,
+    })
+
+
 # ─────────────────────────────────────────
 #  SNAPSHOT (1ère sync / réinitialisation)
 # ─────────────────────────────────────────

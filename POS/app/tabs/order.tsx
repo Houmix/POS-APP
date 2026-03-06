@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { POS_URL } from "@/config";
+import { getPosUrl } from "@/utils/serverConfig";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 
@@ -73,7 +73,7 @@ export default function OrderScreen() {
       const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
       
       const response = await axios.get(
-        `${POS_URL}/order/api/getPOSorder/${restaurantId}/`,
+        `${getPosUrl()}/order/api/getPOSorder/${restaurantId}/`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       
@@ -131,7 +131,7 @@ export default function OrderScreen() {
       setPrinting(true);
       const token = await AsyncStorage.getItem("token");
       const response = await axios.get(
-        `${POS_URL}/order/api/generateTicket/${orderId}/`,
+        `${getPosUrl()}/order/api/generateTicket/${orderId}/`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       // On s'attend à recevoir ticket_content et qr_content (texte brut)
@@ -193,7 +193,7 @@ export default function OrderScreen() {
       const accessToken = await AsyncStorage.getItem("token");
       
       const response = await axios.put(
-        `${POS_URL}/order/api/Updateorder/${orderId}/`,
+        `${getPosUrl()}/order/api/Updateorder/${orderId}/`,
         updateData,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );

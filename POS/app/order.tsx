@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { POS_URL } from "@/config";
+import { getPosUrl } from "@/utils/serverConfig";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 export default function OrderScreen() {
@@ -67,7 +67,7 @@ export default function OrderScreen() {
       console.log("🔍 Récupération commandes pour restaurant:", restaurantId);
       
       const response = await axios.get(
-        `${POS_URL}/order/api/getPOSorder/${restaurantId}/`,
+        `${getPosUrl()}/order/api/getPOSorder/${restaurantId}/`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
@@ -128,7 +128,7 @@ export default function OrderScreen() {
       const token = await AsyncStorage.getItem("token");
       
       const response = await axios.get(
-        `${POS_URL}/order/api/generateTicket/${orderId}/`,
+        `${getPosUrl()}/order/api/generateTicket/${orderId}/`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
@@ -184,7 +184,7 @@ export default function OrderScreen() {
       const accessToken = await AsyncStorage.getItem("token");
       
       const response = await axios.put(
-        `${POS_URL}/order/api/Updateorder/${orderId}/`,
+        `${getPosUrl()}/order/api/Updateorder/${orderId}/`,
         updateData,
         {
           headers: { Authorization: `Bearer ${accessToken}` },

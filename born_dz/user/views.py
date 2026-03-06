@@ -5,8 +5,11 @@ from django.shortcuts import render # type: ignore
 from rest_framework.views import APIView # type: ignore
 from rest_framework.response import Response # type: ignore
 from rest_framework import status # type: ignore
-from user.models import User, Employee
-from user.serializers import UserSerializer, EmployeeSerializer
+from user.models import User, Employee, TimeEntry, WorkSchedule, Payslip, EmployeeDocument
+from user.serializers import (
+    UserSerializer, EmployeeSerializer,
+    TimeEntrySerializer, WorkScheduleSerializer, PayslipSerializer, EmployeeDocumentSerializer,
+)
 from rest_framework.permissions import IsAuthenticated # type: ignore
 from rest_framework_simplejwt.tokens import RefreshToken # type: ignore
 from rest_framework.permissions import AllowAny # type: ignore
@@ -333,3 +336,185 @@ class EmployeeDelete(APIView):
             return Response({"message": "Employé supprimé avec succès"}, status=status.HTTP_204_NO_CONTENT)
         except Employee.DoesNotExist:
             return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ─── RH : liste filtrée par restaurant ───────────────────────────────────────
+
+class EmployeeList(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        restaurant_id = request.query_params.get('restaurant_id')
+        qs = Employee.objects.filter(restaurant_id=restaurant_id) if restaurant_id else Employee.objects.all()
+        serializer = EmployeeSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class EmployeeCreateFull(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = EmployeeSerializer(data=request.data)
+        if serializer.is_valid():
+            employee = serializer.save()
+            return Response(EmployeeSerializer(employee).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmployeeDetailFull(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            employee = Employee.objects.get(pk=pk)
+            return Response(EmployeeSerializer(employee).data)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+
+class EmployeeUpdateFull(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, pk):
+        try:
+            employee = Employee.objects.get(pk=pk)
+            serializer = EmployeeSerializer(employee, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+
+class EmployeeDeleteFull(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            employee = Employee.objects.get(pk=pk)
+            employee.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ─── Pointage ────────────────────────────────────────────────────────────────
+
+class TimeEntryList(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        entries = TimeEntry.objects.filter(employee_id=pk).order_by('-check_in')
+        return Response(TimeEntrySerializer(entries, many=True).data)
+
+    def post(self, request, pk):
+        try:
+            Employee.objects.get(pk=pk)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = TimeEntrySerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(employee_id=pk)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TimeEntryUpdate(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, pk):
+        try:
+            entry = TimeEntry.objects.get(pk=pk)
+            serializer = TimeEntrySerializer(entry, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except TimeEntry.DoesNotExist:
+            return Response({"error": "Pointage non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ─── Horaires ────────────────────────────────────────────────────────────────
+
+class ScheduleList(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        schedules = WorkSchedule.objects.filter(employee_id=pk).order_by('week_start', 'day_of_week')
+        return Response(WorkScheduleSerializer(schedules, many=True).data)
+
+    def post(self, request, pk):
+        try:
+            Employee.objects.get(pk=pk)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = WorkScheduleSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(employee_id=pk)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ScheduleDelete(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            WorkSchedule.objects.get(pk=pk).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except WorkSchedule.DoesNotExist:
+            return Response({"error": "Horaire non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ─── Fiches de paie ──────────────────────────────────────────────────────────
+
+class PayslipList(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        payslips = Payslip.objects.filter(employee_id=pk).order_by('-period_start')
+        return Response(PayslipSerializer(payslips, many=True).data)
+
+    def post(self, request, pk):
+        try:
+            Employee.objects.get(pk=pk)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = PayslipSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(employee_id=pk)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ─── Documents ───────────────────────────────────────────────────────────────
+
+class DocumentList(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        docs = EmployeeDocument.objects.filter(employee_id=pk).order_by('-uploaded_at')
+        return Response(EmployeeDocumentSerializer(docs, many=True).data)
+
+    def post(self, request, pk):
+        try:
+            Employee.objects.get(pk=pk)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = EmployeeDocumentSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(employee_id=pk)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DocumentDelete(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            EmployeeDocument.objects.get(pk=pk).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except EmployeeDocument.DoesNotExist:
+            return Response({"error": "Document non trouvé"}, status=status.HTTP_404_NOT_FOUND)

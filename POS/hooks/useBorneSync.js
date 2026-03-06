@@ -3,11 +3,11 @@ import { AppState, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios'; 
 
-// Ces deux variables doivent être définies dans votre fichier de configuration (`@/config`).
-// Assurez-vous que POS_URL utilise l'IP locale de votre serveur Django (ex: http://192.168.1.5:8000).
-import { POS_URL, idRestaurant} from '@/config';
+// L'URL du serveur est maintenant dynamique (configurée par l'utilisateur au premier démarrage).
+import { idRestaurant} from '@/config';
+import { getPosUrl } from '@/utils/serverConfig';
 // Constantes pour la connexion et la cache
-const WEBSOCKET_URL = `${POS_URL}/ws/borne/sync/`; // S'assure que le chemin est cohérent avec le routing Django
+// WEBSOCKET_URL est calculé dynamiquement pour utiliser l'IP courante du serveur
 const GROUP_MENU_KEY = 'GroupMenu';
 const MENU_KEY = 'Menu';
 const STEPS_INVALIDATION_FLAG = 'steps_cache_invalidated'; // Drapeaux pour la cache des étapes
@@ -40,7 +40,7 @@ export function useBorneSync() {
 
             // A. Récupération et Cache des Catégories (GroupMenu)
             const categoriesResponse = await axios.get(
-                `${POS_URL}/menu/api/getGroupMenuList/${currentRestaurantId}/`, 
+                `${getPosUrl()}/menu/api/getGroupMenuList/${currentRestaurantId}/`, 
                 { headers }
             );
             const availableCategories = categoriesResponse.data.filter((category) => category.avalaible);
@@ -50,7 +50,7 @@ export function useBorneSync() {
 
             // B. Récupération et Cache des Menus
             const menusResponse = await axios.get(
-                `${POS_URL}/menu/api/getAllMenu/${currentRestaurantId}/`, 
+                `${getPosUrl()}/menu/api/getAllMenu/${currentRestaurantId}/`, 
                 { headers }
             );
             setMenus(menusResponse.data);
@@ -91,7 +91,7 @@ export function useBorneSync() {
     
     // --- 3. GESTION DE LA CONNEXION WEBSOCKET ET DES ALERTES ---
     const connectWebSocket = useCallback(() => {
-        const socket = new WebSocket(WEBSOCKET_URL);
+        const socket = new WebSocket(`${getPosUrl().replace(/^http/, 'ws')}/ws/borne/sync/`);
         setWs(socket);
 
         socket.onopen = () => console.log('[WS] Connecté à Django Channels.');
@@ -148,7 +148,7 @@ export function useBorneSync() {
         // 2. Si la cache est invalide ou manquante, appelle l'API
         try {
             console.log(`[STEPS] Récupération des étapes pour menu ${menuId} via API.`);
-            const response = await axios.get(`${POS_URL}/menu/api/stepListByMenu/${menuId}/`, { headers });
+            const response = await axios.get(`${getPosUrl()}/menu/api/stepListByMenu/${menuId}/`, { headers });
             
             // 3. Met en cache et supprime le drapeau d'invalidation après un succès (si présent)
             await AsyncStorage.setItem(STEPS_KEY, JSON.stringify(response.data));

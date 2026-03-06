@@ -14,16 +14,10 @@ import { useEffect, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { POS_URL } from "@/config";
+import { getPosUrl } from "@/utils/serverConfig";
+import { idRestaurant } from "@/config";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
-// Vos composants
-import LicenseActivation from './../components/LicenseActivation';
-import SyncStatusBar from './../components/SyncStatusBar';
-
-// Vos hooks
-import { useLicense } from './../hooks/useLicense';
-import { useSync } from './../hooks/useSync';
 export default function IdentificationScreen() {
   const navigation = useNavigation();
   const [errorMessage, setErrorMessage] = useState("");
@@ -36,46 +30,56 @@ export default function IdentificationScreen() {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [activeField, setActiveField] = useState<"phone" | "password" | null>(null);
 
+  // ── Vérification de licence (via HTTP → caisse) ──
+  const [licenseLoading, setLicenseLoading] = useState(true);
+  const [licenseValid, setLicenseValid] = useState(true); // optimiste par défaut
 
-  const { isValid, isActivated, loading: licenseLoading, restaurantName } = useLicense();
-  const { isElectron } = useSync();
-// // ── 1. Chargement initial ──
-// if (licenseLoading) {
-//   return (
-//       <View style={styles.splash}>
-//           <Text style={styles.splashText}>ClickGo</Text>
-//           <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 20 }} />
-//           <Text style={styles.splashSub}>Vérification de la licence...</Text>
-//       </View>
-//   );
-// }
-
-// // ── 2. Pas de licence → écran d'activation ──
-// //    (seulement si on est dans Electron)
-// if (isElectron && !isValid) {
-//   return (
-//       <LicenseActivation
-//           onActivated={() => {
-//               // Recharger l'app après activation
-//               // En Electron, window.location.reload() fonctionne
-//               if (typeof window !== 'undefined') {
-//                   window.location.reload();
-//               }
-//           }}
-//       />
-//   );
-// }
-
+  // Tous les hooks AVANT les returns conditionnels (règle React)
   useEffect(() => {
-    const clearAll = async () => {
+    // Réinitialise la session ET vérifie la licence
+    const init = async () => {
       try {
         await AsyncStorage.clear();
       } catch (e) {
         console.error("Erreur lors de la suppression complète :", e);
       }
+      try {
+        const response = await axios.get(
+          `${getPosUrl()}/api/license/restaurant-status/?restaurant_id=${idRestaurant}`,
+          { timeout: 5000 }
+        );
+        setLicenseValid(response.data.valid === true);
+      } catch {
+        // Si la caisse est injoignable, on laisse passer (mode hors ligne)
+        setLicenseValid(true);
+      } finally {
+        setLicenseLoading(false);
+      }
     };
-    clearAll();
+    init();
   }, []);
+
+  if (licenseLoading) {
+    return (
+      <View style={styles.splash}>
+        <Text style={styles.splashText}>ClickGo</Text>
+        <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 20 }} />
+        <Text style={styles.splashSub}>Vérification de la licence...</Text>
+      </View>
+    );
+  }
+
+  if (!licenseValid) {
+    return (
+      <View style={styles.splash}>
+        <Text style={styles.splashText}>Licence invalide</Text>
+        <Text style={styles.splashSub}>
+          Aucune licence active trouvée pour ce restaurant.{'\n'}
+          Contactez l'administrateur ClickGo.
+        </Text>
+      </View>
+    );
+  }
 
   const handleKeyPress = (val: string) => {
     if (val === "delete") {
@@ -104,7 +108,7 @@ export default function IdentificationScreen() {
 
     try {
       // ✅ CORRECTION : Ajout de "/user" dans l'URL pour correspondre à votre configuration originale
-      const response = await axios.post(`${POS_URL}/user/api/employee/token/`, {
+      const response = await axios.post(`${getPosUrl()}/user/api/employee/token/`, {
         phone: phone,
         password: password,
       });
@@ -139,7 +143,7 @@ export default function IdentificationScreen() {
          
          // On essaie de récupérer l'user manuellement comme avant (secours)
          try {
-             const userResponse = await axios.get(`${POS_URL}/user/api/getEmployee/`, {
+             const userResponse = await axios.get(`${getPosUrl()}/user/api/getEmployee/`, {
                 headers: { Authorization: `Bearer ${data.access}` },
                 params: { phone, password },
               });

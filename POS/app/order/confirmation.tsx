@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { POS_URL } from '@/config'; 
+import { getPosUrl } from '@/utils/serverConfig';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 // ==========================================
@@ -54,7 +54,7 @@ export default function ConfirmationPage() {
             // 2. Récupération du ticket et du contenu QR depuis Django
             console.log(`📡 Récupération data commande ${id}...`);
             const response = await axios.get(
-                `${POS_URL}/order/api/generateTicket/${id}/`,
+                `${getPosUrl()}/order/api/generateTicket/${id}/`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 

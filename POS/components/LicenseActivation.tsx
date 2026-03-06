@@ -33,16 +33,16 @@ export default function LicenseActivation({ onActivated }: Props) {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
 
-    // Formatage auto de la clé : DOEAT-XXXX-XXXX-XXXX
+    // Formatage auto de la clé : CLICKGO-XXXX-XXXX-XXXX
     const formatKey = (input: string) => {
         // Retirer tout sauf lettres et chiffres
         const clean = input.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-        // Ajouter le préfixe DOEAT si pas déjà là
+        // Ajouter le préfixe CLICKGO si pas déjà là
         let formatted = '';
-        if (clean.startsWith('DOEAT')) {
-            const rest = clean.substring(5);
-            formatted = 'DOEAT';
+        if (clean.startsWith('CLICKGO')) {
+            const rest = clean.substring(7); // CLICKGO = 7 caractères
+            formatted = 'CLICKGO';
             for (let i = 0; i < rest.length && i < 12; i++) {
                 if (i % 4 === 0) formatted += '-';
                 formatted += rest[i];
@@ -118,11 +118,11 @@ export default function LicenseActivation({ onActivated }: Props) {
                         setKey(formatKey(text));
                         setError('');
                     }}
-                    placeholder="DOEAT-XXXX-XXXX-XXXX"
+                    placeholder="CLICKGO-XXXX-XXXX-XXXX"
                     placeholderTextColor="#999"
                     autoCapitalize="characters"
                     autoCorrect={false}
-                    maxLength={19}
+                    maxLength={22}
                     editable={!loading}
                 />
 

@@ -238,6 +238,43 @@ def verify(request):
 
 
 @require_http_methods(["GET"])
+def restaurant_status(request):
+    """
+    Vérifie si un restaurant possède une licence valide.
+    Utilisé par la borne (Expo) pour vérifier la licence au démarrage
+    sans avoir besoin de la clé de licence elle-même.
+
+    Query param : ?restaurant_id=1
+    """
+    try:
+        restaurant_id = request.GET.get('restaurant_id', '').strip()
+        if not restaurant_id:
+            return JsonResponse({'valid': False, 'reason': 'restaurant_id requis'}, status=400)
+
+        lic = License.objects.filter(
+            restaurant_id=restaurant_id,
+            status='active',
+        ).first()
+
+        if not lic:
+            return JsonResponse({'valid': False, 'reason': 'no_active_license'})
+
+        if lic.is_expired:
+            return JsonResponse({'valid': False, 'reason': 'expired'})
+
+        return JsonResponse({
+            'valid': True,
+            'plan': lic.plan,
+            'restaurant_id': lic.restaurant_id,
+            'expires_at': lic.expires_at.isoformat() if lic.expires_at else None,
+            'features': lic.features,
+        })
+
+    except Exception as e:
+        return JsonResponse({'valid': False, 'reason': str(e)}, status=500)
+
+
+@require_http_methods(["GET"])
 def info(request):
     """
     Renvoie les infos publiques d'une licence (sans l'activer).

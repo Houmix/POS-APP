@@ -49,6 +49,78 @@ class User(AbstractUser):
 class Employee(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     restaurant = models.ForeignKey(Restaurant, on_delete=models.SET_NULL, null=True)
-    
+    first_name = models.CharField(max_length=100, blank=True)
+    last_name = models.CharField(max_length=100, blank=True)
+    hire_date = models.DateField(null=True, blank=True)
+    contract_type = models.CharField(
+        max_length=10,
+        choices=[('CDI', 'CDI'), ('CDD', 'CDD'), ('MI-TEMPS', 'Mi-temps'), ('STAGE', 'Stage')],
+        blank=True
+    )
+    hourly_rate = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
+    monthly_hours = models.IntegerField(null=True, blank=True)
+    national_id = models.CharField(max_length=50, blank=True)
+    address = models.TextField(blank=True)
+
     def __str__(self):
         return self.user.phone + " " + self.user.role.role + " " + self.restaurant.name
+
+
+class TimeEntry(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='time_entries')
+    check_in = models.DateTimeField()
+    check_out = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    @property
+    def total_hours(self):
+        if self.check_out:
+            return (self.check_out - self.check_in).seconds / 3600
+        return None
+
+    def __str__(self):
+        return f"{self.employee} - {self.check_in}"
+
+
+class WorkSchedule(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='schedules')
+    week_start = models.DateField()
+    day_of_week = models.IntegerField()  # 0=Lundi, 6=Dimanche
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+
+    def __str__(self):
+        return f"{self.employee} - Jour {self.day_of_week}"
+
+
+class Payslip(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='payslips')
+    period_start = models.DateField()
+    period_end = models.DateField()
+    hours_worked = models.DecimalField(max_digits=6, decimal_places=2)
+    gross_salary = models.DecimalField(max_digits=10, decimal_places=2)
+    deductions = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    net_salary = models.DecimalField(max_digits=10, decimal_places=2)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.employee} - {self.period_start}"
+
+
+class EmployeeDocument(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='documents')
+    title = models.CharField(max_length=200)
+    doc_type = models.CharField(max_length=20, choices=[
+        ('contract', 'Contrat'),
+        ('id_card', 'CIN'),
+        ('certificate', 'Attestation'),
+        ('amendment', 'Avenant'),
+        ('other', 'Autre'),
+    ])
+    file = models.FileField(upload_to='employee_docs/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    expiry_date = models.DateField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.employee} - {self.title}"

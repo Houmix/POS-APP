@@ -4,7 +4,8 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Ionicons from '@expo/vector-icons/Ionicons';
 import AntDesign from '@expo/vector-icons/AntDesign';
-import { POS_URL, idRestaurant} from "@/config";
+import { idRestaurant } from "@/config";
+import { getPosUrl } from "@/utils/serverConfig";
 import { useEffect, useState } from "react";
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -52,7 +53,7 @@ export default function PaymentScreen() {
             const accessToken = await AsyncStorage.getItem("token");
             
             const response = await axios.post(
-                `${POS_URL}/order/api/createOrder/${paymentMethod}/`,
+                `${getPosUrl()}/order/api/createOrder/${paymentMethod}/`,
                 dataToSend,
                 {
                     headers: {

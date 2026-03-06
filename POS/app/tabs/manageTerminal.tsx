@@ -7,7 +7,7 @@ import { TabView, TabBar } from "react-native-tab-view";
 import { LayoutGrid, Utensils, Settings2, RefreshCcw } from "lucide-react-native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { POS_URL } from "@/config";
+import { getPosUrl } from "@/utils/serverConfig";
 
 // --- Styles Constants ---
 const COLORS = {
@@ -39,9 +39,9 @@ export default function ManageTerminal() {
       const headers = { Authorization: `Bearer ${token}` };
 
       const [groups, menus, opts] = await Promise.all([
-        axios.get(`${POS_URL}/menu/api/getGroupMenuList/${resId}/`, { headers }),
-        axios.get(`${POS_URL}/menu/api/getAllMenu/${resId}/`, { headers }),
-        axios.get(`${POS_URL}/menu/api/getStepOption/${resId}/`, { headers }),
+        axios.get(`${getPosUrl()}/menu/api/getGroupMenuList/${resId}/`, { headers }),
+        axios.get(`${getPosUrl()}/menu/api/getAllMenu/${resId}/`, { headers }),
+        axios.get(`${getPosUrl()}/menu/api/getStepOption/${resId}/`, { headers }),
       ]);
 
       setData({ menuGroups: groups.data, menus: menus.data, options: opts.data });
@@ -65,7 +65,7 @@ export default function ManageTerminal() {
       };
 
       await axios.put(
-        `${POS_URL}/menu/api/${endpoints[type]}/`,
+        `${getPosUrl()}/menu/api/${endpoints[type]}/`,
         { id, avalaible: !currentValue },
         { headers: { Authorization: `Bearer ${token}` } }
       );

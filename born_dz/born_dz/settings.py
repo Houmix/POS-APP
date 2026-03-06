@@ -34,7 +34,18 @@ SECRET_KEY = "django-insecure-y($ou%*05+_g)zspa#n-tol!)2p*l_6zr#@(kgomt1hv4$60eu
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS =["127.0.0.1:60457","192.168.1.50","menugo-dz.com", "www.menugo-dz.com","127.0.0.1","localhost","borndz-production.up.railway.app","192.168.1.123","https://clickgo-siteweb-production.up.railway.app"]
+ALLOWED_HOSTS = [
+    "127.0.0.1:60457",
+    "192.168.1.50",
+    "192.168.1.123",
+    "menugo-dz.com",
+    "www.menugo-dz.com",
+    "127.0.0.1",
+    "localhost",
+    "borndz-production.up.railway.app",
+    "clickgo-siteweb-production.up.railway.app",  # sans https://
+    # Ajouter ici l'IP locale du PC caisse si elle change (ex: "192.168.1.100")
+]
 
 
 # Application definition
@@ -173,7 +184,7 @@ TIME_ZONE = "Africa/Algiers"
 
 USE_I18N = True
 
-USE_TZ = True
+# USE_TZ = False est défini plus bas (timezone naive, Algiers)
 
 
 

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Employee, User, Role
+from .models import Employee, User, Role, TimeEntry, WorkSchedule, Payslip, EmployeeDocument
 from restaurant.models import Restaurant
 
 class RoleSerializer(serializers.ModelSerializer):
@@ -64,17 +64,19 @@ class UserSerializer(serializers.ModelSerializer):
         return instance
 
 class EmployeeSerializer(serializers.ModelSerializer):
-    # On garde le UserSerializer corrigé ici
     user = UserSerializer()
     restaurant = serializers.PrimaryKeyRelatedField(queryset=Restaurant.objects.all())
 
     class Meta:
         model = Employee
-        fields = ['id', 'user', 'restaurant']
+        fields = [
+            'id', 'user', 'restaurant',
+            'first_name', 'last_name', 'hire_date', 'contract_type',
+            'hourly_rate', 'monthly_hours', 'national_id', 'address',
+        ]
 
     def create(self, validated_data):
         user_data = validated_data.pop('user')
-        # On passe le user_data au UserSerializer corrigé
         user_serializer = UserSerializer(data=user_data)
         if user_serializer.is_valid():
             user = user_serializer.save()
@@ -86,7 +88,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         user_data = validated_data.pop('user', None)
         if user_data:
-            user_serializer = UserSerializer(instance.user, data=user_data)
+            user_serializer = UserSerializer(instance.user, data=user_data, partial=True)
             if user_serializer.is_valid():
                 user_serializer.save()
             else:
@@ -95,3 +97,37 @@ class EmployeeSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
+
+
+class TimeEntrySerializer(serializers.ModelSerializer):
+    total_hours = serializers.ReadOnlyField()
+
+    class Meta:
+        model = TimeEntry
+        fields = ['id', 'employee', 'check_in', 'check_out', 'notes', 'total_hours']
+        read_only_fields = ['employee']
+
+
+class WorkScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkSchedule
+        fields = ['id', 'employee', 'week_start', 'day_of_week', 'start_time', 'end_time']
+        read_only_fields = ['employee']
+
+
+class PayslipSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payslip
+        fields = [
+            'id', 'employee', 'period_start', 'period_end',
+            'hours_worked', 'gross_salary', 'deductions', 'net_salary',
+            'notes', 'created_at',
+        ]
+        read_only_fields = ['employee', 'created_at']
+
+
+class EmployeeDocumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EmployeeDocument
+        fields = ['id', 'employee', 'title', 'doc_type', 'file', 'uploaded_at', 'expiry_date']
+        read_only_fields = ['employee', 'uploaded_at']

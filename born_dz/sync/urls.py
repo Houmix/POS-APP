@@ -4,7 +4,8 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('health/',         views.health,         name='sync-health'),
+    path('health/',         views.health,          name='sync-health'),
+    path('discover/',       views.discover,        name='sync-discover'),
     path('snapshot/',       views.snapshot,        name='sync-snapshot'),
     path('push/',           views.push_changes,    name='sync-push'),
     path('pull/',           views.pull_changes,    name='sync-pull'),

@@ -10,7 +10,7 @@ import {
     Plus, Trash2, Save, Edit, Eye, EyeOff, X, Camera, Upload, AlertTriangle, CheckCircle 
 } from 'lucide-react-native'; 
 import axios from 'axios';
-import { POS_URL } from '@/config';
+import { getPosUrl } from '@/utils/serverConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // 1. IMPORT MODIFIÉ POUR LE TOAST
@@ -156,10 +156,10 @@ export default function MenuAdminPage() {
 
         try {
             const [resResto, resGroups, resMenus, resOptions] = await Promise.all([
-                axios.get(`${POS_URL}/restaurant/api/my-restaurant/${resId}/`, { headers }),
-                axios.get(`${POS_URL}/menu/api/getGroupMenuList/${resId}/`, { headers }),
-                axios.get(`${POS_URL}/menu/api/getAllMenu/${resId}/`, { headers }),
-                axios.get(`${POS_URL}/menu/api/getOption/`, { headers })
+                axios.get(`${getPosUrl()}/restaurant/api/my-restaurant/${resId}/`, { headers }),
+                axios.get(`${getPosUrl()}/menu/api/getGroupMenuList/${resId}/`, { headers }),
+                axios.get(`${getPosUrl()}/menu/api/getAllMenu/${resId}/`, { headers }),
+                axios.get(`${getPosUrl()}/menu/api/getOption/`, { headers })
             ]);
             
             setRestaurantInfo(resResto.data);
@@ -248,7 +248,7 @@ export default function MenuAdminPage() {
             formData.append('position', '0');
             if (newGroupPhoto) await appendImageToFormData(formData, 'photo', newGroupPhoto);
             
-            const response = await fetch(`${POS_URL}/menu/api/createGroupMenu/`, {
+            const response = await fetch(`${getPosUrl()}/menu/api/createGroupMenu/`, {
                 method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
     
@@ -274,7 +274,7 @@ export default function MenuAdminPage() {
             formData.append('avalaible', editingGroup.avalaible.toString());
             if (selectedGroupPhoto) await appendImageToFormData(formData, 'photo', selectedGroupPhoto);
             
-            const response = await fetch(`${POS_URL}/menu/api/updateGroupMenu/`, {
+            const response = await fetch(`${getPosUrl()}/menu/api/updateGroupMenu/`, {
                 method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
             if (response.ok) {
@@ -289,7 +289,7 @@ export default function MenuAdminPage() {
         askConfirmation("Supprimer le groupe ?", "Cette action supprimera le groupe et TOUS les menus associés.", async () => {
             const token = await AsyncStorage.getItem("token");
             try {
-                await axios.delete(`${POS_URL}/menu/api/deleteGroupMenu/${groupId}/`, { headers: { Authorization: `Bearer ${token}` } });
+                await axios.delete(`${getPosUrl()}/menu/api/deleteGroupMenu/${groupId}/`, { headers: { Authorization: `Bearer ${token}` } });
                 showSuccess("Succès", "Groupe supprimé"); fetchInitialData();
             } catch (e: any) { showError("Erreur", "Impossible de supprimer le groupe"); }
         });
@@ -298,7 +298,7 @@ export default function MenuAdminPage() {
     const toggleGroupAvailability = async (group: any) => {
         const token = await AsyncStorage.getItem("token");
         try {
-            await axios.put(`${POS_URL}/menu/api/updateGroupMenu/`, { id: group.id, avalaible: !group.avalaible }, { headers: { Authorization: `Bearer ${token}` } });
+            await axios.put(`${getPosUrl()}/menu/api/updateGroupMenu/`, { id: group.id, avalaible: !group.avalaible }, { headers: { Authorization: `Bearer ${token}` } });
             fetchInitialData(); showSuccess("Succès", `Groupe ${!group.avalaible ? 'activé' : 'désactivé'}`);
         } catch (e: any) { showError("Erreur", "Erreur lors du changement de disponibilité"); }
     };
@@ -334,7 +334,7 @@ export default function MenuAdminPage() {
                 await appendImageToFormData(formData, 'photo', menuFormPhoto);
             }
             
-            const response = await fetch(`${POS_URL}/menu/api/createMenu/`, {
+            const response = await fetch(`${getPosUrl()}/menu/api/createMenu/`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
                 body: formData,
@@ -382,7 +382,7 @@ export default function MenuAdminPage() {
             if (editingMenu.group_menu) formData.append('group_menu', editingMenu.group_menu); 
             if (selectedMenuPhoto) await appendImageToFormData(formData, 'photo', selectedMenuPhoto);
             
-            const response = await fetch(`${POS_URL}/menu/api/updateMenu/`, {
+            const response = await fetch(`${getPosUrl()}/menu/api/updateMenu/`, {
                 method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
             if (response.ok) {
@@ -397,7 +397,7 @@ export default function MenuAdminPage() {
         askConfirmation("Supprimer l'article ?", "Êtes-vous sûr de vouloir supprimer cet article définitivement ?", async () => {
             const token = await AsyncStorage.getItem("token");
             try {
-                await axios.delete(`${POS_URL}/menu/api/deleteMenu/${menuId}/`, { headers: { Authorization: `Bearer ${token}` } });
+                await axios.delete(`${getPosUrl()}/menu/api/deleteMenu/${menuId}/`, { headers: { Authorization: `Bearer ${token}` } });
                 showSuccess("Succès", "Article supprimé"); fetchInitialData();
             } catch (e: any) { showError("Erreur", "Impossible de supprimer l'article"); }
         });
@@ -406,7 +406,7 @@ export default function MenuAdminPage() {
     const toggleMenuAvailability = async (menu: any) => {
         const token = await AsyncStorage.getItem("token");
         try {
-            await axios.put(`${POS_URL}/menu/api/updateMenu/`, { id: menu.id, avalaible: !menu.avalaible }, { headers: { Authorization: `Bearer ${token}` } });
+            await axios.put(`${getPosUrl()}/menu/api/updateMenu/`, { id: menu.id, avalaible: !menu.avalaible }, { headers: { Authorization: `Bearer ${token}` } });
             fetchInitialData(); showSuccess("Succès", "Disponibilité mise à jour");
         } catch (e: any) { showError("Erreur", "Erreur lors du changement de disponibilité"); }
     };
@@ -423,7 +423,7 @@ export default function MenuAdminPage() {
             formData.append('avalaible', 'true');
             if (optionFormPhoto) await appendImageToFormData(formData, 'photo', optionFormPhoto);
             
-            const response = await fetch(`${POS_URL}/menu/api/createOption/`, {
+            const response = await fetch(`${getPosUrl()}/menu/api/createOption/`, {
                 method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
             if (response.ok) {
@@ -448,7 +448,7 @@ export default function MenuAdminPage() {
             formData.append('avalaible', editingOption.avalaible.toString());
             if (selectedOptionPhoto) await appendImageToFormData(formData, 'photo', selectedOptionPhoto);
             
-            const response = await fetch(`${POS_URL}/menu/api/updateOption/`, {
+            const response = await fetch(`${getPosUrl()}/menu/api/updateOption/`, {
                 method: 'PUT', headers: { Authorization: `Bearer ${token}` }, body: formData,
             });
             if (response.ok) {
@@ -463,7 +463,7 @@ export default function MenuAdminPage() {
         askConfirmation("Supprimer l'option ?", "Voulez-vous vraiment supprimer cette option ?", async () => {
             const token = await AsyncStorage.getItem("token");
             try {
-                await axios.delete(`${POS_URL}/menu/api/deleteOption/${optionId}/`, { headers: { Authorization: `Bearer ${token}` } });
+                await axios.delete(`${getPosUrl()}/menu/api/deleteOption/${optionId}/`, { headers: { Authorization: `Bearer ${token}` } });
                 showSuccess("Succès", "Option supprimée"); fetchInitialData();
             } catch (e: any) { showError("Erreur", "Impossible de supprimer l'option"); }
         });
@@ -472,7 +472,7 @@ export default function MenuAdminPage() {
     const toggleOptionAvailability = async (option: any) => {
         const token = await AsyncStorage.getItem("token");
         try {
-            await axios.put(`${POS_URL}/menu/api/updateOption/`, { id: option.id, avalaible: !option.avalaible }, { headers: { Authorization: `Bearer ${token}` } });
+            await axios.put(`${getPosUrl()}/menu/api/updateOption/`, { id: option.id, avalaible: !option.avalaible }, { headers: { Authorization: `Bearer ${token}` } });
             fetchInitialData(); showSuccess("Succès", "Disponibilité mise à jour");
         } catch (e: any) { showError("Erreur", "Impossible de modifier la disponibilité"); }
     };
@@ -485,7 +485,7 @@ export default function MenuAdminPage() {
             <View style={styles.photoPreviewContainer}>
                 {photo || currentPhotoUrl ? (
                     <View style={styles.photoWrapper}>
-                        <Image source={{ uri: photo ? photo.uri : `${POS_URL}${currentPhotoUrl}` }} style={styles.photoPreview} />
+                        <Image source={{ uri: photo ? photo.uri : `${getPosUrl()}${currentPhotoUrl}` }} style={styles.photoPreview} />
                         {photo && <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removeImage(setPhoto)}><X size={16} color="white" /></TouchableOpacity>}
                     </View>
                 ) : (
@@ -517,7 +517,7 @@ export default function MenuAdminPage() {
             <Text style={styles.listHeader}>Groupes existants ({groups.length})</Text>
             {groups.map((g: any) => (
                 <View key={g.id} style={styles.listItem}>
-                    {g.photo && <Image source={{ uri: `${POS_URL}${g.photo}` }} style={styles.listItemPhoto} />}
+                    {g.photo && <Image source={{ uri: `${getPosUrl()}${g.photo}` }} style={styles.listItemPhoto} />}
                     <View style={styles.listItemInfo}>
                         <Text style={styles.itemTitle}>{g.name}</Text>
                         <Text style={styles.itemSubTitle}>{g.description}</Text>
@@ -566,7 +566,7 @@ export default function MenuAdminPage() {
             <Text style={styles.listHeader}>Articles existants ({menus.length})</Text>
             {menus.map((m: any) => (
                 <View key={m.id} style={styles.menuListItem}>
-                    {m.photo && <Image source={{ uri: `${POS_URL}${m.photo}` }} style={styles.menuPhoto} />}
+                    {m.photo && <Image source={{ uri: `${getPosUrl()}${m.photo}` }} style={styles.menuPhoto} />}
                     <View style={styles.menuListHeader}>
                         <View style={{flex: 1}}>
                             <Text style={styles.itemTitle}>{m.name}</Text>
@@ -606,7 +606,7 @@ export default function MenuAdminPage() {
             <Text style={styles.listHeader}>Options existantes ({options.length})</Text>
             {options.map((o: any) => (
                 <View key={o.id} style={styles.listItem}>
-                    {o.photo && <Image source={{ uri: `${POS_URL}${o.photo}` }} style={styles.listItemPhoto} />}
+                    {o.photo && <Image source={{ uri: `${getPosUrl()}${o.photo}` }} style={styles.listItemPhoto} />}
                     <View style={styles.listItemInfo}>
                         <Text style={styles.itemTitle}>{o.name}</Text>
                         <Text style={styles.itemSubTitle}>{o.type} • {o.extra_price > 0 ? `+${o.extra_price} DA` : 'Inclus'}</Text>

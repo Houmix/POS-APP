@@ -16,7 +16,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from 'expo-linear-gradient';
-import { POS_URL } from "@/config"; 
+import { getPosUrl } from "@/utils/serverConfig";
 import Feather from '@expo/vector-icons/Feather'; 
 import { useBorneSync } from "@/hooks/useBorneSync.js";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -226,7 +226,7 @@ export default function MenuScreen() {
           <TouchableOpacity activeOpacity={1} style={modalStyles.productCard}>
             {selectedItemForModal.photo && (
               <Image 
-                source={{ uri: `${POS_URL}${selectedItemForModal.photo}` }} 
+                source={{ uri: `${getPosUrl()}${selectedItemForModal.photo}` }} 
                 style={modalStyles.productImageFull} 
                 resizeMode="cover" 
               />
@@ -344,7 +344,7 @@ export default function MenuScreen() {
                   setSelectedCategory(category);
                 }}
               >
-                {category.photo && <Image source={{ uri: `${POS_URL}${category.photo}` }} style={styles.categoryImage} />}
+                {category.photo && <Image source={{ uri: `${getPosUrl()}${category.photo}` }} style={styles.categoryImage} />}
                 <Text style={[styles.categoryText, selectedCategory?.id === category.id && styles.selectedCategoryText]}>
                   {category.name}
                 </Text>
@@ -369,7 +369,7 @@ export default function MenuScreen() {
                   style={[styles.menuItem, { width: itemWidth, margin: itemMargin / 2 }]}
                   onPress={() => handleAddToCart(item)}
                 >
-                  {item.photo && <Image source={{ uri: `${POS_URL}${item.photo}` }} style={styles.menuImage} resizeMode="cover" />}
+                  {item.photo && <Image source={{ uri: `${getPosUrl()}${item.photo}` }} style={styles.menuImage} resizeMode="cover" />}
                   <View style={styles.menuInfo}>
                     <Text style={styles.menuText} numberOfLines={2}>{item.name}</Text>
                     <View style={styles.priceActionContainer}>

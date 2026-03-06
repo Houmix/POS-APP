@@ -255,6 +255,84 @@ Write-Output $result
 `;
 }
 
+/**
+ * Scanne tous les ports COM disponibles et tente d'envoyer les données ESC/POS
+ * (imprimantes série sans pilote Windows)
+ */
+async function printToComPorts(dataBuffer) {
+    let SerialPort;
+    try {
+        ({ SerialPort } = require('serialport'));
+    } catch (e) {
+        log('[COM] Module serialport non disponible: ' + e.message, 'warning');
+        return [];
+    }
+
+    let ports = [];
+    try {
+        ports = await SerialPort.list();
+    } catch (e) {
+        log('[COM] Impossible de lister les ports COM: ' + e.message, 'warning');
+        return [];
+    }
+
+    if (ports.length === 0) {
+        log('[COM] Aucun port COM détecté.', 'info');
+        return [];
+    }
+
+    log(`[COM] ${ports.length} port(s) COM : ${ports.map(p => p.path).join(', ')}`, 'info');
+
+    const BAUD_RATES = [9600, 19200, 38400, 115200];
+    const results = [];
+
+    for (const portInfo of ports) {
+        const portPath = portInfo.path;
+        let sent = false;
+
+        for (const baudRate of BAUD_RATES) {
+            if (sent) break;
+            try {
+                await new Promise((resolve, reject) => {
+                    const port = new SerialPort({ path: portPath, baudRate, autoOpen: false });
+                    const timer = setTimeout(() => {
+                        try { port.close(); } catch (e) {}
+                        reject(new Error('Timeout'));
+                    }, 3000);
+
+                    port.open((err) => {
+                        if (err) { clearTimeout(timer); return reject(err); }
+                        port.write(dataBuffer, (writeErr) => {
+                            if (writeErr) {
+                                clearTimeout(timer);
+                                port.close();
+                                return reject(writeErr);
+                            }
+                            port.drain(() => {
+                                clearTimeout(timer);
+                                port.close();
+                                resolve();
+                            });
+                        });
+                    });
+                });
+                sent = true;
+                log(`[COM] OK "${portPath}" @${baudRate}`, 'success');
+                results.push({ printer: portPath, status: 'success' });
+            } catch (e) {
+                // essai baud rate suivant
+            }
+        }
+
+        if (!sent) {
+            log(`[COM] ÉCHEC "${portPath}"`, 'error');
+            results.push({ printer: portPath, status: 'error', error: 'Aucun baud rate accepté' });
+        }
+    }
+
+    return results;
+}
+
 ipcMain.handle("print-ticket", async (event, ticketText) => {
     const tempFilePath = path.join(os.tmpdir(), `ticket-${Date.now()}.bin`);
 
@@ -265,18 +343,19 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
         const ESC = '\x1B';
         const GS  = '\x1D';
 
-        const INIT           = ESC + '@';                     // Reset imprimante
-        const MARGIN_LEFT_0  = GS + 'L' + '\x00' + '\x00';  // Marge gauche = 0
-        const FULL_WIDTH     = GS + 'W' + '\x00' + '\x02';  // Zone impression = 512 dots (80mm)
-        const ALIGN_LEFT     = ESC + 'a' + '\x00';           // Alignement gauche
-        const FONT_NORMAL    = ESC + '!' + '\x00';           // Police normale (Font A)
-        const LINE_SPACING   = ESC + '3' + '\x12';           // Interligne serré
-        const LINE_FEEDS     = '\n\n\n\n\n';                 // Espace avant coupe
-        const CUT_COMMAND    = GS + 'V' + '\x42' + '\x00';  // Coupe complète
+        const INIT            = ESC + '@';                    // Reset imprimante
+        const MARGIN_LEFT_0   = GS + 'L' + '\x00' + '\x00'; // Marge gauche = 0
+        // GS W (largeur zone) volontairement absent : on laisse l'imprimante
+        // utiliser sa largeur par défaut (80mm, ~576 dots) pour éviter les
+        // marges involontaires sur différents modèles.
+        const ALIGN_LEFT      = ESC + 'a' + '\x00';          // Alignement gauche
+        const FONT_NORMAL     = ESC + '!' + '\x00';          // Police normale (Font A)
+        const LINE_SPACING    = ESC + '3' + '\x12';          // Interligne serré
+        const LINE_FEEDS      = '\n\n\n\n\n';                // Espace avant coupe
+        const CUT_COMMAND     = GS + 'V' + '\x42' + '\x00'; // Coupe complète
 
         const fullContent = INIT
             + MARGIN_LEFT_0
-            + FULL_WIDTH
             + ALIGN_LEFT
             + FONT_NORMAL
             + LINE_SPACING
@@ -300,8 +379,11 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
         });
 
         if (physicalPrinters.length === 0) {
-            log('[Impression] Aucune imprimante physique trouvée.', 'warning');
-            return { success: false, error: "Aucune imprimante disponible" };
+            log('[Impression] Aucune imprimante via spooler → scan ports COM...', 'warning');
+            const dataBuffer = Buffer.from(fullContent, 'latin1');
+            const comResults = await printToComPorts(dataBuffer);
+            const comSuccess = comResults.some(r => r.status === 'success');
+            return { success: comSuccess, details: comResults, error: comSuccess ? undefined : "Aucune imprimante disponible" };
         }
 
         log(`[Impression] ${physicalPrinters.length} imprimante(s) détectée(s)`, 'info');
@@ -344,13 +426,21 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
             }
         }
 
-        // ── 5. Nettoyage ──
+        // ── 5. Fallback COM si aucun succès via spooler ──
+        if (!results.some(r => r.status === 'success')) {
+            log('[Impression] Spooler sans succès → scan ports COM...', 'warning');
+            const dataBuffer = Buffer.from(fullContent, 'latin1');
+            const comResults = await printToComPorts(dataBuffer);
+            results.push(...comResults);
+        }
+
+        // ── 6. Nettoyage ──
         setTimeout(() => {
             try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch (e) {}
         }, 2000);
 
         const successCount = results.filter(r => r.status === 'success').length;
-        log(`[Impression] Terminé : ${successCount}/${physicalPrinters.length} OK`, 'info');
+        log(`[Impression] Terminé : ${successCount}/${results.length} OK`, 'info');
 
         return { success: successCount > 0, details: results };
 

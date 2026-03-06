@@ -6,29 +6,37 @@ from rest_framework_simplejwt import views as jwt_views # type: ignore
 
 
 urlpatterns = [
-    #path("api/createEmployee/",EmployeeCreate.as_view(), name="api_create_user"),
-    #path("api/getEmployee/",Employeelist.as_view(), name="api_get_user_list"),
-    #path("api/getEmployee/<int:pk>/",EmployeeDetail.as_view(), name="api_get_user_detail"),
-    #path("api/updateEmployee/",EmployeeUpdate.as_view(), name="api_update_user"),
-    #path("api/deleteEmployee/<int:pk>/",EmployeeDelete.as_view(), name="api_delete_user"),
-    path("api/getEmployee/",EmployeeLogin.as_view(), name="api_get_user"),
+    path("api/getEmployee/", EmployeeLogin.as_view(), name="api_get_user"),
 
-    path('api/create_token/', jwt_views.TokenObtainPairView.as_view(), name='api_create_token'), 
+    path('api/create_token/', jwt_views.TokenObtainPairView.as_view(), name='api_create_token'),
     path('api/user/token/<str:phone>', UserTokenView.as_view(), name='customer_token_obtain'),
     path('api/employee/token/', EmployeeTokenView.as_view(), name='employee_token_obtain'),
 
-
     path("api/createCustomer/", UserCreate.as_view(), name="api_create"),
-    path("api/getUser/<str:phone>/", UserDetail.as_view(), name="api_get"), 
-    #path("api/getCustomer/", CustomerLIST.as_view(), name="api_list"),
-    #path("api/updateCustomer/", UserUpdate.as_view(), name="api_update"),
-    #path("api/deleteCustomer/<int:pk>/", UserDelete.as_view(), name="api_delete"),
-        # ✅ Token (création automatique si n'existe pas)
+    path("api/getUser/<str:phone>/", UserDetail.as_view(), name="api_get"),
     path('api/user/token/', UserTokenView.as_view(), name='user-token'),
-    
-    # ✅ Récupérer utilisateur par téléphone (POST avec phone dans body)
     path('api/getUser/', GetUserByPhone.as_view(), name='get-user-by-phone'),
-    
-    # Garde l'ancien endpoint pour compatibilité (GET avec pk dans URL)
     path('api/user/<int:pk>/', UserDetail.as_view(), name='user-detail'),
+
+    # ─── RH Employees ───────────────────────────────────────────────────────
+    path('api/employees/', EmployeeList.as_view(), name='employee-list'),
+    path('api/employees/create/', EmployeeCreateFull.as_view(), name='employee-create'),
+    path('api/employees/<int:pk>/', EmployeeDetailFull.as_view(), name='employee-detail'),
+    path('api/employees/<int:pk>/update/', EmployeeUpdateFull.as_view(), name='employee-update'),
+    path('api/employees/<int:pk>/delete/', EmployeeDeleteFull.as_view(), name='employee-delete'),
+
+    # ─── Pointage ────────────────────────────────────────────────────────────
+    path('api/employees/<int:pk>/time-entries/', TimeEntryList.as_view(), name='time-entry-list'),
+    path('api/time-entries/<int:pk>/', TimeEntryUpdate.as_view(), name='time-entry-update'),
+
+    # ─── Horaires ────────────────────────────────────────────────────────────
+    path('api/employees/<int:pk>/schedules/', ScheduleList.as_view(), name='schedule-list'),
+    path('api/schedules/<int:pk>/', ScheduleDelete.as_view(), name='schedule-delete'),
+
+    # ─── Fiches de paie ──────────────────────────────────────────────────────
+    path('api/employees/<int:pk>/payslips/', PayslipList.as_view(), name='payslip-list'),
+
+    # ─── Documents ───────────────────────────────────────────────────────────
+    path('api/employees/<int:pk>/documents/', DocumentList.as_view(), name='document-list'),
+    path('api/documents/<int:pk>/', DocumentDelete.as_view(), name='document-delete'),
 ]
