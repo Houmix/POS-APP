@@ -1,6 +1,6 @@
 # restaurant/serializers.py
 from rest_framework import serializers
-from .models import Restaurant
+from .models import Restaurant, KioskConfig
 from chain.models import Chain
 
 
@@ -42,6 +42,17 @@ class RestaurantSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.logo.url)
             return obj.logo.url
         return None
+
+
+class KioskConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = KioskConfig
+        fields = [
+            'primary_color', 'secondary_color',
+            'background_color', 'card_bg_color', 'text_color',
+            'sidebar_color', 'category_bg_color', 'selected_category_bg_color', 'category_text_color',
+            'logo', 'screensaver_video',
+        ]
 
 
 class RestaurantCreateUpdateSerializer(serializers.ModelSerializer):

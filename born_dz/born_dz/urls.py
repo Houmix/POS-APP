@@ -19,6 +19,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from restaurant.views import KioskConfigView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -36,6 +37,9 @@ urlpatterns = [
     
     # Licence
     path('api/license/', include('terminal.urls')),
+
+    # Kiosk config
+    path('api/kiosk/config/', KioskConfigView.as_view(), name='kiosk_config'),
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

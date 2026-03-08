@@ -42,7 +42,7 @@ def discover(request):
     """
     Endpoint de découverte automatique pour les bornes.
     La borne scanne le réseau local et appelle GET /api/sync/discover/
-    pour identifier le serveur caisse.
+    pour identifier le serveur caisse et récupérer son restaurant_id.
     """
     import socket
     try:
@@ -52,12 +52,17 @@ def discover(request):
         local_ip = '127.0.0.1'
         hostname = 'caisse'
 
+    from restaurant.models import Restaurant
+    restaurant = Restaurant.objects.first()
+
     return JsonResponse({
         'server': 'caisse',
         'app': 'ClickGo POS',
         'version': '1.0',
         'host': hostname,
         'ip': local_ip,
+        'restaurant_id': restaurant.id if restaurant else None,
+        'restaurant_name': restaurant.name if restaurant else None,
     })
 
 

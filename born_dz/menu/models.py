@@ -30,9 +30,11 @@ class Menu(models.Model):
         ('salad', 'Salad'),
         ('plate', 'Plate'),
         ('dessert', 'Dessert'),
-        ('drink', 'Drink')
+        ('drink', 'Drink'),
+        ('individual', 'Article individuel'),  # vendu seul, sans configuration
     ]
     type = models.CharField(choices=TYPE, max_length=20)
+    show_in_crosssell = models.BooleanField(default=False)  # Proposé en cross-selling avant paiement
     def __str__(self):
         return self.name + " " + self.group_menu.restaurant.name if self.group_menu else self.name
 
@@ -80,7 +82,9 @@ class Step(models.Model):
     ]
     type = models.CharField(choices=TYPE, max_length=20)
     avalaible = models.BooleanField(default=True)
-    
+    show_for_solo = models.BooleanField(default=True)
+    show_for_full = models.BooleanField(default=True)
+
     def __str__(self):
         return f"Step {self.number} : {self.name}"
     

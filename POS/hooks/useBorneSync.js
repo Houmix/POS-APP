@@ -4,8 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios'; 
 
 // L'URL du serveur est maintenant dynamique (configurée par l'utilisateur au premier démarrage).
-import { idRestaurant} from '@/config';
-import { getPosUrl } from '@/utils/serverConfig';
+import { getPosUrl, getRestaurantId } from '@/utils/serverConfig';
 // Constantes pour la connexion et la cache
 // WEBSOCKET_URL est calculé dynamiquement pour utiliser l'IP courante du serveur
 const GROUP_MENU_KEY = 'GroupMenu';
@@ -24,7 +23,7 @@ export function useBorneSync() {
         setIsLoading(true);
         try {
             const accessToken = await AsyncStorage.getItem("token");
-            const currentRestaurantId = idRestaurant;
+            const currentRestaurantId = getRestaurantId();
             
             if (!accessToken || !currentRestaurantId) {
                 console.log("Missing token or restaurant ID:");
@@ -70,7 +69,7 @@ export function useBorneSync() {
     const loadDataFromCache = useCallback(async () => {
         setIsLoading(true);
         
-        const currentRestaurantId = await AsyncStorage.getItem(idRestaurant);
+        const currentRestaurantId = getRestaurantId();
         if (currentRestaurantId) {
             setRestaurantId(currentRestaurantId);
         }
@@ -124,37 +123,37 @@ export function useBorneSync() {
     }, [fetchAndCacheAllData]);
     
     // --- 4. FONCTION POUR LA GESTION DES ÉTAPES (Cache-Aside avec Invalidation) ---
-    const getStepsForMenu = useCallback(async (menuId) => {
-        const STEPS_KEY = `@steps_menu_${menuId}`;
+    const getStepsForMenu = useCallback(async (menuId, mode = null) => {
+        const STEPS_KEY = `@steps_menu_${menuId}_${mode || 'all'}`;
         const accessToken = await AsyncStorage.getItem("token");
 
         if (!accessToken) return [];
 
         const headers = { Authorization: `Bearer ${accessToken}` };
-        
+
         // 1. Vérifie si le drapeau global d'invalidation est levé (mis par le WS)
         const isCacheInvalid = await AsyncStorage.getItem(STEPS_INVALIDATION_FLAG);
-        
+
         let cachedSteps = null;
         if (isCacheInvalid !== 'true') {
-            // Tente de lire la cache locale de ce menu s'il n'y a pas eu d'alerte globale
             cachedSteps = await AsyncStorage.getItem(STEPS_KEY);
             if (cachedSteps) {
-                console.log(`[STEPS] Étapes pour menu ${menuId} chargées depuis la cache.`);
+                console.log(`[STEPS] Étapes pour menu ${menuId} (mode: ${mode}) chargées depuis la cache.`);
                 return JSON.parse(cachedSteps);
             }
         }
-        
+
         // 2. Si la cache est invalide ou manquante, appelle l'API
         try {
-            console.log(`[STEPS] Récupération des étapes pour menu ${menuId} via API.`);
-            const response = await axios.get(`${getPosUrl()}/menu/api/stepListByMenu/${menuId}/`, { headers });
-            
-            // 3. Met en cache et supprime le drapeau d'invalidation après un succès (si présent)
+            const url = `${getPosUrl()}/menu/api/stepListByMenu/${menuId}/${mode ? `?mode=${mode}` : ''}`;
+            console.log(`[STEPS] Récupération via API: ${url}`);
+            const response = await axios.get(url, { headers });
+
+            // 3. Met en cache et supprime le drapeau d'invalidation après un succès
             await AsyncStorage.setItem(STEPS_KEY, JSON.stringify(response.data));
             if (isCacheInvalid === 'true') {
                  await AsyncStorage.removeItem(STEPS_INVALIDATION_FLAG);
-                 console.log("[STEPS] Drapeau d'invalidation levé pour la prochaine étape.");
+                 console.log("[STEPS] Drapeau d'invalidation supprimé.");
             }
 
             return response.data;

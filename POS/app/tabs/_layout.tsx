@@ -3,15 +3,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { Platform, StyleSheet, ActivityIndicator, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useKioskTheme } from '@/contexts/KioskThemeContext';
 
 const COLORS = {
-  primary: "#6366F1",
   inactive: "#94A3B8",
   background: "#FFFFFF",
   border: "#E2E8F0"
 };
 
 export default function TabLayout() {
+  const theme = useKioskTheme();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -41,7 +42,7 @@ export default function TabLayout() {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={theme.primaryColor} />
       </View>
     );
   }
@@ -61,7 +62,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: COLORS.primary,
+        tabBarActiveTintColor: theme.primaryColor,
         tabBarInactiveTintColor: COLORS.inactive,
         tabBarStyle: styles.tabBar,
         tabBarLabelStyle: styles.tabBarLabel,

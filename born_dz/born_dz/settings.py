@@ -43,8 +43,9 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     "borndz-production.up.railway.app",
-    "clickgo-siteweb-production.up.railway.app",  # sans https://
-    # Ajouter ici l'IP locale du PC caisse si elle change (ex: "192.168.1.100")
+    "clickgo-siteweb-production.up.railway.app",
+    "clickgo-interactive.com",
+    "www.clickgo-interactive.com"
 ]
 
 
@@ -252,7 +253,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://www.menugo-dz.com",
     "https://borndz-production.up.railway.app",
     "http://192.168.1.50:8000",
-    "https://clickgo-siteweb-production.up.railway.app"
-
+    "https://clickgo-siteweb-production.up.railway.app",
+    "https://clickgo-interactive.com",
+    "https://www.clickgo-interactive.com",
+    "http://localhost:5173"
 ]
 

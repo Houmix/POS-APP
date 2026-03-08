@@ -6,6 +6,7 @@ import { AntDesign, Ionicons } from '@expo/vector-icons';
 import { getPosUrl } from "@/utils/serverConfig";
 import { useBorneSync } from '@/hooks/useBorneSync';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useKioskTheme } from '@/contexts/KioskThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -19,15 +20,17 @@ const COLORS = {
 
 export default function MenuStepsScreen() {
     // 1. OBLIGATOIRE : Récupérer isSolo pour déclencher la logique
-    const { menuId, menuName, price, isSolo } = useLocalSearchParams(); 
+    const { menuId, menuName, price, isSolo } = useLocalSearchParams();
     const isMenuSolo = isSolo === 'true' || isSolo === true;
+    const mode = isMenuSolo ? 'solo' : 'full';
 
     const [steps, setSteps] = useState<any[]>([]);
     const [selectedOptions, setSelectedOptions] = useState<any>({});
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [isLoading, setIsLoading] = useState(true); 
-    const { getStepsForMenu } = useBorneSync(); 
+    const { getStepsForMenu } = useBorneSync();
     const { t, isRTL } = useLanguage();
+    const theme = useKioskTheme();
 
     const currentStep = steps?.[currentStepIndex] ?? null;
 
@@ -35,17 +38,8 @@ export default function MenuStepsScreen() {
         const loadSteps = async () => {
             setIsLoading(true);
             try {
-                const data = await getStepsForMenu(menuId);
-                
-                // 2. FILTRER : On enlève la boisson et les frites si c'est solo
-                let finalSteps = data;
-                if (isMenuSolo) {
-                    finalSteps = data.filter((step: any) => {
-                        const stepName = step.name.toLowerCase();
-                        return stepName !== 'boisson' && stepName !== 'accompagnement';
-                    });
-                }
-                setSteps(finalSteps);
+                const data = await getStepsForMenu(menuId, mode);
+                setSteps(data);
             } catch (error) {
                 console.error(error);
             } finally {
@@ -156,8 +150,8 @@ export default function MenuStepsScreen() {
     };
 
     if (isLoading) return (
-        <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={[styles.loadingContainer, { backgroundColor: theme.backgroundColor }]}>
+            <ActivityIndicator size="large" color={theme.primaryColor} />
             <Text style={styles.loadingText}>{t('step.preparation')}</Text>
         </View>
     );
@@ -170,7 +164,7 @@ export default function MenuStepsScreen() {
     };
 
     return (
-        <SafeAreaView style={[styles.container, isRTL && { direction: 'rtl' }]}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.backgroundColor }, isRTL && { direction: 'rtl' }]}>
             {/* Header avec progression */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => router.push("/tabs/terminal")} style={styles.homeButton}>
@@ -183,14 +177,14 @@ export default function MenuStepsScreen() {
                     </Text>
                 </View>
                 <View style={styles.priceBadge}>
-                    <Text style={styles.priceText}>{totalPrice} DA</Text>
+                    <Text style={[styles.priceText, { color: theme.primaryColor }]}>{totalPrice} DA</Text>
                 </View>
             </View>
 
             {/* Barre de progression visuelle */}
             <View style={styles.progressContainer}>
                 {steps.map((_, i) => (
-                    <View key={i} style={[styles.progressBar, i <= currentStepIndex ? styles.progressActive : styles.progressInactive]} />
+                    <View key={i} style={[styles.progressBar, i <= currentStepIndex ? { backgroundColor: theme.primaryColor } : styles.progressInactive]} />
                 ))}
             </View>
 
@@ -209,17 +203,17 @@ export default function MenuStepsScreen() {
                     return (
                         <TouchableOpacity
                             activeOpacity={0.8}
-                            style={[styles.optionCard, isSelected && styles.optionCardSelected]}
+                            style={[styles.optionCard, { backgroundColor: theme.cardBgColor }, isSelected && [styles.optionCardSelected, { borderColor: theme.primaryColor }]]}
                             onPress={() => toggleOption(currentStep.id, item.id, currentStep.max_options === 1, currentStep.max_options)}
                         >
                             {isSelected && (
                                 <View style={styles.checkBadge}>
-                                    <Ionicons name="checkmark-circle" size={24} color={COLORS.primary} />
+                                    <Ionicons name="checkmark-circle" size={24} color={theme.primaryColor} />
                                 </View>
                             )}
                             <Image source={{ uri: `${getPosUrl()}${item.option.photo}` }} style={styles.optionImage} resizeMode="contain" />
-                            <Text style={styles.optionName}>{item.option.name}</Text>
-                            {item.option.extra_price > 0 && <Text style={styles.optionExtra}>+{item.option.extra_price} DA</Text>}
+                            <Text style={[styles.optionName, { color: theme.textColor }]}>{item.option.name}</Text>
+                            {item.option.extra_price > 0 && <Text style={[styles.optionExtra, { color: theme.primaryColor }]}>+{item.option.extra_price} DA</Text>}
                         </TouchableOpacity>
                     );
                 }}
@@ -232,7 +226,7 @@ export default function MenuStepsScreen() {
                 </TouchableOpacity>
 
                 {currentStepIndex < steps.length - 1 ? (
-                    <TouchableOpacity onPress={handleNext} disabled={(selectedOptions[currentStep.id]?.length || 0) === 0} style={[styles.navButton, styles.nextButton, (selectedOptions[currentStep.id]?.length || 0) === 0 && styles.disabledButton]}>
+                    <TouchableOpacity onPress={handleNext} disabled={(selectedOptions[currentStep.id]?.length || 0) === 0} style={[styles.navButton, { flex: 2, backgroundColor: theme.primaryColor }, (selectedOptions[currentStep.id]?.length || 0) === 0 && styles.disabledButton]}>
                         <Text style={styles.nextButtonText}>{t('next')}</Text>
                         <AntDesign name={isRTL ? "arrowleft" : "arrowright"} size={20} color="white" />
                     </TouchableOpacity>

@@ -81,4 +81,7 @@ urlpatterns = [
     # ============= STEP OPTION ENDPOINTS =============
     path("api/getStepOption/<int:id_restaurant>/", StepOptionList.as_view(), name="api_get_stepOption_list"),
     path("api/updateStepOption/", StepOptionUpdate.as_view(), name="api_update_stepOption"),
+
+    # ============= CROSS-SELL ENDPOINT =============
+    path("api/crosssell/", CrossSellView.as_view(), name="api_crosssell"),
 ]

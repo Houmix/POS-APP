@@ -8,12 +8,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const SERVER_URL_KEY = 'pos_server_url';
+export const RESTAURANT_ID_KEY = 'pos_restaurant_id';
 export const DEFAULT_PORT = 8000;
 const DISCOVER_PATH = '/api/sync/discover/';
 const SCAN_TIMEOUT_MS = 1500;
 
-// URL courante (mutable, chargée depuis AsyncStorage au démarrage)
+// URL et restaurant_id courants (mutables, chargés depuis AsyncStorage au démarrage)
 let _currentUrl = 'http://127.0.0.1:8000';
+let _currentRestaurantId: string | null = null;
 
 export function getPosUrl(): string {
     return _currentUrl;
@@ -47,6 +49,23 @@ export async function clearServerUrl(): Promise<void> {
 export async function hasSavedServerUrl(): Promise<boolean> {
     const saved = await AsyncStorage.getItem(SERVER_URL_KEY);
     return !!saved;
+}
+
+export function getRestaurantId(): string | null {
+    return _currentRestaurantId;
+}
+
+export async function saveRestaurantId(id: string): Promise<void> {
+    _currentRestaurantId = id;
+    await AsyncStorage.setItem(RESTAURANT_ID_KEY, id);
+}
+
+export async function loadRestaurantId(): Promise<string | null> {
+    try {
+        const saved = await AsyncStorage.getItem(RESTAURANT_ID_KEY);
+        if (saved) _currentRestaurantId = saved;
+    } catch {}
+    return _currentRestaurantId;
 }
 
 // ──────────────────────────────────────────────

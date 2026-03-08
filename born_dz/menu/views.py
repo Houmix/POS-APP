@@ -231,49 +231,78 @@ class GroupMenuUpdate(APIView):
 
 # ============= MENU VIEWS (avec logs similaires) =============
 
+STEP_TYPE_NAMES = {
+    'pain': 'Choix du pain',
+    'crudité': 'Crudités',
+    'accompagnement': 'Accompagnement',
+    'sauce': 'Sauce',
+    'boisson': 'Boisson',
+    'dessert': 'Dessert',
+    'base': 'Base',
+    'protéine': 'Protéine',
+    'salad': 'Salade',
+    'plate': 'Plat',
+    'drink': 'Boisson',
+}
+
+def auto_create_steps_for_menu(menu):
+    """Crée automatiquement une étape par type d'option existant dans la DB."""
+    option_types = Option.objects.values_list('type', flat=True).distinct()
+    for i, otype in enumerate(option_types):
+        options_of_type = Option.objects.filter(type=otype, avalaible=True)
+        if not options_of_type.exists():
+            continue
+        step = Step.objects.create(
+            name=STEP_TYPE_NAMES.get(otype, otype.capitalize()),
+            number=i + 1,
+            menu=menu,
+            max_options=1,
+            type=otype,
+            show_for_solo=True,
+            show_for_full=True,
+        )
+        for opt in options_of_type:
+            StepOption.objects.get_or_create(step=step, option=opt)
+
+
 class MenuCreate(APIView):
     permission_classes = [IsAuthenticated]
-    
+
     def post(self, request, *args, **kwargs):
-        print("=" * 60)
-        print("   CRÉATION MENU")
-        print("=" * 60)
-        
-        # Vérifier la photo
-        if 'photo' in request.data:
-            photo = request.data['photo']
-            print(f"     Photo: {type(photo)}")
-            if hasattr(photo, 'name'):
-                print(f"  Nom: {photo.name}, Taille: {photo.size} bytes")
-        
         try:
             serializer = MenuSerializer(data=request.data)
-            
             if serializer.is_valid():
                 instance = serializer.save()
-                print(f"   Menu créé: {instance.name}")
-                if instance.photo:
-                    print(f"   Photo: {instance.photo.name}")
-                print("=" * 60)
-                
+                auto_create_steps_for_menu(instance)
                 return Response({
-                    "message": "Menu créé avec succès", 
+                    "message": "Menu créé avec succès",
                     "data": serializer.data
                 }, status=status.HTTP_201_CREATED)
-            
-            print(f"  Erreurs: {serializer.errors}")
-            print("=" * 60)
-            
             return Response({
-                "message": "Erreur de validation", 
+                "message": "Erreur de validation",
                 "errors": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
-            
         except Exception as e:
-            print(f"  Exception: {str(e)}")
             print(traceback.format_exc())
-            print("=" * 60)
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CrossSellView(APIView):
+    """Retourne les articles à proposer en cross-selling avant le paiement."""
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        restaurant_id = request.query_params.get('restaurant_id')
+        if not restaurant_id:
+            return Response({"error": "restaurant_id requis"}, status=400)
+        items = Menu.objects.filter(
+            group_menu__restaurant_id=restaurant_id,
+            show_in_crosssell=True,
+            avalaible=True,
+        ).select_related('group_menu')
+        serializer = MenuSerializer(items, many=True, context={'request': request})
+        return Response(serializer.data)
 
 
 class MenuUpdate(APIView):
@@ -575,11 +604,23 @@ class StepListByMenu(APIView):
     authentication_classes = []
 
     def get(self, request, menu_id, *args, **kwargs):
-        steps = Step.objects.filter(menu_id=menu_id).order_by('number').prefetch_related(
-            models.Prefetch(
-                'stepoptions',
-                queryset=StepOption.objects.filter(avalaible=True).select_related('option'),
-            )
+        mode = request.query_params.get('mode')    # 'solo' | 'full' | None
+        admin = request.query_params.get('admin') == 'true'  # admin → toutes options
+
+        qs = Step.objects.filter(menu_id=menu_id, avalaible=True)
+        if mode == 'solo':
+            qs = qs.filter(show_for_solo=True)
+        elif mode == 'full':
+            qs = qs.filter(show_for_full=True)
+
+        # Admin : toutes les stepoptions (y compris désactivées, pour pouvoir les réactiver)
+        # Borne : uniquement les stepoptions avalaible=True
+        stepoptions_qs = StepOption.objects.select_related('option')
+        if not admin:
+            stepoptions_qs = stepoptions_qs.filter(avalaible=True)
+
+        steps = qs.order_by('number').prefetch_related(
+            models.Prefetch('stepoptions', queryset=stepoptions_qs)
         )
         serializer = StepSerializer(steps, many=True)
         return Response(serializer.data)
@@ -604,8 +645,9 @@ class StepDetail(APIView):
             return Response({"error": "Étape non trouvée"}, status=status.HTTP_404_NOT_FOUND)
 
 class StepUpdate(APIView):
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = []
+    authentication_classes = []
+
     def put(self, request, *args, **kwargs):
         try:
             step_id = request.data.get("id")

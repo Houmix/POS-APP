@@ -1,8 +1,9 @@
 import { Stack } from "expo-router";
 import { LanguageProvider } from "@/contexts/LanguageContext";
+import { KioskThemeProvider } from "@/contexts/KioskThemeContext";
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator } from "react-native";
-import { loadServerUrl, hasSavedServerUrl } from "@/utils/serverConfig";
+import { loadServerUrl, hasSavedServerUrl, loadRestaurantId } from "@/utils/serverConfig";
 import ServerSetup from "@/components/ServerSetup";
 
 export default function RootLayout() {
@@ -12,7 +13,8 @@ export default function RootLayout() {
   useEffect(() => {
     async function init() {
       const hasUrl = await hasSavedServerUrl();
-      await loadServerUrl(); // charge l'URL en mémoire depuis AsyncStorage
+      await loadServerUrl();
+      await loadRestaurantId();
       if (!hasUrl) {
         setNeedsSetup(true);
       }
@@ -38,13 +40,15 @@ export default function RootLayout() {
   }
 
   return (
-    <LanguageProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)"/>
-        <Stack.Screen name="(order)"/>
-        <Stack.Screen name="index"/>
-        <Stack.Screen name="+not-found" />
-      </Stack>
-    </LanguageProvider>
+    <KioskThemeProvider>
+      <LanguageProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)"/>
+          <Stack.Screen name="(order)"/>
+          <Stack.Screen name="index"/>
+          <Stack.Screen name="+not-found" />
+        </Stack>
+      </LanguageProvider>
+    </KioskThemeProvider>
   );
 }

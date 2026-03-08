@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from .models import Restaurant
-from .serializers import RestaurantSerializer, RestaurantCreateUpdateSerializer
+from .models import Restaurant, KioskConfig
+from .serializers import RestaurantSerializer, RestaurantCreateUpdateSerializer, KioskConfigSerializer
 
 
 class MyRestaurantView(APIView):
@@ -259,6 +259,67 @@ class RestaurantDeleteView(APIView):
                 {"error": f"Erreur lors de la suppression: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class KioskConfigView(APIView):
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        restaurant_id = request.query_params.get('restaurant_id')
+        if not restaurant_id:
+            return Response({"error": "restaurant_id requis"}, status=400)
+        try:
+            config, _ = KioskConfig.objects.get_or_create(restaurant_id=restaurant_id)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+        return Response({
+            'primary_color':        config.primary_color,
+            'secondary_color':      config.secondary_color,
+            'background_color':     config.background_color,
+            'card_bg_color':        config.card_bg_color,
+            'text_color':           config.text_color,
+            'sidebar_color':              config.sidebar_color,
+            'category_bg_color':          config.category_bg_color,
+            'selected_category_bg_color': config.selected_category_bg_color,
+            'category_text_color':        config.category_text_color,
+            'logo_url':             request.build_absolute_uri(config.logo.url) if config.logo else None,
+            'screensaver_video_url':request.build_absolute_uri(config.screensaver_video.url) if config.screensaver_video else None,
+        })
+
+    def put(self, request):
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+        try:
+            result = JWTAuthentication().authenticate(request)
+            if result is None:
+                return Response({"error": "Auth requise"}, status=401)
+        except Exception:
+            return Response({"error": "Token invalide"}, status=401)
+
+        restaurant_id = request.data.get('restaurant_id')
+        if not restaurant_id:
+            return Response({"error": "restaurant_id requis"}, status=400)
+        try:
+            config, _ = KioskConfig.objects.get_or_create(restaurant_id=restaurant_id)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+        serializer = KioskConfigSerializer(config, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            # Notifier toutes les bornes connectées via WebSocket
+            try:
+                from channels.layers import get_channel_layer
+                from asgiref.sync import async_to_sync
+                channel_layer = get_channel_layer()
+                if channel_layer:
+                    async_to_sync(channel_layer.group_send)(
+                        'bornes_sync_channel',
+                        {'type': 'sync_message', 'data': {'status': 'theme_updated'}}
+                    )
+            except Exception:
+                pass
+            return Response({'message': 'Config mise à jour'})
+        return Response(serializer.errors, status=400)
 
 
 class RestaurantStatsView(APIView):

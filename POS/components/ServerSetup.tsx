@@ -12,7 +12,7 @@ import {
     View, Text, TextInput, TouchableOpacity,
     StyleSheet, ActivityIndicator, Platform,
 } from 'react-native';
-import { scanNetwork, saveServerUrl, testServerUrl, ScanResult } from '../utils/serverConfig';
+import { scanNetwork, saveServerUrl, saveRestaurantId, ScanResult } from '../utils/serverConfig';
 
 interface Props {
     onConfigured: (url: string) => void;
@@ -43,6 +43,11 @@ export default function ServerSetup({ onConfigured }: Props) {
         if (result) {
             setFound(result);
             setManualIp(result.ip);
+            // Pré-connexion automatique : sauvegarde URL + restaurant_id
+            await saveServerUrl(result.url);
+            const rid = (result.serverInfo as any)?.restaurant_id;
+            if (rid) await saveRestaurantId(rid.toString());
+            onConfigured(result.url);
         } else {
             setError('Aucun serveur trouvé. Entrez l\'IP manuellement.');
         }
@@ -59,15 +64,28 @@ export default function ServerSetup({ onConfigured }: Props) {
         setConnecting(true);
         setError('');
 
-        const ok = await testServerUrl(url);
-        setConnecting(false);
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000);
+            const response = await fetch(`${url}/api/sync/discover/`, { signal: controller.signal });
+            clearTimeout(timeout);
 
-        if (ok) {
-            await saveServerUrl(url);
-            onConfigured(url);
-        } else {
-            setError(`Impossible de joindre ${url}\nVérifiez que la caisse est allumée et connectée au même réseau.`);
-        }
+            if (response.ok) {
+                const data = await response.json();
+                if (data.server === 'caisse') {
+                    await saveServerUrl(url);
+                    if (data.restaurant_id) {
+                        await saveRestaurantId(data.restaurant_id.toString());
+                    }
+                    setConnecting(false);
+                    onConfigured(url);
+                    return;
+                }
+            }
+        } catch {}
+
+        setConnecting(false);
+        setError(`Impossible de joindre ${url}\nVérifiez que la caisse est allumée et connectée au même réseau.`);
     };
 
     return (

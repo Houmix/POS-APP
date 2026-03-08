@@ -274,6 +274,82 @@ def restaurant_status(request):
         return JsonResponse({'valid': False, 'reason': str(e)}, status=500)
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def create_or_renew(request):
+    """
+    Crée ou renouvelle une licence pour un restaurant.
+    Utilisé depuis le site admin pour attribuer une durée de validité.
+
+    Body :
+    {
+        "restaurant_id": 1,
+        "plan": "standard",
+        "duration_months": 6,   // 1, 3, 6, 12, 24, 36
+        "max_terminals": 3
+    }
+    """
+    try:
+        body = json.loads(request.body)
+        restaurant_id = body.get('restaurant_id')
+        plan = body.get('plan', 'standard')
+        duration_months = int(body.get('duration_months', 12))
+        max_terminals = int(body.get('max_terminals', 3))
+
+        if not restaurant_id:
+            return JsonResponse({'success': False, 'error': 'restaurant_id requis'}, status=400)
+
+        from datetime import timedelta
+        from restaurant.models import Restaurant
+
+        try:
+            restaurant = Restaurant.objects.get(id=restaurant_id)
+        except Restaurant.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Restaurant introuvable'}, status=404)
+
+        # Cherche une licence existante active
+        lic = License.objects.filter(restaurant=restaurant, status__in=['active', 'expired']).first()
+
+        now = timezone.now()
+
+        if lic:
+            # Renouvellement : on repart de maintenant (ou de l'expiration future si encore valide)
+            base = max(now, lic.expires_at) if lic.expires_at and lic.expires_at > now else now
+            lic.expires_at = base + timedelta(days=duration_months * 30)
+            lic.status = 'active'
+            lic.plan = plan
+            lic.max_terminals = max_terminals
+            lic.save()
+        else:
+            # Création d'une nouvelle licence
+            lic = License.objects.create(
+                key=License.generate_key(),
+                restaurant=restaurant,
+                plan=plan,
+                status='active',
+                max_terminals=max_terminals,
+                expires_at=now + timedelta(days=duration_months * 30),
+            )
+
+        return JsonResponse({
+            'success': True,
+            'key': lic.key,
+            'restaurant_id': restaurant.id,
+            'restaurant_name': restaurant.name,
+            'plan': lic.plan,
+            'status': lic.status,
+            'expires_at': lic.expires_at.isoformat(),
+            'max_terminals': lic.max_terminals,
+        })
+
+    except (ValueError, TypeError) as e:
+        return JsonResponse({'success': False, 'error': f'Paramètre invalide: {e}'}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'JSON invalide'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 @require_http_methods(["GET"])
 def info(request):
     """

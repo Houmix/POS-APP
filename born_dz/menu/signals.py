@@ -3,63 +3,7 @@ from django.dispatch import receiver
 from .models import Menu, Step, Option, StepOption, GroupMenu
 
 
-@receiver(post_save, sender=Menu)
-def create_default_steps(sender, instance, created, **kwargs):
-    """
-    Signal pour créer automatiquement les étapes par défaut lors de la création d'un menu
-    """
-    if not created or instance.extra:
-        # Ne rien faire si le menu existe déjà ou si c'est un menu extra/solo
-        return
-    
-    # Initialiser default_steps pour éviter UnboundLocalError
-    default_steps = []
-    
-    # Définir les étapes selon le type de menu
-    if instance.type in ["burger", "sandwich", "wrap"]:
-        default_steps = [
-            {"name": "Pain", "number": 1, "type": "pain", "max_options": 1},
-            {"name": "Crudité", "number": 2, "type": "crudité", "max_options": 3},
-            {"name": "Accompagnement", "number": 3, "type": "accompagnement", "max_options": 1},
-            {"name": "Sauce", "number": 4, "type": "sauce", "max_options": 2},
-            {"name": "Boisson", "number": 5, "type": "boisson", "max_options": 1},
-        ]
-    elif instance.type == "salad":
-        default_steps = [
-            {"name": "Base", "number": 1, "type": "crudité", "max_options": 3},
-            {"name": "Protéine", "number": 2, "type": "accompagnement", "max_options": 1},
-            {"name": "Sauce", "number": 3, "type": "sauce", "max_options": 2},
-            {"name": "Boisson", "number": 4, "type": "boisson", "max_options": 1},
-        ]
-    elif instance.type == "plate":
-        default_steps = [
-            {"name": "Protéine", "number": 1, "type": "accompagnement", "max_options": 1},
-            {"name": "Accompagnement", "number": 2, "type": "crudité", "max_options": 2},
-            {"name": "Sauce", "number": 3, "type": "sauce", "max_options": 1},
-            {"name": "Boisson", "number": 4, "type": "boisson", "max_options": 1},
-        ]
-    elif instance.type == "dessert":
-        default_steps = [
-            {"name": "Dessert", "number": 1, "type": "dessert", "max_options": 1},
-            {"name": "Boisson", "number": 2, "type": "boisson", "max_options": 1},
-        ]
-    elif instance.type == "drink":
-        default_steps = [
-            {"name": "Boisson", "number": 1, "type": "boisson", "max_options": 1},
-            {"name": "Accompagnement", "number": 2, "type": "accompagnement", "max_options": 1},
-        ]
-    
-    # Créer les étapes
-    for step_data in default_steps:
-        Step.objects.create(
-            name=step_data["name"],
-            number=step_data["number"],
-            menu=instance,
-            type=step_data["type"],
-            max_options=step_data["max_options"],
-        )
-    
-    print(f"s{len(default_steps)} étapes créées pour le menu: {instance.name}")
+# create_default_steps retiré : la fonction auto_create_steps_for_menu dans views.py gère la création des étapes
 
 
 @receiver(post_save, sender=Option)

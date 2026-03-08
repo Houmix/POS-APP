@@ -9,8 +9,7 @@ import {
   X as XIcon, Filter, Check, RefreshCw 
 } from 'lucide-react-native';
 import axios from 'axios';
-import { idRestaurant } from '@/config';
-import { getPosUrl } from '@/utils/serverConfig';
+import { getPosUrl, getRestaurantId } from '@/utils/serverConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -148,7 +147,7 @@ export default function KPI() {
     const fetchKpis = async () => {
         try {
             const token = await AsyncStorage.getItem("token");
-            let url = `${getPosUrl()}/order/api/kpi/${idRestaurant}?`; 
+            let url = `${getPosUrl()}/order/api/kpi/${getRestaurantId()}?`;
             
             if (useDateFilter) {
                 const dStart = new Date(startDate); dStart.setHours(0, 0, 0, 0);

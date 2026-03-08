@@ -5,7 +5,7 @@
 #   path('api/license/', include('terminal.license_urls')),
 
 from django.urls import path
-from .views import activate, deactivate, verify, info, restaurant_status
+from .views import activate, deactivate, verify, info, restaurant_status, create_or_renew
 
 urlpatterns = [
     path('activate/',           activate,           name='license-activate'),
@@ -13,4 +13,5 @@ urlpatterns = [
     path('verify/',             verify,             name='license-verify'),
     path('info/',               info,               name='license-info'),
     path('restaurant-status/',  restaurant_status,  name='license-restaurant-status'),
+    path('create-or-renew/',    create_or_renew,    name='license-create-or-renew'),
 ]

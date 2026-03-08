@@ -14,8 +14,7 @@ import { useEffect, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getPosUrl } from "@/utils/serverConfig";
-import { idRestaurant } from "@/config";
+import { getPosUrl, SERVER_URL_KEY, RESTAURANT_ID_KEY, loadRestaurantId, getRestaurantId } from "@/utils/serverConfig";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 
 export default function IdentificationScreen() {
@@ -38,14 +37,23 @@ export default function IdentificationScreen() {
   useEffect(() => {
     // Réinitialise la session ET vérifie la licence
     const init = async () => {
+      // Effacer uniquement les clés de session, pas la config serveur
       try {
-        await AsyncStorage.clear();
+        const allKeys = await AsyncStorage.getAllKeys();
+        const sessionKeys = allKeys.filter(
+          k => k !== SERVER_URL_KEY && k !== RESTAURANT_ID_KEY
+        );
+        if (sessionKeys.length > 0) await AsyncStorage.multiRemove(sessionKeys);
       } catch (e) {
-        console.error("Erreur lors de la suppression complète :", e);
+        console.error("Erreur lors de la réinitialisation de session :", e);
       }
+
+      await loadRestaurantId();
+      const restaurantId = getRestaurantId();
+
       try {
         const response = await axios.get(
-          `${getPosUrl()}/api/license/restaurant-status/?restaurant_id=${idRestaurant}`,
+          `${getPosUrl()}/api/license/restaurant-status/?restaurant_id=${restaurantId || 1}`,
           { timeout: 5000 }
         );
         setLicenseValid(response.data.valid === true);

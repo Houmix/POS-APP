@@ -21,6 +21,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { useBorneSync } from "@/hooks/useBorneSync.js";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
+import { useKioskTheme } from "@/contexts/KioskThemeContext";
 
 // ⏱️ TEMPS D'INACTIVITÉ (15 minutes en millisecondes)
 const INACTIVITY_LIMIT = 15 * 60 * 1000; 
@@ -28,7 +29,8 @@ const INACTIVITY_LIMIT = 15 * 60 * 1000;
 export default function MenuScreen() {
   const router = useRouter();
   const { t, isRTL } = useLanguage();
-  
+  const theme = useKioskTheme();
+
   // États des données
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [cartCount, setCartCount] = useState(0); 
@@ -256,7 +258,7 @@ export default function MenuScreen() {
                     <Text style={modalStyles.btnPrice}>{selectedItemForModal.solo_price || selectedItemForModal.price || 0} DA</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={[modalStyles.actionBtn, modalStyles.btnMenu]} onPress={handleMenuAdd}>
+                  <TouchableOpacity style={[modalStyles.actionBtn, { backgroundColor: theme.primaryColor }]} onPress={handleMenuAdd}>
                     <Text style={[modalStyles.btnLabel, { color: 'white' }]}>{t('terminal.in_menu')}</Text>
                     <Text style={modalStyles.btnSubtitle}>
                       {selectedItemForModal.price || 0} DA
@@ -273,8 +275,8 @@ export default function MenuScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0056b3" /> 
+      <View style={[styles.loadingContainer, { backgroundColor: theme.backgroundColor }]}>
+        <ActivityIndicator size="large" color={theme.primaryColor} />
         <Text style={styles.loadingText}>{t('terminal.loading_menus')}</Text>
       </View>
     );
@@ -288,8 +290,8 @@ export default function MenuScreen() {
   );
 
   return (
-    <View 
-      style={[styles.container, isRTL && { direction: 'rtl' }]} 
+    <View
+      style={[styles.container, { backgroundColor: theme.backgroundColor }, isRTL && { direction: 'rtl' }]}
       // 🔥 DÉTECTION GLOBALE D'ACTIVITÉ : Reset le timer à chaque touche
       onTouchStart={handleUserActivity}
       onResponderGrant={handleUserActivity}
@@ -297,12 +299,16 @@ export default function MenuScreen() {
       
       {/* HEADER AVEC DÉGRADÉ */}
       <LinearGradient
-       colors={['#0056b3', '#ff69b4']} 
+        colors={[theme.primaryColor, theme.primaryColor]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={styles.header}
       >
-        <Image source={require('@/assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+        {theme.logoUrl ? (
+          <Image source={{ uri: theme.logoUrl }} style={styles.logoImage} resizeMode="contain" />
+        ) : (
+          <Image source={require('@/assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
+        )}
         <View style={styles.headerRight}>
           <LanguageSelector />
           <TouchableOpacity style={styles.cartButton} onPress={() => router.push("/order/cart")}>
@@ -331,25 +337,29 @@ export default function MenuScreen() {
       <View style={styles.content}>
         
         {/* Sidebar catégories */}
-        <ScrollView style={[styles.sidebar, { width: sidebarWidth }]} contentContainerStyle={styles.sidebarContent}>
-          {categories.filter((category) => category.avalaible).map((category) => (
-              <TouchableOpacity
-                key={category.id}
-                style={[
-                  styles.categoryButton,
-                  selectedCategory?.id === category.id && styles.selectedCategory,
-                ]}
-                onPress={() => {
-                  handleUserActivity();
-                  setSelectedCategory(category);
-                }}
-              >
-                {category.photo && <Image source={{ uri: `${getPosUrl()}${category.photo}` }} style={styles.categoryImage} />}
-                <Text style={[styles.categoryText, selectedCategory?.id === category.id && styles.selectedCategoryText]}>
-                  {category.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        <ScrollView style={[styles.sidebar, { width: sidebarWidth, backgroundColor: theme.sidebarColor }]} contentContainerStyle={styles.sidebarContent}>
+          {categories.filter((category) => category.avalaible).map((category) => {
+              const isSelected = selectedCategory?.id === category.id;
+              return (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    styles.categoryButton,
+                    { backgroundColor: isSelected ? theme.selectedCategoryBgColor : theme.categoryBgColor },
+                    isSelected && { borderLeftWidth: 4, borderColor: theme.secondaryColor },
+                  ]}
+                  onPress={() => {
+                    handleUserActivity();
+                    setSelectedCategory(category);
+                  }}
+                >
+                  {category.photo && <Image source={{ uri: `${getPosUrl()}${category.photo}` }} style={styles.categoryImage} />}
+                  <Text style={[styles.categoryText, { color: isSelected ? 'white' : theme.categoryTextColor }]}>
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
         </ScrollView>
 
         {/* Grille des menus */}
@@ -368,26 +378,32 @@ export default function MenuScreen() {
                 <TouchableOpacity
                   style={[styles.menuItem, { width: itemWidth, margin: itemMargin / 2 }]}
                   onPress={() => handleAddToCart(item)}
+                  activeOpacity={0.85}
                 >
-                  {item.photo && <Image source={{ uri: `${getPosUrl()}${item.photo}` }} style={styles.menuImage} resizeMode="cover" />}
-                  <View style={styles.menuInfo}>
+                  <Image
+                    source={item.photo ? { uri: `${getPosUrl()}${item.photo}` } : require('@/assets/logo.png')}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="cover"
+                  />
+                  <LinearGradient
+                    colors={['transparent', 'rgba(0,0,0,0.82)']}
+                    style={styles.menuOverlay}
+                  >
                     <Text style={styles.menuText} numberOfLines={2}>{item.name}</Text>
                     <View style={styles.priceActionContainer}>
-                      <Text style={styles.menuPrice}>
-                        {/* CORRECTION : On affiche item.solo_price s'il existe, sinon on se rabat sur item.price */}
-                        {item.extra == 1 
-                          ? `+${item.solo_price}` 
-                          : (item.price && parseFloat(item.price) > 0) 
-                              ? `${item.price}` 
+                      <Text style={[styles.menuPrice, { color: theme.secondaryColor }]}>
+                        {item.extra == 1
+                          ? `+${item.solo_price}`
+                          : (item.price && parseFloat(item.price) > 0)
+                              ? `${item.price}`
                               : `${item.solo_price}`
-                        } 
-                        <Text style={{fontSize: 14}}> DA</Text>
+                        } DA
                       </Text>
-                      <View style={styles.addButton}>
+                      <View style={[styles.addButton, { backgroundColor: theme.secondaryColor }]}>
                         <Feather name="plus" size={20} color="white" />
                       </View>
-                  </View>
-                  </View>
+                    </View>
+                  </LinearGradient>
                 </TouchableOpacity>
               )}
               contentContainerStyle={styles.menuGrid}
@@ -403,7 +419,7 @@ export default function MenuScreen() {
 }
 
 const styles = StyleSheet.create({
-  logoImage: { width: 250, height: 150 },
+  logoImage: { width: 180, height: 90 },
   container: { flex: 1, backgroundColor: "#F8F9FA" }, 
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8F9FA" },
   loadingText: { fontSize: 24, textAlign: "center", marginTop: 20, color: "#1e293b", fontWeight: '600' },
@@ -432,34 +448,40 @@ const styles = StyleSheet.create({
   
   content: { flex: 1, flexDirection: "row" },
   
-  sidebar: { backgroundColor: "#1e293b", elevation: 5 }, 
+  sidebar: { elevation: 5 },
   sidebarContent: { paddingVertical: 20, alignItems: "center" },
   categoryButton: {
     borderRadius: 10, padding: 10, width: "85%", marginBottom: 5, alignItems: "center",
     backgroundColor: "transparent", minHeight: 90, justifyContent: 'center'
   },
-  selectedCategory: { 
-    backgroundColor: "#334155", borderLeftWidth: 4, borderColor: "#ff69b4" 
+  selectedCategory: {
+    backgroundColor: "#334155", borderLeftWidth: 4,
   },
-  selectedCategoryText: { color: "#ff69b4", fontWeight: '700' }, 
+  selectedCategoryText: { fontWeight: '700' },
   categoryImage: { width: "100%", height: 130, marginBottom: 10, borderRadius: 10, backgroundColor: 'white' }, 
   categoryText: { color: "#94a3b8", fontSize: 15, fontWeight: "600", textAlign: "center" },
   
   menuGridContainer: { padding: 15 },
   menuGrid: { justifyContent: "flex-start", alignItems: "flex-start" },
   menuItem: {
-    height: 280, aspectRatio: 0.8, backgroundColor: "#fff", borderRadius: 20, overflow: 'hidden',
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 8,
-    elevation: 3, marginBottom: 20
+    aspectRatio: 0.72, borderRadius: 22, overflow: 'hidden',
+    backgroundColor: '#1e293b',
+    shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 12,
+    elevation: 6, marginBottom: 16,
   },
-  menuImage: { width: "100%", height: "55%" },
-  menuInfo: { padding: 15, flex: 1, justifyContent: 'space-between' },
-  menuText: { fontSize: 17, fontWeight: "700", textAlign: "left", color: "#1e293b", marginBottom: 5 },
+  menuOverlay: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    paddingHorizontal: 12, paddingBottom: 12, paddingTop: 40,
+  },
+  menuText: {
+    color: 'white', fontSize: 14, fontWeight: '700', marginBottom: 6,
+    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+  },
   priceActionContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  menuPrice: { fontSize: 20, color: "#0056b3", fontWeight: "800" }, 
-  addButton: { 
-    backgroundColor: "#ff69b4", width: 36, height: 36, borderRadius: 18, 
-    justifyContent: 'center', alignItems: 'center', elevation: 2 
+  menuPrice: { fontSize: 16, fontWeight: '900' },
+  addButton: {
+    width: 36, height: 36, borderRadius: 18,
+    justifyContent: 'center', alignItems: 'center', elevation: 2
   },
   emptyGrid: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyGridText: { fontSize: 20, color: '#94a3b8', textAlign: 'center' },
@@ -491,7 +513,7 @@ const modalStyles = StyleSheet.create({
     paddingVertical: 15, paddingHorizontal: 25, borderRadius: 18, minWidth: 160, alignItems: 'center',
   },
   btnSolo: { backgroundColor: '#f1f5f9' },
-  btnMenu: { backgroundColor: '#5e9bdd' },
+  btnMenu: {},
   btnLabel: { fontSize: 18, fontWeight: '800', color: '#1e293b' },
   btnPrice: { fontSize: 14, color: '#64748b', fontWeight: '600' },
   btnSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.8)' },

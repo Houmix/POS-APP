@@ -50,7 +50,8 @@ class MenuSerializer(serializers.ModelSerializer):
         model = Menu
         fields = [
             "id", "name", "description", "price", "group_menu", "group_menu_name",
-            "avalaible", "extra", "solo_price", "photo", "photo_url", "type", "position"
+            "avalaible", "extra", "solo_price", "photo", "photo_url", "type", "position",
+            "show_in_crosssell"
         ]
     
     def get_photo_url(self, obj):
@@ -117,4 +118,4 @@ class StepSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Step
-        fields = ['id', 'name', 'number', 'type', 'max_options', 'stepoptions', 'avalaible']
+        fields = ['id', 'name', 'number', 'type', 'max_options', 'stepoptions', 'avalaible', 'show_for_solo', 'show_for_full']
