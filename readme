@@ -43,3 +43,47 @@ taskkill /PID 5996 /F
 
 
 0712467202
+
+
+
+ ---
+  Phase 1 — Backend cloud-ready : DONE
+
+  Fichiers créés/modifiés
+
+  ┌────────────────────────────────────────────────────┬───────────────────────────────────────────────────────────┐
+  │                      Fichier                       │                      Ce qui a changé                      │
+  ├────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ settings.py                                        │ SECRET_KEY, DEBUG, DATABASE_URL, REDIS_URL depuis env     │
+  │                                                    │ vars                                                      │
+  ├────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ requirements.txt                                   │ Ajout channels_redis (WebSocket multi-process en prod)    │
+  ├────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ railway.toml                                       │ Config déploiement auto (migrate → collectstatic →        │
+  │                                                    │ daphne)                                                   │
+  ├────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ .env.example                                       │ Template à copier pour configurer l'environnement         │
+  ├────────────────────────────────────────────────────┼───────────────────────────────────────────────────────────┤
+  │ restaurant/management/commands/create_demo_data.py │ Commande démo                                             │
+  └────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────┘
+
+  ---
+  Pour lancer les données démo (maintenant, en local)
+
+  python manage.py create_demo_data
+  # ou reset complet :
+  python manage.py create_demo_data --reset
+
+  Ce que ça crée :
+  - Restaurant "ClickGo Démo" avec KioskConfig orange + style MacD
+  - 4 catégories, 10 articles, 4 étapes, 15 options, licences
+  - Caissier : 0600000000 / 123456
+  - Manager : 0600000001 / 123456
+
+  ---
+  Prochaine étape : déploiement Railway
+
+  Sur Railway tu crées :
+  1. Service Django → pointe vers ce repo, Railway détecte railway.toml automatiquement
+  2. Service PostgreSQL → Railway génère DATABASE_URL automatiquement
+  3. Service Redis → Railway génère REDIS_URL automatiquement

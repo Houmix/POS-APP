@@ -8,10 +8,11 @@ Serveur central pour la caisse (POS), la borne (Born), le KDS et l'écran client
 
 1. [Installation locale](#1-installation-locale)
 2. [Passer de Production à Démo](#2-passer-de-production-à-démo)
-3. [Déploiement cloud (Railway)](#3-déploiement-cloud-railway)
-4. [Générer l'exécutable (.exe / .app)](#4-générer-lexécutable-exe--app)
-5. [Build web des apps Expo](#5-build-web-des-apps-expo)
-6. [URLs utiles](#6-urls-utiles)
+3. [Système de démo en ligne](#3-système-de-démo-en-ligne)
+4. [Déploiement cloud (Railway)](#4-déploiement-cloud-railway)
+5. [Générer l'exécutable (.exe / .app)](#5-générer-lexécutable-exe--app)
+6. [Build web des apps Expo](#6-build-web-des-apps-expo)
+7. [URLs utiles](#7-urls-utiles)
 
 ---
 
@@ -94,7 +95,102 @@ cp .env.prod .env    # → production
 
 ---
 
-## 3. Déploiement cloud (Railway)
+## 3. Système de démo en ligne
+
+### Architecture
+
+La démo permet à un prospect de tester l'intégralité du système depuis son navigateur,
+sans rien installer. Elle repose sur 3 services hébergés :
+
+```
+clickgo-site.vercel.app/demo        ← page d'entrée (liens vers tout)
+        │
+        ├── born-app.vercel.app             ← Borne client (Expo web build)
+        ├── born-app-2xag.vercel.app        ← Caisse + KDS (Expo web build)
+        ├── borndz-production.up.railway.app/order/display/   ← Écran salle
+        └── borndz-production.up.railway.app  ← API Django (backend commun)
+```
+
+Toutes les apps pointent vers le même backend Railway. Une commande passée
+sur la borne apparaît en temps réel sur le KDS et l'écran salle.
+
+---
+
+### Données démo
+
+Le restaurant démo est créé via la commande :
+
+```bash
+python manage.py create_demo_data
+```
+
+Ce qu'elle crée :
+
+| Élément | Détail |
+|---------|--------|
+| Restaurant | ClickGo Démo |
+| Catégories | Burgers, Sandwichs, Boissons, Desserts |
+| Menus | 10 articles avec prix, descriptions, étapes |
+| Étapes | Sauce (2 choix max), Cuisson, Boisson du menu, Garniture glace |
+| Options | 15 options (BBQ, Ketchup, Saignant, Coca-Cola, Caramel…) |
+| Licence | Premium, valide 2 ans |
+| Compte caissier | `0600000000` / `123456` |
+| Compte manager | `0600000001` / `123456` |
+
+Pour remettre les données à zéro (ex: avant une démo importante) :
+
+```bash
+python manage.py create_demo_data --reset
+```
+
+---
+
+### Flux à montrer à un prospect
+
+```
+1. Ouvrir la borne  → born-app.vercel.app
+   └── Choisir un burger → personnaliser → valider la commande
+
+2. Ouvrir la caisse → born-app-2xag.vercel.app (0600000000 / 123456)
+   └── Voir la commande arriver dans l'onglet "Commandes"
+   └── Aller sur l'onglet 🔥 Cuisine (KDS) → commencer la préparation
+
+3. Ouvrir l'écran salle → borndz-production.up.railway.app/order/display/
+   └── Le numéro de commande passe en vert quand marqué "Prêt"
+```
+
+Tout se met à jour en **temps réel via WebSocket** — aucun rechargement manuel.
+
+---
+
+### Partager la démo
+
+Envoyer simplement ce lien au prospect :
+
+```
+https://clickgo-site.vercel.app/demo
+```
+
+La page explique le fonctionnement, affiche les identifiants et propose
+un bouton "Ouvrir" pour chaque composant.
+
+---
+
+### Limitations de la démo web
+
+| Fonctionnalité | Démo web | Production locale |
+|----------------|----------|-------------------|
+| Commandes en temps réel | ✅ | ✅ |
+| Menus, étapes, options | ✅ | ✅ |
+| Impression ticket Bluetooth | ❌ | ✅ |
+| Scan réseau local automatique | ❌ | ✅ |
+| Fonctionnement hors-ligne | ❌ | ✅ (partiel) |
+| Performance | Dépend d'internet | Réseau local rapide |
+
+---
+
+## 4. Déploiement cloud (Railway)
+
 
 Le fichier `railway.toml` configure tout automatiquement.
 
@@ -125,7 +221,7 @@ Le fichier `railway.toml` configure tout automatiquement.
 
 ---
 
-## 4. Générer l'exécutable (.exe / .app)
+## 5. Générer l'exécutable (.exe / .app)
 
 Le backend peut être packagé en un seul exécutable pour les restaurants
 (pas besoin d'installer Python sur le PC caisse).
@@ -230,7 +326,7 @@ Après avoir copié `dist/clickgo_server/` sur le PC :
 
 ---
 
-## 5. Build web des apps Expo
+## 6. Build web des apps Expo
 
 Les apps POS et Borne peuvent être compilées pour le navigateur (démo en ligne).
 
@@ -267,7 +363,7 @@ cd Born-APP/born_dz/dist && vercel --prod
 
 ---
 
-## 6. URLs utiles
+## 7. URLs utiles
 
 | URL | Description |
 |-----|-------------|
