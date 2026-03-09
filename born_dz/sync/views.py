@@ -323,6 +323,40 @@ def apply_snapshot(request):
 
 
 # ─────────────────────────────────────────
+#  FORCE REFRESH : Déclenche une mise à jour complète sur toutes les bornes
+# ─────────────────────────────────────────
+@csrf_exempt
+@require_http_methods(["POST"])
+def force_refresh(request):
+    """
+    Envoie un message WebSocket à toutes les bornes connectées pour
+    forcer une synchronisation complète du catalogue.
+    Appelé par le POS (caisse) quand le restaurateur clique sur "Rafraîchir".
+    """
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        from borne_sync.consumers import SYNC_GROUP_NAME
+
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                SYNC_GROUP_NAME,
+                {
+                    'type': 'sync.message',
+                    'data': {
+                        'type': 'menu_update',
+                        'status': 'full_sync_required',
+                        'timestamp': datetime.now(dt_timezone.utc).isoformat(),
+                    }
+                }
+            )
+        return JsonResponse({'success': True, 'message': 'Sync envoyé à toutes les bornes'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ─────────────────────────────────────────
 #  HELPER : Applique un changement unitaire
 # ─────────────────────────────────────────
 

@@ -104,6 +104,18 @@ export default function TabLayout() {
         }}
       />
 
+      {/* Cuisine KDS : visible pour tout le staff */}
+      <Tabs.Screen
+        name="kds"
+        options={{
+          title: 'Cuisine',
+          href: isStaff ? undefined : null,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "flame" : "flame-outline"} size={24} color={color} />
+          ),
+        }}
+      />
+
       {/* Seuls Owner et Manager accèdent à l'admin du Menu */}
       <Tabs.Screen
         name="MenuAdminPage"

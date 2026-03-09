@@ -34,6 +34,13 @@ class KioskConfig(models.Model):
     # Médias
     logo                 = models.ImageField(upload_to='kiosk/logos/', blank=True, null=True)
     screensaver_video    = models.FileField(upload_to='kiosk/videos/', blank=True, null=True)
+    # Design des cartes
+    CARD_STYLE_CHOICES = [
+        ('gradient', 'Gradient sombre'),
+        ('macdo', 'MacD (image + barre blanche)'),
+        ('magazine', 'Magazine (badge flottant)'),
+    ]
+    card_style           = models.CharField(max_length=20, choices=CARD_STYLE_CHOICES, default='gradient')
     updated_at           = models.DateTimeField(auto_now=True)
 
     def __str__(self):

@@ -203,9 +203,28 @@ class OrderCreate(APIView):
         except Exception as e:
             print(f"  Erreur post-process (QR/Ticket): {e}")
 
+        # 7. NOTIFICATION KDS via WebSocket
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            from borne_sync.consumers import KDS_GROUP_NAME
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                async_to_sync(channel_layer.group_send)(
+                    KDS_GROUP_NAME,
+                    {'type': 'kds.message', 'data': {
+                        'type': 'new_order',
+                        'order_id': order.id,
+                        'restaurant_id': restaurant.id,
+                        'status': initial_status,
+                    }}
+                )
+        except Exception as kds_err:
+            print(f"  [KDS] Erreur notification (non bloquant): {kds_err}")
+
         return Response({
-            "message": "Commande créée avec succès", 
-            "order_id": order.id, 
+            "message": "Commande créée avec succès",
+            "order_id": order.id,
             "qr_code_base64": qr_code
         }, status=status.HTTP_201_CREATED)
 
@@ -301,7 +320,8 @@ class POSOrderGet(APIView):
 class OrderUpdate(APIView):
     permission_classes = []
     authentication_classes = []
-    def put(self, request,order_id, *args, **kwargs):
+
+    def put(self, request, order_id, *args, **kwargs):
         print(request.data)
         try:
             order = Order.objects.get(id=order_id)
@@ -310,13 +330,95 @@ class OrderUpdate(APIView):
         serializer = OrderSerializer(order, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            # Notification KDS
+            try:
+                from channels.layers import get_channel_layer
+                from asgiref.sync import async_to_sync
+                from borne_sync.consumers import KDS_GROUP_NAME
+                channel_layer = get_channel_layer()
+                if channel_layer:
+                    async_to_sync(channel_layer.group_send)(
+                        KDS_GROUP_NAME,
+                        {'type': 'kds.message', 'data': {
+                            'type': 'order_updated',
+                            'order_id': order_id,
+                            'status': request.data.get('status', order.status),
+                        }}
+                    )
+            except Exception as kds_err:
+                print(f"  [KDS] Erreur notification update (non bloquant): {kds_err}")
             return Response({"message": "Commande mis à jour", "data": serializer.data}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class KDSOrderGet(APIView):
+    """Commandes actives du jour pour l'écran KDS (pending, in_progress, ready)."""
+    permission_classes = []
+    authentication_classes = []
+
+    def get(self, request, restaurant_id):
+        from django.utils.timezone import now
+        today = now().date()
+        active_statuses = ['pending', 'in_progress', 'ready', 'confirmed']
+        orders = Order.objects.filter(
+            restaurant=restaurant_id,
+            status__in=active_statuses,
+            created_at__date=today,
+        ).prefetch_related(
+            'items__menu',
+            'items__options__option__step'
+        ).order_by('created_at')
+
+        response_data = []
+        for order in orders:
+            order_items = []
+            for item in order.items.all():
+                options = []
+                for option_relation in item.options.all():
+                    so = option_relation.option
+                    options.append({
+                        "step_name":   so.step.name   if so.step   else "",
+                        "option_name": so.option.name if so.option else "",
+                        "option_price": float(so.extra_price or 0),
+                    })
+                order_items.append({
+                    "menu_name":   item.menu.name if item.menu else "?",
+                    "quantity":    item.quantity,
+                    "solo":        item.solo,
+                    "extra":       item.extra,
+                    "composition": options,
+                })
+            response_data.append({
+                "order_id":     order.id,
+                "order_status": order.status,
+                "cash":         order.cash,
+                "paid":         order.paid,
+                "take_away":    order.take_away,
+                "created_at":   order.created_at.isoformat(),
+                "total_price":  float(order.total_price()),
+                "items":        order_items,
+                "cancelled":    order.cancelled,
+                "refund":       order.refund,
+            })
+        return Response({"orders": response_data}, status=status.HTTP_200_OK)
 
 
 # ==========================================
 # 3. TICKET GENERATION
 # ==========================================
+
+def customer_display(request, restaurant_id=None):
+    """Page web plein écran pour afficher les commandes aux clients (TV en salle).
+    Si restaurant_id n'est pas fourni, on prend le premier restaurant en base.
+    """
+    if restaurant_id is None:
+        restaurant = Restaurant.objects.first()
+        if not restaurant:
+            from django.http import HttpResponse
+            return HttpResponse("Aucun restaurant configuré.", status=503)
+        restaurant_id = restaurant.id
+    return render(request, 'customer_display.html', {'restaurant_id': restaurant_id})
+
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
