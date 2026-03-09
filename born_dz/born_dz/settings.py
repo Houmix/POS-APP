@@ -14,6 +14,8 @@ from pathlib import Path
 import os
 import datetime
 from corsheaders.defaults import default_headers
+from decouple import config, Csv
+import dj_database_url
 """import ssl
 import requests
 
@@ -29,24 +31,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-y($ou%*05+_g)zspa#n-tol!)2p*l_6zr#@(kgomt1hv4$60eu"
+SECRET_KEY = config('SECRET_KEY', default='django-insecure-y($ou%*05+_g)zspa#n-tol!)2p*l_6zr#@(kgomt1hv4$60eu')
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = [
-    "127.0.0.1:60457",
+    "127.0.0.1",
+    "localhost",
     "192.168.1.50",
     "192.168.1.123",
     "menugo-dz.com",
     "www.menugo-dz.com",
-    "127.0.0.1",
-    "localhost",
     "borndz-production.up.railway.app",
-    "clickgo-siteweb-production.up.railway.app",
     "clickgo-interactive.com",
-    "www.clickgo-interactive.com"
-]
+    "www.clickgo-interactive.com",
+] + config('ALLOWED_HOSTS', default='', cast=Csv())
 
 
 # Application definition
@@ -77,15 +76,21 @@ INSTALLED_APPS = [ #Add created app here like customer, kds...
     "borne_sync",
     'sync',
 ]
-# Configuration Channels
-# NOTE: Remplacez par un broker Redis pour la production !
-CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels.layers.InMemoryChannelLayer' # Simple pour le dev
-        # 'BACKEND': 'channels_redis.pubsub.RedisChannelLayer', # Mieux pour la prod
-        # 'CONFIG': {"hosts": [('127.0.0.1', 6379)],},
-    },
-}
+# Configuration Channels — Redis en prod, InMemory en local
+_REDIS_URL = config('REDIS_URL', default='')
+if _REDIS_URL:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.pubsub.RedisChannelLayer',
+            'CONFIG': {"hosts": [_REDIS_URL]},
+        }
+    }
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        }
+    }
 ASGI_APPLICATION = 'born_dz.asgi.application'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -138,25 +143,17 @@ WSGI_APPLICATION = "born_dz.wsgi.application"
 
 
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+# Base de données — PostgreSQL si DATABASE_URL défini, SQLite sinon (dev local)
+_DATABASE_URL = config('DATABASE_URL', default='')
+if _DATABASE_URL:
+    DATABASES = {'default': dj_database_url.parse(_DATABASE_URL, conn_max_age=600)}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
-#Connected to postgrSQL DB hosted in RailwayApp
-"""
-DATABASES = { 
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'railway',
-        'USER': 'postgres',
-        'PASSWORD': 'PEVppBaRfefiFjYUyQQSxubXJMPuUISP',
-        'HOST': 'autorack.proxy.rlwy.net',
-        'PORT': '49671',
-    }
-}
-"""
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
@@ -221,16 +218,18 @@ AUTH_USER_MODEL = 'user.User' #Specify the user model to use
 
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.hostinger.com'
-EMAIL_PORT = 465
-EMAIL_HOST_USER = 'no-reply@menugo-dz.com'
-EMAIL_HOST_PASSWORD = '05042003H.l@'
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False 
+EMAIL_HOST = config('EMAIL_HOST', default='smtp.hostinger.com')
+EMAIL_PORT = config('EMAIL_PORT', default=465, cast=int)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='no-reply@menugo-dz.com')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+EMAIL_USE_SSL = False
 
+BASE_URL = config('BASE_URL', default='http://localhost:8000')
 
-
-BASE_URL = "http://menugo-dz.com"
+# Mode démo : pointe automatiquement sur le restaurant "ClickGo Démo"
+# Mettre DEMO_MODE=True dans .env pour activer
+DEMO_MODE = config('DEMO_MODE', default=False, cast=bool)
 
 
 CORS_ALLOW_ALL_ORIGINS = True  # pour tests, à restreindre en prod
@@ -246,7 +245,6 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:60457",
     "http://127.0.0.1:8080",
     "http://localhost:8000",
-    "http://localhost:8081",
     "http://localhost:8082",
     "http://localhost:5173",
     "http://menugo-dz.com",
@@ -256,6 +254,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://clickgo-siteweb-production.up.railway.app",
     "https://clickgo-interactive.com",
     "https://www.clickgo-interactive.com",
-    "http://localhost:5173"
-]
+    # Apps Expo web (Vercel) — ajouter ici les vraies URLs après déploiement
+    # "https://pos-demo.vercel.app",
+    # "https://born-demo.vercel.app",
+] + [f"https://{d}" for d in config('CORS_EXTRA_ORIGINS', default='', cast=Csv()) if d]
 

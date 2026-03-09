@@ -14,7 +14,11 @@ const DISCOVER_PATH = '/api/sync/discover/';
 const SCAN_TIMEOUT_MS = 1500;
 
 // URL et restaurant_id courants (mutables, chargés depuis AsyncStorage au démarrage)
-let _currentUrl = 'http://127.0.0.1:8000';
+// EXPO_PUBLIC_DEFAULT_SERVER_URL peut être défini au build time pour la démo web
+const DEFAULT_SERVER_URL =
+    (process.env.EXPO_PUBLIC_DEFAULT_SERVER_URL as string) || 'http://127.0.0.1:8000';
+
+let _currentUrl = DEFAULT_SERVER_URL;
 let _currentRestaurantId: string | null = null;
 
 export function getPosUrl(): string {
@@ -42,7 +46,7 @@ export async function saveServerUrl(url: string): Promise<void> {
 }
 
 export async function clearServerUrl(): Promise<void> {
-    _currentUrl = 'http://127.0.0.1:8000';
+    _currentUrl = DEFAULT_SERVER_URL;
     await AsyncStorage.removeItem(SERVER_URL_KEY);
 }
 

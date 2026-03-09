@@ -1,273 +1,123 @@
 # -*- mode: python ; coding: utf-8 -*-
+# ClickGo Backend — PyInstaller spec
+# Compatible Windows (.exe) et macOS (.app)
+# Usage : pyinstaller born_dz.spec
+
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 import os
+import sys
 
-# ========================================
-# CONFIGURATION DES CHEMINS
-# ========================================
-# NOTE: Remplacez ce chemin par le chemin absolu de votre projet
-BASE_DIR = r'C:\Users\HoumameLachache\Documents\POS-APP\born_dz'
+# ── Chemin de base (relatif au .spec, cross-platform) ────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(SPEC))
 
-# Liste des apps Django
 DJANGO_APPS = [
-    'user', 'chain', 'customer', 'KDS', 'manager', 'media',
-    'menu', 'order', 'POS', 'restaurant', 'terminal', 'website'
+    'user', 'chain', 'customer', 'KDS', 'manager',
+    'menu', 'order', 'POS', 'restaurant', 'terminal',
+    'website', 'sync', 'borne_sync',
 ]
 
-# ========================================
-# DONNÉES À INCLURE
-# ========================================
+# ── Données à embarquer ───────────────────────────────────────────────────────
 datas = [
     (os.path.join(BASE_DIR, 'born_dz'), 'born_dz'),
     (os.path.join(BASE_DIR, 'templates'), 'templates'),
 ]
 
-# Ajouter toutes les apps Django
 for app in DJANGO_APPS:
     app_path = os.path.join(BASE_DIR, app)
     if os.path.exists(app_path):
         datas.append((app_path, app))
 
-# Ajouter static si existe
 static_path = os.path.join(BASE_DIR, 'static')
 if os.path.exists(static_path):
     datas.append((static_path, 'static'))
 
-# Ajouter la base de données si existe
+staticfiles_path = os.path.join(BASE_DIR, 'staticfiles')
+if os.path.exists(staticfiles_path):
+    datas.append((staticfiles_path, 'staticfiles'))
+
 db_path = os.path.join(BASE_DIR, 'db.sqlite3')
 if os.path.exists(db_path):
     datas.append((db_path, '.'))
 
-# Ajouter settings.json si existe
-settings_json = os.path.join(BASE_DIR, 'settings.json')
-if os.path.exists(settings_json):
-    datas.append((settings_json, '.'))
+env_path = os.path.join(BASE_DIR, '.env')
+if os.path.exists(env_path):
+    datas.append((env_path, '.'))
 
-# ========================================
-# BINAIRES
-# ========================================
+# ── Binaires ──────────────────────────────────────────────────────────────────
 binaries = []
 
-# ========================================
-# HIDDEN IMPORTS - CRITIQUE POUR DAPHNE
-# ========================================
+# ── Hidden imports ────────────────────────────────────────────────────────────
 hiddenimports = [
-    # ===== Django Core =====
-    'django',
-    'django.core.handlers.asgi',
-    'django.core.handlers.wsgi',
-    'django.template.loaders.app_directories',
-    'django.template.loaders.filesystem',
-    'django.contrib.sessions.serializers',
-    'django.contrib.staticfiles',
+    # Django
+    'django', 'django.core.handlers.asgi', 'django.core.handlers.wsgi',
+    'django.template.loaders.app_directories', 'django.template.loaders.filesystem',
+    'django.contrib.sessions.serializers', 'django.contrib.staticfiles',
     'django.contrib.auth.hashers',
-    
-    # ===== Daphne & ASGI =====
-    'daphne',
-    'daphne.cli',
-    'daphne.server',
-    'daphne.ws_protocol',
-    'daphne.http_protocol',
-    
-    # ===== Channels =====
-    'channels',
-    'channels.layers',
-    'channels.routing',
-    'channels.auth',
-    
-    # ===== Twisted (ESSENTIEL pour Daphne) =====
-    'twisted',
-    'twisted.internet',
-    'twisted.internet.defer',
-    'twisted.internet.protocol',
-    'twisted.internet.reactor',
-    'twisted.internet.selectreactor',
-    'twisted.internet.ssl',
-    'twisted.internet.tcp',
-    'twisted.internet.endpoints',
-    'twisted.internet.base',
-    'twisted.internet.task',
-    'twisted.protocols',
-    'twisted.protocols.basic',
-    'twisted.protocols.tls',
-    'twisted.web',
-    'twisted.web.server',
-    'twisted.web.resource',
-    'twisted.web.http',
-    'twisted.web.websocket',
-    'twisted.python',
-    'twisted.python.log',
-    'twisted.python.failure',
+    # Daphne & ASGI
+    'daphne', 'daphne.cli', 'daphne.server', 'daphne.ws_protocol', 'daphne.http_protocol',
+    # Channels
+    'channels', 'channels.layers', 'channels.routing', 'channels.auth',
+    # Twisted
+    'twisted', 'twisted.internet', 'twisted.internet.defer', 'twisted.internet.protocol',
+    'twisted.internet.reactor', 'twisted.internet.selectreactor', 'twisted.internet.ssl',
+    'twisted.internet.tcp', 'twisted.internet.endpoints', 'twisted.internet.base',
+    'twisted.internet.task', 'twisted.protocols', 'twisted.protocols.basic',
+    'twisted.protocols.tls', 'twisted.web', 'twisted.web.server', 'twisted.web.resource',
+    'twisted.web.http', 'twisted.python', 'twisted.python.log', 'twisted.python.failure',
     'twisted.logger',
-    
-    # ===== Autobahn (WebSocket) =====
-    'autobahn',
-    'autobahn.twisted',
-    'autobahn.twisted.websocket',
-    'autobahn.twisted.resource',
-    'autobahn.websocket',
-    'autobahn.websocket.protocol',
+    # Autobahn (WebSocket)
+    'autobahn', 'autobahn.twisted', 'autobahn.twisted.websocket',
+    'autobahn.twisted.resource', 'autobahn.websocket', 'autobahn.websocket.protocol',
     'autobahn.websocket.compress',
-    
-    # ===== Zope Interface (requis par Twisted) =====
-    'zope',
-    'zope.interface',
-    'zope.interface.adapter',
-    'zope.interface.declarations',
-    'zope.interface.interface',
-    'zope.interface.registry',
-    
-    # ===== Incremental (requis par Twisted) =====
-    'incremental',
-    
-    # ===== Automat (requis par Twisted) =====
-    'automat',
-    'automat._core',
-    'automat._methodical',
-    
-    # ===== Hyperlink (requis par Twisted) =====
-    'hyperlink',
-    
-    # ===== Constantly (requis par Twisted) =====
-    'constantly',
-    
-    # ===== PyASN1 (requis pour SSL/TLS) =====
-    'pyasn1',
-    'pyasn1.codec',
-    'pyasn1.codec.der',
-    'pyasn1.codec.der.decoder',
-    'pyasn1.codec.der.encoder',
-    'pyasn1.type',
-    'pyasn1_modules',
-    
-    # ===== OpenSSL =====
-    'OpenSSL',
-    'OpenSSL.SSL',
-    'OpenSSL.crypto',
-    
-    # ===== Service Identity (SSL) =====
-    'service_identity',
-    'service_identity.pyopenssl',
-    
-    # ===== Attrs (requis par Twisted) =====
-    'attr',
-    'attrs',
-    
-    # ===== txaio (requis par Autobahn) =====
-    'txaio',
-    'txaio.tx',
-    
-    # ===== ASGI Common =====
-    'asgiref',
-    'asgiref.sync',
-    'asgiref.server',
-    
-    # ===== Django REST Framework =====
-    'rest_framework',
-    'rest_framework.authentication',
-    'rest_framework.permissions',
-    'rest_framework.renderers',
-    'rest_framework.parsers',
-    
-    # ===== Simple JWT =====
-    'rest_framework_simplejwt',
-    'rest_framework_simplejwt.tokens',
+    # Zope
+    'zope', 'zope.interface', 'zope.interface.adapter', 'zope.interface.declarations',
+    'zope.interface.interface', 'zope.interface.registry',
+    # Autres dépendances Twisted
+    'incremental', 'automat', 'automat._core', 'automat._methodical',
+    'hyperlink', 'constantly', 'pyasn1', 'pyasn1.codec', 'pyasn1.codec.der',
+    'pyasn1_modules', 'OpenSSL', 'OpenSSL.SSL', 'OpenSSL.crypto',
+    'service_identity', 'service_identity.pyopenssl',
+    'attr', 'attrs', 'txaio', 'txaio.tx',
+    # ASGI
+    'asgiref', 'asgiref.sync', 'asgiref.server',
+    # DRF
+    'rest_framework', 'rest_framework.authentication', 'rest_framework.permissions',
+    'rest_framework.renderers', 'rest_framework.parsers',
+    'rest_framework_simplejwt', 'rest_framework_simplejwt.tokens',
     'rest_framework_simplejwt.authentication',
-    
-    # ===== CORS Headers =====
     'corsheaders',
-    
-    # ===== Autres dépendances =====
-    'PIL',
-    'PIL._imaging',
-    'qrcode',
-    'psycopg',
-    'psycopg2',
+    # Utilitaires
+    'PIL', 'PIL._imaging', 'qrcode', 'psycopg', 'psycopg2',
+    'decouple', 'dj_database_url', 'whitenoise', 'whitenoise.middleware',
 ]
 
-# ========================================
-# COLLECTER TOUS LES SOUS-MODULES
-# ========================================
-# Django
-tmp_ret = collect_all('django')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
+# collect_all pour les gros packages
+for pkg in ['django', 'daphne', 'channels', 'twisted', 'autobahn', 'zope.interface', 'automat']:
+    tmp = collect_all(pkg)
+    datas     += tmp[0]
+    binaries  += tmp[1]
+    hiddenimports += tmp[2]
 
-# Daphne
-tmp_ret = collect_all('daphne')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
+# ── Runtime hook ──────────────────────────────────────────────────────────────
+hooks_dir = os.path.join(BASE_DIR, 'pyinstaller_hooks')
+os.makedirs(hooks_dir, exist_ok=True)
 
-# Channels
-tmp_ret = collect_all('channels')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
-
-# Twisted (CRITIQUE)
-tmp_ret = collect_all('twisted')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
-
-# Autobahn
-tmp_ret = collect_all('autobahn')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
-
-# Zope Interface
-tmp_ret = collect_all('zope.interface')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
-
-# Automat
-tmp_ret = collect_all('automat')
-datas += tmp_ret[0]
-binaries += tmp_ret[1]
-hiddenimports += tmp_ret[2]
-
-# ========================================
-# RUNTIME HOOKS
-# ========================================
-# Créer un runtime hook pour Django
-runtime_hooks_dir = os.path.join(BASE_DIR, 'pyinstaller_hooks')
-os.makedirs(runtime_hooks_dir, exist_ok=True)
-
-runtime_hook_path = os.path.join(runtime_hooks_dir, 'django_runtime_hook.py')
-runtime_hook_content = '''
-import os
-import sys
-
-# Configurer les variables d'environnement Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'born_dz.settings')
-
-# Ajouter le répertoire de base au path
-if hasattr(sys, '_MEIPASS'):
-    # Mode PyInstaller
+hook_path = os.path.join(hooks_dir, 'django_runtime_hook.py')
+with open(hook_path, 'w', encoding='utf-8') as f:
+    f.write('''import os, sys
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "born_dz.settings")
+if hasattr(sys, "_MEIPASS"):
     sys.path.insert(0, sys._MEIPASS)
-'''
+''')
 
-with open(runtime_hook_path, 'w', encoding='utf-8') as f:
-    f.write(runtime_hook_content)
+# ── Pathex ────────────────────────────────────────────────────────────────────
+pathex = [BASE_DIR] + [
+    os.path.join(BASE_DIR, app)
+    for app in DJANGO_APPS
+    if os.path.exists(os.path.join(BASE_DIR, app))
+]
 
-runtime_hooks = [runtime_hook_path]
-
-# ========================================
-# PATHEX
-# ========================================
-pathex = [BASE_DIR]
-for app in DJANGO_APPS:
-    app_path = os.path.join(BASE_DIR, app)
-    if os.path.exists(app_path):
-        pathex.append(app_path)
-
-# ========================================
-# ANALYSIS
-# ========================================
+# ── Analysis ──────────────────────────────────────────────────────────────────
 a = Analysis(
     [os.path.join(BASE_DIR, 'run_daphne.py')],
     pathex=pathex,
@@ -275,48 +125,26 @@ a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
-    hooksconfig={},
-    runtime_hooks=runtime_hooks,
-    excludes=[
-        'tkinter',
-        'matplotlib',
-        'numpy',
-        'scipy',
-        'pandas',
-    ],
+    runtime_hooks=[hook_path],
+    excludes=['tkinter', 'matplotlib', 'numpy', 'scipy', 'pandas'],
     noarchive=False,
     optimize=0,
 )
 
-# ========================================
-# PYZ (Archive Python)
-# ========================================
 pyz = PYZ(a.pure)
 
-# ========================================
-# EXE
-# ========================================
 exe = EXE(
     pyz,
     a.scripts,
     [],
     exclude_binaries=True,
-    name='django_asgi_app',  # ✅ Nom cohérent avec main.js
+    name='clickgo_server',
     debug=False,
-    bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,  # ✅ Console pour debug
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
+    console=True,
 )
 
-# ========================================
-# COLLECT (Dossier final)
-# ========================================
 coll = COLLECT(
     exe,
     a.binaries,
@@ -324,5 +152,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='born_dz',
+    name='clickgo_server',
 )

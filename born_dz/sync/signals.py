@@ -34,21 +34,20 @@ def _get_restaurant_from_menu(obj):
     return None
 
 def _get_restaurant_from_option(obj):
-    # Option n'a pas de FK directe vers Restaurant
-    # On récupère via StepOption → Step → Menu → GroupMenu → Restaurant
+    # Option n'a pas de FK directe → via StepOption → Step → restaurant
     step_option = obj.option.first()  # related_name="option"
-    if step_option and step_option.step and step_option.step.menu and step_option.step.menu.group_menu:
-        return step_option.step.menu.group_menu.restaurant_id
+    if step_option and step_option.step:
+        return step_option.step.restaurant_id
     return None
 
 def _get_restaurant_from_step(obj):
-    if obj.menu and obj.menu.group_menu:
-        return obj.menu.group_menu.restaurant_id
-    return None
+    # Step a maintenant une FK directe vers restaurant
+    return obj.restaurant_id
 
 def _get_restaurant_from_step_option(obj):
-    if obj.step and obj.step.menu and obj.step.menu.group_menu:
-        return obj.step.menu.group_menu.restaurant_id
+    # StepOption → Step → restaurant
+    if obj.step:
+        return obj.step.restaurant_id
     return None
 
 def _get_restaurant_from_order(obj):

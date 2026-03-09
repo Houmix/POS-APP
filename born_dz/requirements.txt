@@ -24,6 +24,9 @@ pillow==12.1.0
 qrcode==8.2
 python-decouple==3.8
 
+# WebSocket Redis (prod)
+channels_redis==4.2.1
+
 # Gestion des dépendances (Fix conflit Railway)
 typing_extensions>=4.13.2
 asgiref==3.11.0
