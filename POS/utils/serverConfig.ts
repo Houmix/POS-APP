@@ -51,6 +51,8 @@ export async function clearServerUrl(): Promise<void> {
 }
 
 export async function hasSavedServerUrl(): Promise<boolean> {
+    // Si une URL est baked in au build (démo web), pas besoin de configuration manuelle
+    if (process.env.EXPO_PUBLIC_DEFAULT_SERVER_URL) return true;
     const saved = await AsyncStorage.getItem(SERVER_URL_KEY);
     return !!saved;
 }
