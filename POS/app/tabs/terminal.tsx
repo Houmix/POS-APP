@@ -8,372 +8,274 @@ import {
   Alert,
   Image,
   ScrollView,
-  ActivityIndicator, 
-  Modal, 
-  Platform
+  ActivityIndicator,
+  Modal,
+  Platform,
 } from "react-native";
-import { useEffect, useState, useRef, useCallback } from "react";
-import { useRouter } from "expo-router";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { LinearGradient } from 'expo-linear-gradient';
-import { getPosUrl } from "@/utils/serverConfig";
-import Feather from '@expo/vector-icons/Feather'; 
+import { LinearGradient } from "expo-linear-gradient";
+import { getPosUrl, getRestaurantId } from "@/utils/serverConfig";
+import Feather from "@expo/vector-icons/Feather";
+import { AntDesign, Ionicons } from "@expo/vector-icons";
 import { useBorneSync } from "@/hooks/useBorneSync.js";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { LanguageSelector } from "@/components/LanguageSelector";
 import { useKioskTheme } from "@/contexts/KioskThemeContext";
+import axios from "axios";
 
-// ⏱️ TEMPS D'INACTIVITÉ (15 minutes en millisecondes)
-const INACTIVITY_LIMIT = 15 * 60 * 1000; 
+const INACTIVITY_LIMIT = 15 * 60 * 1000;
+
+const DANGER = "#EF4444";
+const SUCCESS = "#22C55E";
+const MUTED = "#64748B";
 
 export default function MenuScreen() {
   const router = useRouter();
   const { t, isRTL } = useLanguage();
   const theme = useKioskTheme();
 
-  // États des données
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [cartCount, setCartCount] = useState(0); 
-  
-  // États des Modales
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [selectedItemForModal, setSelectedItemForModal] = useState(null);
-  
-  // Hook de synchronisation
   const { categories, menus, isLoading, fetchAndCacheAllData } = useBorneSync();
+  const [selectedCategory, setSelectedCategory] = useState<any>(null);
 
-  // Rafraîchissement manuel (POS + notifie toutes les bornes via WebSocket)
+  // ── Cart ──────────────────────────────────────────────────────────
+  const [orderList, setOrderList] = useState<any[]>([]);
+
+  const refreshCart = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem("orderList");
+      setOrderList(stored ? JSON.parse(stored) : []);
+    } catch { setOrderList([]); }
+  }, []);
+
+  const updateCart = async (newList: any[]) => {
+    setOrderList(newList);
+    await AsyncStorage.setItem("orderList", JSON.stringify(newList));
+  };
+
+  const changeQuantity = (index: number, delta: number) => {
+    const newList = [...orderList];
+    const qty = newList[index].quantity + delta;
+    if (qty > 0) { newList[index].quantity = qty; updateCart(newList); }
+    else { updateCart(newList.filter((_, i) => i !== index)); }
+  };
+
+  const removeItem = (index: number) => updateCart(orderList.filter((_, i) => i !== index));
+
+  const calculateMenuPrice = (item: any) => {
+    const base = parseFloat(item.price) || 0;
+    const extras = item.steps?.reduce((s: number, step: any) =>
+      s + step.selectedOptions.reduce((o: number, opt: any) => o + (parseFloat(opt.optionPrice) || 0), 0), 0) || 0;
+    return base + extras;
+  };
+
+  const totalPrice = useMemo(
+    () => orderList.reduce((acc, item) => acc + calculateMenuPrice(item) * item.quantity, 0),
+    [orderList]
+  );
+
+  const cartCount = useMemo(
+    () => orderList.reduce((acc, item) => acc + (item.quantity || 1), 0),
+    [orderList]
+  );
+
+  // ── Cross-sell ────────────────────────────────────────────────────
+  const [crossSellItems, setCrossSellItems] = useState<any[]>([]);
+  const [showCrossSell, setShowCrossSell] = useState(false);
+  const [crossSellQty, setCrossSellQty] = useState<Record<number, number>>({});
+
+  const fetchCrossSell = async () => {
+    try {
+      const restaurantId = getRestaurantId();
+      if (!restaurantId) return;
+      const res = await axios.get(
+        `${getPosUrl()}/menu/api/crosssell/?restaurant_id=${restaurantId}`,
+        { timeout: 4000 }
+      );
+      setCrossSellItems(res.data || []);
+    } catch { /* silencieux */ }
+  };
+
+  const proceedToPayment = async (list: any[]) => {
+    const formattedOrder = list.map((order) => ({
+      menu: order.menuId,
+      quantity: order.quantity,
+      solo: order.solo || false,
+      extra: order.extra || false,
+      options: order.steps?.flatMap((s: any) =>
+        s.selectedOptions.map((o: any) => ({ step: s.stepId, option: o.optionId }))
+      ) || [],
+    }));
+    await AsyncStorage.setItem("pendingOrder", JSON.stringify(formattedOrder));
+    router.push("/order/location");
+  };
+
+  const handleValidateCart = () => {
+    if (orderList.length === 0) return;
+    if (crossSellItems.length > 0) {
+      setCrossSellQty({});
+      setShowCrossSell(true);
+    } else {
+      proceedToPayment(orderList);
+    }
+  };
+
+  const handleCrossSellConfirm = async () => {
+    const extras = Object.entries(crossSellQty)
+      .filter(([, qty]) => qty > 0)
+      .map(([id, qty]) => {
+        const item = crossSellItems.find((i) => i.id === parseInt(id));
+        return { menuId: item.id, menuName: item.name, price: parseFloat(item.price), quantity: qty, extra: true, solo: false, steps: [] };
+      });
+    const updated = [...orderList, ...extras];
+    await updateCart(updated);
+    setShowCrossSell(false);
+    proceedToPayment(updated);
+  };
+
+  // ── Inactivity timer ──────────────────────────────────────────────
+  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const performLogout = async (auto = false) => {
+    try {
+      if (auto) console.log("Déconnexion automatique");
+      const serverUrl = await AsyncStorage.getItem("SERVER_URL_KEY");
+      const restaurantId = await AsyncStorage.getItem("RESTAURANT_ID_KEY");
+      await AsyncStorage.clear();
+      if (serverUrl) await AsyncStorage.setItem("SERVER_URL_KEY", serverUrl);
+      if (restaurantId) await AsyncStorage.setItem("RESTAURANT_ID_KEY", restaurantId);
+      router.replace("/");
+    } catch (e) { console.error("Erreur logout:", e); }
+  };
+
+  const resetInactivityTimer = useCallback(() => {
+    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+    inactivityTimerRef.current = setTimeout(() => performLogout(true), INACTIVITY_LIMIT);
+  }, []);
+
+  const handleUserActivity = () => resetInactivityTimer();
+
+  const handleLogoutPress = () => {
+    if (Platform.OS === "web") {
+      performLogout();
+    } else {
+      Alert.alert("Déconnexion", "Voulez-vous vraiment quitter le terminal ?", [
+        { text: "Annuler", style: "cancel" },
+        { text: "Déconnexion", style: "destructive", onPress: () => performLogout() },
+      ]);
+    }
+  };
+
+  // ── Refresh ───────────────────────────────────────────────────────
   const [isRefreshing, setIsRefreshing] = useState(false);
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await AsyncStorage.setItem('steps_cache_invalidated', 'true');
+      await AsyncStorage.setItem("steps_cache_invalidated", "true");
       await fetchAndCacheAllData();
-      // Notifie toutes les bornes de se mettre à jour
-      const token = await AsyncStorage.getItem('token');
-      const posUrl = getPosUrl();
-      if (posUrl && token) {
-        await fetch(`${posUrl}/api/sync/force-refresh/`, {
-          method: 'POST',
+      const token = await AsyncStorage.getItem("token");
+      if (getPosUrl() && token) {
+        await fetch(`${getPosUrl()}/api/sync/force-refresh/`, {
+          method: "POST",
           headers: { Authorization: `Bearer ${token}` },
-        }).catch(() => {}); // silencieux si la borne n'est pas connectée
+        }).catch(() => {});
       }
-    } finally {
-      setIsRefreshing(false);
-    }
+    } finally { setIsRefreshing(false); }
   };
 
-  // ⏱️ VARIABLE DE RÉFÉRENCE POUR LE TIMER
-  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // --- CALCULS DE LAYOUT ---
-  const width = Dimensions.get("window").width;
-  const itemMargin = width > 700 ? 20 : 10;
-  const numColumns = width >= 700 ? 3 : width >= 500 ? 2 : 1;
-  const sidebarPercent = width > 700 ? 25 : 30; 
-  const sidebarWidth = `${sidebarPercent}%`;
-  const menuGridWidth = 100 - sidebarPercent;
-  const innerGridWidth = (width * menuGridWidth / 100);
-  const itemWidth = (innerGridWidth - itemMargin * (numColumns + 1)) / numColumns;
-
-  // ✅ FONCTION DE DÉCONNEXION (Utilisée par le bouton et le timer)
-  const performLogout = async (auto = false) => {
-    try {
-        await AsyncStorage.clear();
-        if (auto) console.log("Déconnexion automatique par inactivité");
-        router.replace("/");
-    } catch (e) {
-        console.error("Erreur logout:", e);
-    }
-  };
-
-  // ✅ GESTIONNAIRE DU TIMER
-  const resetInactivityTimer = useCallback(() => {
-    // 1. On efface le timer précédent s'il existe
-    if (inactivityTimerRef.current) {
-      clearTimeout(inactivityTimerRef.current);
-    }
-
-    // 2. On lance un nouveau timer de 15 min
-    inactivityTimerRef.current = setTimeout(() => {
-      // Action à effectuer après 15 min
-      performLogout(true); 
-    }, INACTIVITY_LIMIT);
+  // ── Init ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    fetchCrossSell();
+    resetInactivityTimer();
+    return () => { if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current); };
   }, []);
 
-  // ✅ DÉTECTION D'ACTIVITÉ (Appelé à chaque touch sur l'écran)
-  const handleUserActivity = () => {
-    resetInactivityTimer();
-  };
-
-  // ✅ EFFET : Lancer le timer au montage du composant
-  useEffect(() => {
-    resetInactivityTimer(); // Premier lancement
-
-    // Nettoyage si on quitte la page
-    return () => {
-      if (inactivityTimerRef.current) {
-        clearTimeout(inactivityTimerRef.current);
-      }
-    };
-  }, [resetInactivityTimer]);
-
-  // --- BOUTON MANUEL DE DÉCONNEXION ---
-  const handleLogoutPress = async () => {
-    if (Platform.OS === 'web') { 
-            performLogout();
-    } else {
-        Alert.alert(
-            "Déconnexion",
-            "Voulez-vous vraiment quitter le terminal ?",
-            [
-                { text: "Annuler", style: "cancel" },
-                { text: "Déconnexion", style: 'destructive', onPress: () => performLogout() }
-            ]
-        );
-    }
-  };
-  
-  // --- LOGIQUE PANIER ET MENU ---
-  const updateCartCount = async () => {
-    try {
-      const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
-      const count = existingOrders.reduce((total, item) => total + (item.quantity || 1), 0);
-      setCartCount(count);
-    } catch (error) {
-      setCartCount(0);
-    }
-  };
+  // Rafraîchir le panier à chaque fois qu'on revient sur cet écran (ex: retour de /order/step)
+  useFocusEffect(useCallback(() => { refreshCart(); }, [refreshCart]));
 
   useEffect(() => {
-    updateCartCount();
-    if (categories.length > 0 && !selectedCategory) {
-      setSelectedCategory(categories[0]);
-    }
+    if (categories.length > 0 && !selectedCategory) setSelectedCategory(categories[0]);
   }, [categories]);
 
-  const handleOpenModal = (item) => {
-    handleUserActivity(); 
-    setSelectedItemForModal(item);
-    setIsModalVisible(true);
-  };
-  
-  const handleSoloAdd = () => {
-    if (!selectedItemForModal) return;
-    handleUserActivity();
-    const item = selectedItemForModal;
-    setIsModalVisible(false);
+  // ── Solo/Menu modal ───────────────────────────────────────────────
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
 
-    // On envoie le client vers la composition AVEC le mode Solo activé
-    router.push({
-        pathname: "/order/step",
-        params: { 
-            menuId: item.id, 
-            menuName: item.name, 
-            price: item.solo_price || item.price || 0, 
-            isSolo: 'true' // <--- C'est ce mot magique qui dira à step.tsx de cacher les boissons/frites
-        },
-    });
+  const handleAddToCart = async (item: any) => {
+    handleUserActivity();
+    if (item.extra) {
+      const existing = [...orderList];
+      const idx = existing.findIndex((o) => o.menuId === item.id && o.extra === true);
+      if (idx !== -1) existing[idx].quantity += 1;
+      else existing.push({ menuId: item.id, menuName: item.name, extra: true, quantity: 1, price: item.price || 0, steps: [] });
+      await updateCart(existing);
+    } else if (item.offer_menu_choice === false) {
+      router.push({ pathname: "/order/step", params: { menuId: item.id, menuName: item.name, price: item.solo_price || item.price || 0, isSolo: "false" } });
+    } else {
+      setSelectedItem(item);
+      setIsModalVisible(true);
+    }
+  };
+
+  const handleSoloAdd = () => {
+    if (!selectedItem) return;
+    setIsModalVisible(false);
+    router.push({ pathname: "/order/step", params: { menuId: selectedItem.id, menuName: selectedItem.name, price: selectedItem.solo_price || selectedItem.price || 0, isSolo: "true" } });
   };
 
   const handleMenuAdd = () => {
-    if (!selectedItemForModal) return;
-    handleUserActivity(); 
-    const item = selectedItemForModal;
+    if (!selectedItem) return;
     setIsModalVisible(false);
-
-    // On envoie le client vers la composition en mode Menu complet (par défaut)
-    router.push({
-        pathname: "/order/step",
-        params: { 
-            menuId: item.id, 
-            menuName: item.name, 
-            price: item.price || 0, 
-            isSolo: 'false'
-        },
-    });
+    router.push({ pathname: "/order/step", params: { menuId: selectedItem.id, menuName: selectedItem.name, price: selectedItem.price || 0, isSolo: "false" } });
   };
 
-  const handleAddToCart = async (item) => {
-    handleUserActivity();
-    if (item.extra) {
-      try {
-        const existingOrders = JSON.parse(await AsyncStorage.getItem("orderList") || "[]");
+  // ── Layout ────────────────────────────────────────────────────────
+  const screenWidth = Dimensions.get("window").width;
+  const SIDEBAR_W = 130;
+  const CART_W = 280;
+  const menuAreaW = screenWidth - SIDEBAR_W - CART_W;
+  const numCols = menuAreaW >= 600 ? 3 : 2;
+  const cardW = (menuAreaW - 16 * (numCols + 1)) / numCols;
 
-        const existingIndex = existingOrders.findIndex(order =>
-            order.menuId === item.id && order.extra === true
-        );
-
-        if (existingIndex !== -1) {
-            existingOrders[existingIndex].quantity += 1;
-        } else {
-            existingOrders.push({
-                menuId: item.id,
-                menuName: item.name,
-                extra: true,
-                quantity: 1,
-                price: item.price || 0,
-                steps: []
-            });
-        }
-
-        await AsyncStorage.setItem("orderList", JSON.stringify(existingOrders));
-        await updateCartCount();
-
-        Alert.alert(t('terminal.added_success'), `${item.name} ${t('terminal.added_extra')}`, [{ text: "OK", onPress: resetInactivityTimer }]);
-      } catch (error) {
-        Alert.alert(t('error'), t('errors.add_cart'));
-      }
-    } else if (item.offer_menu_choice === false) {
-      // Pas de choix solo/menu : aller directement aux étapes
-      handleUserActivity();
-      router.push({
-        pathname: "/order/step",
-        params: {
-          menuId: item.id,
-          menuName: item.name,
-          price: item.solo_price || item.price || 0,
-          isSolo: 'false',
-        },
-      });
-    } else {
-      handleOpenModal(item);
-    }
-  };
-
-  const ChoiceModal = () => {
-    if (!selectedItemForModal) return null;
-    return (
-      <Modal 
-        animationType="slide" 
-        transparent={true} 
-        visible={isModalVisible} 
-        onRequestClose={() => setIsModalVisible(false)}
-      >
-        <TouchableOpacity 
-          style={modalStyles.centeredView} 
-          activeOpacity={1} 
-          onPress={() => setIsModalVisible(false)}
-        >
-          <TouchableOpacity activeOpacity={1} style={modalStyles.productCard}>
-            {selectedItemForModal.photo && (
-              <Image 
-                source={{ uri: `${getPosUrl()}${selectedItemForModal.photo}` }} 
-                style={modalStyles.productImageFull} 
-                resizeMode="cover" 
-              />
-            )}
-
-            <View style={modalStyles.productDetails}>
-              <Text style={modalStyles.modalTitle}>{selectedItemForModal.name}</Text>
-              
-              <View style={modalStyles.descriptionSection}>
-                <Text style={modalStyles.descriptionText}>
-                  {selectedItemForModal.description || "Délicieuse préparation artisanale avec des produits frais sélectionnés avec soin."}
-                </Text>
-              </View>
-
-              <View style={modalStyles.footerActions}>
-                <TouchableOpacity 
-                  style={modalStyles.backButton} 
-                  onPress={() => setIsModalVisible(false)}
-                >
-                  <Feather name="arrow-left" size={20} color="#94a3b8" />
-                  <Text style={modalStyles.backButtonText}>{t('cancel')}</Text>
-                </TouchableOpacity>
-
-                <View style={modalStyles.mainButtons}>
-                  <TouchableOpacity style={[modalStyles.actionBtn, modalStyles.btnSolo]} onPress={handleSoloAdd}>
-                    <Text style={modalStyles.btnLabel}>{t('terminal.solo')}</Text>
-                    <Text style={modalStyles.btnPrice}>{selectedItemForModal.solo_price || selectedItemForModal.price || 0} DA</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={[modalStyles.actionBtn, { backgroundColor: theme.primaryColor }]} onPress={handleMenuAdd}>
-                    <Text style={[modalStyles.btnLabel, { color: 'white' }]}>{t('terminal.in_menu')}</Text>
-                    <Text style={modalStyles.btnSubtitle}>
-                      {selectedItemForModal.price || 0} DA
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-    );
-  };
-
-  if (isLoading) {
-    return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.backgroundColor }]}>
-        <ActivityIndicator size="large" color={theme.primaryColor} />
-        <Text style={styles.loadingText}>{t('terminal.loading_menus')}</Text>
-      </View>
-    );
-  }
-  
   const filteredMenus = menus.filter(
-    (item) =>
-      item.group_menu === selectedCategory?.id &&
-      item.avalaible &&
-      categories.some((category) => category.id === item.group_menu && category.avalaible)
+    (item) => item.group_menu === selectedCategory?.id && item.avalaible &&
+      categories.some((c) => c.id === item.group_menu && c.avalaible)
   );
 
-  const getDisplayPrice = (item) => {
-    if (item.extra == 1) return `+${item.solo_price}`;
-    if (item.price && parseFloat(item.price) > 0) return `${item.price}`;
-    return `${item.solo_price}`;
-  };
+  // ── Render menu card ──────────────────────────────────────────────
+  const renderMenuCard = (item: any) => {
+    const imageSource = item.photo ? { uri: `${getPosUrl()}${item.photo}` } : require("@/assets/logo.png");
+    const price = item.extra ? `+${item.solo_price}` : item.price && parseFloat(item.price) > 0 ? item.price : item.solo_price;
+    const style = theme.cardStyle || "gradient";
 
-  const renderMenuCard = (item) => {
-    const imageSource = item.photo
-      ? { uri: `${getPosUrl()}${item.photo}` }
-      : require('@/assets/logo.png');
-    const displayPrice = getDisplayPrice(item);
-    const style = theme.cardStyle || 'gradient';
-
-    if (style === 'macdo') {
+    if (style === "macdo") {
       return (
-        <TouchableOpacity
-          key={item.id}
-          style={[styles.menuItem, { width: itemWidth, margin: itemMargin / 2, backgroundColor: theme.cardBgColor }]}
-          onPress={() => handleAddToCart(item)}
-          activeOpacity={0.85}
-        >
-          <View style={{ flex: 6, overflow: 'hidden' }}>
-            <Image source={imageSource} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          </View>
-          <View style={{ flex: 4, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 10, justifyContent: 'space-between', backgroundColor: theme.cardBgColor }}>
-            <Text style={{ color: theme.textColor, fontWeight: '700', fontSize: 13, lineHeight: 18 }} numberOfLines={2}>{item.name}</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ color: theme.secondaryColor, fontSize: 16, fontWeight: '900' }}>{displayPrice} DA</Text>
-              <View style={[styles.addButton, { backgroundColor: theme.secondaryColor }]}>
-                <Feather name="plus" size={18} color="white" />
-              </View>
+        <TouchableOpacity key={item.id} style={[styles.card, { width: cardW, backgroundColor: theme.cardBgColor }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
+          <Image source={imageSource} style={{ width: "100%", height: cardW * 0.6 }} resizeMode="cover" />
+          <View style={{ padding: 8 }}>
+            <Text style={{ color: theme.textColor, fontWeight: "700", fontSize: 12 }} numberOfLines={2}>{item.name}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+              <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 13 }}>{price} DA</Text>
+              <View style={[styles.addBtn, { backgroundColor: theme.secondaryColor }]}><Feather name="plus" size={14} color="white" /></View>
             </View>
           </View>
         </TouchableOpacity>
       );
     }
 
-    if (style === 'magazine') {
+    if (style === "magazine") {
       return (
-        <TouchableOpacity
-          key={item.id}
-          style={[styles.menuItem, { width: itemWidth, margin: itemMargin / 2 }]}
-          onPress={() => handleAddToCart(item)}
-          activeOpacity={0.85}
-        >
+        <TouchableOpacity key={item.id} style={[styles.card, { width: cardW, aspectRatio: 0.8 }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
           <Image source={imageSource} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          <View style={{ position: 'absolute', top: 12, left: 10, right: 10, backgroundColor: 'rgba(15,23,42,0.6)', borderRadius: 100, paddingVertical: 7, paddingHorizontal: 12 }}>
-            <Text style={{ color: 'white', fontWeight: '700', fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
+          <View style={{ position: "absolute", top: 8, left: 8, right: 8, backgroundColor: "rgba(15,23,42,0.65)", borderRadius: 20, paddingVertical: 5, paddingHorizontal: 10 }}>
+            <Text style={{ color: "white", fontWeight: "700", fontSize: 11 }} numberOfLines={1}>{item.name}</Text>
           </View>
-          <View style={{ position: 'absolute', bottom: 12, left: 10, right: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ backgroundColor: theme.secondaryColor, borderRadius: 100, paddingVertical: 7, paddingHorizontal: 14 }}>
-              <Text style={{ color: 'white', fontWeight: '900', fontSize: 15 }}>{displayPrice} DA</Text>
+          <View style={{ position: "absolute", bottom: 8, left: 8, right: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View style={{ backgroundColor: theme.secondaryColor, borderRadius: 20, paddingVertical: 4, paddingHorizontal: 10 }}>
+              <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>{price} DA</Text>
             </View>
-            <View style={{ backgroundColor: 'white', width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 }}>
-              <Feather name="plus" size={20} color={theme.primaryColor} />
+            <View style={{ backgroundColor: "white", width: 30, height: 30, borderRadius: 15, justifyContent: "center", alignItems: "center" }}>
+              <Feather name="plus" size={16} color={theme.primaryColor} />
             </View>
           </View>
         </TouchableOpacity>
@@ -382,241 +284,343 @@ export default function MenuScreen() {
 
     // gradient (défaut)
     return (
-      <TouchableOpacity
-        key={item.id}
-        style={[styles.menuItem, { width: itemWidth, margin: itemMargin / 2 }]}
-        onPress={() => handleAddToCart(item)}
-        activeOpacity={0.85}
-      >
+      <TouchableOpacity key={item.id} style={[styles.card, { width: cardW, aspectRatio: 0.75 }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
         <Image source={imageSource} style={StyleSheet.absoluteFill} resizeMode="cover" />
-        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.82)']} style={styles.menuOverlay}>
-          <Text style={styles.menuText} numberOfLines={2}>{item.name}</Text>
-          <View style={styles.priceActionContainer}>
-            <Text style={[styles.menuPrice, { color: theme.secondaryColor }]}>{displayPrice} DA</Text>
-            <View style={[styles.addButton, { backgroundColor: theme.secondaryColor }]}>
-              <Feather name="plus" size={20} color="white" />
-            </View>
+        <LinearGradient colors={["transparent", "rgba(0,0,0,0.82)"]} style={styles.cardOverlay}>
+          <Text style={styles.cardText} numberOfLines={2}>{item.name}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 14 }}>{price} DA</Text>
+            <View style={[styles.addBtn, { backgroundColor: theme.secondaryColor }]}><Feather name="plus" size={14} color="white" /></View>
           </View>
         </LinearGradient>
       </TouchableOpacity>
     );
   };
 
+  if (isLoading) {
+    return (
+      <View style={[styles.center, { backgroundColor: theme.backgroundColor }]}>
+        <ActivityIndicator size="large" color={theme.primaryColor} />
+        <Text style={{ fontSize: 18, color: MUTED, marginTop: 16, fontWeight: "600" }}>{t("terminal.loading_menus")}</Text>
+      </View>
+    );
+  }
+
   return (
-    <View
-      style={[styles.container, { backgroundColor: theme.backgroundColor }, isRTL && { direction: 'rtl' }]}
-      // 🔥 DÉTECTION GLOBALE D'ACTIVITÉ : Reset le timer à chaque touche
-      onTouchStart={handleUserActivity}
-      onResponderGrant={handleUserActivity}
-    >
-      
-      {/* HEADER AVEC DÉGRADÉ */}
-      <LinearGradient
-        colors={[theme.primaryColor, theme.primaryColor]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.header}
-      >
-        {theme.logoUrl ? (
-          <Image source={{ uri: theme.logoUrl }} style={styles.logoImage} resizeMode="contain" />
-        ) : (
-          <Image source={require('@/assets/logo.png')} style={styles.logoImage} resizeMode="contain" />
-        )}
-        <View style={styles.headerRight}>
-          <LanguageSelector />
-          <TouchableOpacity style={styles.cartButton} onPress={() => router.push("/order/cart")}>
-            <Feather name="shopping-cart" size={35} color="white" />
+    <View style={[styles.root, { backgroundColor: theme.backgroundColor }]} onTouchStart={handleUserActivity}>
+
+      {/* ── TOP BAR ────────────────────────────────────────────────── */}
+      <View style={[styles.topBar, { backgroundColor: theme.primaryColor }]}>
+        {theme.logoUrl
+          ? <Image source={{ uri: theme.logoUrl }} style={styles.logo} resizeMode="contain" />
+          : <Image source={require("@/assets/logo.png")} style={styles.logo} resizeMode="contain" />
+        }
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TouchableOpacity style={styles.topBtn} onPress={handleRefresh} disabled={isRefreshing}>
+            {isRefreshing
+              ? <ActivityIndicator size="small" color="white" />
+              : <Feather name="refresh-cw" size={18} color="white" />}
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.topBtn, { backgroundColor: "rgba(239,68,68,0.3)" }]} onPress={handleLogoutPress}>
+            <Feather name="log-out" size={18} color="white" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ── MAIN ───────────────────────────────────────────────────── */}
+      <View style={styles.main}>
+
+        {/* ── SIDEBAR CATÉGORIES ──────────────────────────────────── */}
+        <ScrollView style={[styles.sidebar, { backgroundColor: theme.sidebarColor }]} contentContainerStyle={{ paddingVertical: 12 }} showsVerticalScrollIndicator={false}>
+          {categories.filter((c) => c.avalaible).map((category) => {
+            const isSelected = selectedCategory?.id === category.id;
+            return (
+              <TouchableOpacity
+                key={category.id}
+                style={[styles.catBtn, { backgroundColor: isSelected ? theme.selectedCategoryBgColor : "transparent" }, isSelected && { borderLeftColor: theme.secondaryColor, borderLeftWidth: 3 }]}
+                onPress={() => { handleUserActivity(); setSelectedCategory(category); }}
+              >
+                {category.photo && (
+                  <Image
+                    source={{ uri: `${getPosUrl()}${category.photo}` }}
+                    style={styles.catImage}
+                    resizeMode="contain"
+                  />
+                )}
+                <Text style={[styles.catText, { color: isSelected ? "white" : theme.categoryTextColor }]} numberOfLines={2}>{category.name}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* ── GRILLE MENUS ────────────────────────────────────────── */}
+        <View style={[styles.menuArea, { width: menuAreaW }]}>
+          {filteredMenus.length === 0 ? (
+            <View style={styles.center}>
+              <Ionicons name="fast-food-outline" size={48} color={MUTED} />
+              <Text style={{ color: MUTED, marginTop: 12, fontSize: 15 }}>{t("terminal.no_products")}</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filteredMenus}
+              numColumns={numCols}
+              key={numCols}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={({ item }) => renderMenuCard(item)}
+              contentContainerStyle={{ padding: 12, gap: 12 }}
+              columnWrapperStyle={numCols > 1 ? { gap: 12 } : undefined}
+              showsVerticalScrollIndicator={false}
+            />
+          )}
+        </View>
+
+        {/* ── PANEL PANIER ────────────────────────────────────────── */}
+        <View style={styles.cartPanel}>
+          {/* Header panier */}
+          <View style={[styles.cartHeader, { backgroundColor: theme.primaryColor }]}>
+            <Feather name="shopping-bag" size={16} color="white" />
+            <Text style={styles.cartTitle}>Commande</Text>
             {cartCount > 0 && (
               <View style={styles.cartBadge}>
                 <Text style={styles.cartBadgeText}>{cartCount}</Text>
               </View>
             )}
-          </TouchableOpacity>
-          
-          {/* BOUTON SYNCHRONISATION MANUELLE */}
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={handleRefresh}
-            disabled={isRefreshing}
-            activeOpacity={0.7}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          >
-            {isRefreshing
-              ? <ActivityIndicator size="small" color="white" />
-              : <Feather name="refresh-cw" size={22} color="white" />
-            }
-          </TouchableOpacity>
+          </View>
 
-          {/* BOUTON DÉCONNEXION MANUEL */}
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={handleLogoutPress}
-            activeOpacity={0.7}
-            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-          >
-             <Feather name="log-out" size={24} color="white" />
-          </TouchableOpacity>
-
-        </View>
-      </LinearGradient>
-
-      {/* Contenu principal */}
-      <View style={styles.content}>
-        
-        {/* Sidebar catégories */}
-        <ScrollView style={[styles.sidebar, { width: sidebarWidth, backgroundColor: theme.sidebarColor }]} contentContainerStyle={styles.sidebarContent}>
-          {categories.filter((category) => category.avalaible).map((category) => {
-              const isSelected = selectedCategory?.id === category.id;
-              return (
-                <TouchableOpacity
-                  key={category.id}
-                  style={[
-                    styles.categoryButton,
-                    { backgroundColor: isSelected ? theme.selectedCategoryBgColor : theme.categoryBgColor },
-                    isSelected && { borderLeftWidth: 4, borderColor: theme.secondaryColor },
-                  ]}
-                  onPress={() => {
-                    handleUserActivity();
-                    setSelectedCategory(category);
-                  }}
-                >
-                  {category.photo && <Image source={{ uri: `${getPosUrl()}${category.photo}` }} style={styles.categoryImage} />}
-                  <Text style={[styles.categoryText, { color: isSelected ? 'white' : theme.categoryTextColor }]}>
-                    {category.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-        </ScrollView>
-
-        {/* Grille des menus */}
-        <View style={[styles.menuGridContainer, { width: `${menuGridWidth}%` }]}>
-          {filteredMenus.length === 0 ? (
-            <View style={styles.emptyGrid}>
-              <Text style={styles.emptyGridText}>{t('terminal.no_products')}</Text>
+          {/* Liste des articles */}
+          {orderList.length === 0 ? (
+            <View style={styles.cartEmpty}>
+              <Feather name="shopping-cart" size={36} color="#CBD5E1" />
+              <Text style={styles.cartEmptyText}>Panier vide</Text>
             </View>
           ) : (
-            <FlatList
-              data={filteredMenus}
-              numColumns={numColumns}
-              key={numColumns} 
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={({ item }) => renderMenuCard(item)}
-              contentContainerStyle={styles.menuGrid}
-            />
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 10, gap: 8 }} showsVerticalScrollIndicator={false}>
+              {orderList.map((item, index) => (
+                <View key={index} style={styles.cartItem}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cartItemName} numberOfLines={2}>{item.menuName}</Text>
+                    {item.steps?.map((step: any, i: number) => (
+                      <Text key={i} style={styles.cartItemOption} numberOfLines={1}>
+                        {step.stepName} : {step.selectedOptions.map((o: any) => o.optionName).join(", ")}
+                      </Text>
+                    ))}
+                    <Text style={styles.cartItemPrice}>{(calculateMenuPrice(item) * item.quantity).toLocaleString()} DA</Text>
+                  </View>
+                  <View style={styles.cartItemRight}>
+                    <TouchableOpacity onPress={() => removeItem(index)} style={styles.cartDeleteBtn}>
+                      <Feather name="trash-2" size={13} color={DANGER} />
+                    </TouchableOpacity>
+                    <View style={styles.qtyRow}>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQuantity(index, -1)}>
+                        <AntDesign name="minus" size={12} color="#475569" />
+                      </TouchableOpacity>
+                      <Text style={styles.qtyText}>{item.quantity}</Text>
+                      <TouchableOpacity style={styles.qtyBtn} onPress={() => changeQuantity(index, 1)}>
+                        <AntDesign name="plus" size={12} color="#475569" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
           )}
+
+          {/* Footer total + valider */}
+          <View style={styles.cartFooter}>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={[styles.totalAmount, { color: theme.primaryColor }]}>{totalPrice.toLocaleString()} DA</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.validateBtn, { backgroundColor: orderList.length === 0 ? "#CBD5E1" : SUCCESS }]}
+              onPress={handleValidateCart}
+              disabled={orderList.length === 0}
+            >
+              <Feather name="check-circle" size={18} color="white" />
+              <Text style={styles.validateText}>Valider</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
-      
-      <ChoiceModal />
-      
+
+      {/* ── MODAL SOLO / MENU ──────────────────────────────────────── */}
+      <Modal animationType="fade" transparent visible={isModalVisible} onRequestClose={() => setIsModalVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsModalVisible(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+            {selectedItem?.photo && (
+              <Image source={{ uri: `${getPosUrl()}${selectedItem.photo}` }} style={styles.modalImage} resizeMode="cover" />
+            )}
+            <View style={styles.modalBody}>
+              <Text style={styles.modalTitle}>{selectedItem?.name}</Text>
+              <Text style={styles.modalDesc}>{selectedItem?.description || "Délicieuse préparation artisanale."}</Text>
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.modalCancel} onPress={() => setIsModalVisible(false)}>
+                  <Feather name="x" size={16} color={MUTED} />
+                  <Text style={styles.modalCancelText}>{t("cancel")}</Text>
+                </TouchableOpacity>
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <TouchableOpacity style={styles.btnSolo} onPress={handleSoloAdd}>
+                    <Text style={styles.btnSoloLabel}>Solo</Text>
+                    <Text style={styles.btnSoloPrice}>{selectedItem?.solo_price || selectedItem?.price || 0} DA</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.btnMenu, { backgroundColor: theme.primaryColor }]} onPress={handleMenuAdd}>
+                    <Text style={styles.btnMenuLabel}>Menu</Text>
+                    <Text style={styles.btnMenuPrice}>{selectedItem?.price || 0} DA</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── MODAL CROSS-SELL ───────────────────────────────────────── */}
+      <Modal visible={showCrossSell} transparent animationType="fade" onRequestClose={() => setShowCrossSell(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { width: "80%", maxWidth: 800, maxHeight: "80%" }]}>
+            <View style={styles.csHeader}>
+              <View>
+                <Text style={[styles.csTitle, { color: theme.primaryColor }]}>Voulez-vous ajouter quelque chose ?</Text>
+                <Text style={styles.csSubtitle}>Suggestions pour compléter la commande</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowCrossSell(false)} style={styles.topBtn}>
+                <Feather name="x" size={18} color={MUTED} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.csGrid} showsVerticalScrollIndicator={false}>
+              {crossSellItems.map((item) => {
+                const qty = crossSellQty[item.id] || 0;
+                return (
+                  <View key={item.id} style={[styles.csCard, { backgroundColor: theme.cardBgColor }]}>
+                    {item.photo_url
+                      ? <Image source={{ uri: item.photo_url }} style={styles.csImage} resizeMode="cover" />
+                      : <View style={[styles.csImage, { backgroundColor: "#F1F5F9", justifyContent: "center", alignItems: "center" }]}><Ionicons name="fast-food" size={28} color={MUTED} /></View>
+                    }
+                    <View style={{ padding: 10 }}>
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textColor }} numberOfLines={2}>{item.name}</Text>
+                      <Text style={{ fontSize: 14, fontWeight: "900", color: theme.primaryColor, marginTop: 4 }}>{item.price} DA</Text>
+                    </View>
+                    <View style={{ paddingHorizontal: 10, paddingBottom: 12 }}>
+                      {qty === 0 ? (
+                        <TouchableOpacity style={[styles.csAddBtn, { backgroundColor: theme.primaryColor }]} onPress={() => setCrossSellQty(p => ({ ...p, [item.id]: 1 }))}>
+                          <AntDesign name="plus" size={14} color="white" />
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.csQtyRow}>
+                          <TouchableOpacity style={styles.qtyBtn} onPress={() => setCrossSellQty(p => ({ ...p, [item.id]: Math.max(0, (p[item.id] || 0) - 1) }))}>
+                            <AntDesign name="minus" size={12} color="#475569" />
+                          </TouchableOpacity>
+                          <Text style={{ fontWeight: "700", minWidth: 20, textAlign: "center" }}>{qty}</Text>
+                          <TouchableOpacity style={styles.qtyBtn} onPress={() => setCrossSellQty(p => ({ ...p, [item.id]: (p[item.id] || 0) + 1 }))}>
+                            <AntDesign name="plus" size={12} color="#475569" />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.csFooter}>
+              <TouchableOpacity style={styles.csSkip} onPress={() => { setShowCrossSell(false); proceedToPayment(orderList); }}>
+                <Text style={{ color: MUTED, fontWeight: "700" }}>Non merci</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.csConfirm, { backgroundColor: SUCCESS }]} onPress={handleCrossSellConfirm}>
+                <Text style={{ color: "white", fontWeight: "800", fontSize: 15 }}>
+                  {Object.values(crossSellQty).some((q) => q > 0) ? "Ajouter et valider" : "Valider"}
+                </Text>
+                <AntDesign name="arrowright" size={18} color="white" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  logoImage: { width: 180, height: 90 },
-  container: { flex: 1, backgroundColor: "#F8F9FA" }, 
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8F9FA" },
-  loadingText: { fontSize: 24, textAlign: "center", marginTop: 20, color: "#1e293b", fontWeight: '600' },
-  
-  header: {
-    height: 90, 
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center", 
-    paddingHorizontal: 25, elevation: 6, shadowColor: "#000", zIndex: 100 
-  },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 20 },
-  cartButton: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)' },
-  
-  refreshButton: {
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    width: 44, height: 44, justifyContent: 'center', alignItems: 'center',
-  },
-  logoutButton: {
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 0, 0, 0.25)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)'
-  },
+  root: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
-  cartBadge: {
-    position: 'absolute', right: -6, top: -6, backgroundColor: 'red', borderRadius: 12,
-    width: 24, height: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'white'
+  // Top bar
+  topBar: {
+    height: 56, flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 16, elevation: 4, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, zIndex: 10,
   },
-  cartBadgeText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
-  
-  content: { flex: 1, flexDirection: "row" },
-  
-  sidebar: { elevation: 5 },
-  sidebarContent: { paddingVertical: 20, alignItems: "center" },
-  categoryButton: {
-    borderRadius: 10, padding: 10, width: "85%", marginBottom: 5, alignItems: "center",
-    backgroundColor: "transparent", minHeight: 90, justifyContent: 'center'
-  },
-  selectedCategory: {
-    backgroundColor: "#334155", borderLeftWidth: 4,
-  },
-  selectedCategoryText: { fontWeight: '700' },
-  categoryImage: { width: "100%", height: 130, marginBottom: 10, borderRadius: 10, backgroundColor: 'white' }, 
-  categoryText: { color: "#94a3b8", fontSize: 15, fontWeight: "600", textAlign: "center" },
-  
-  menuGridContainer: { padding: 15 },
-  menuGrid: { justifyContent: "flex-start", alignItems: "flex-start" },
-  menuItem: {
-    aspectRatio: 0.72, borderRadius: 22, overflow: 'hidden',
-    backgroundColor: '#1e293b',
-    shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.2, shadowRadius: 12,
-    elevation: 6, marginBottom: 16,
-  },
-  menuOverlay: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    paddingHorizontal: 12, paddingBottom: 12, paddingTop: 40,
-  },
-  menuText: {
-    color: 'white', fontSize: 14, fontWeight: '700', marginBottom: 6,
-    textShadowColor: 'rgba(0,0,0,0.6)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
-  },
-  priceActionContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  menuPrice: { fontSize: 16, fontWeight: '900' },
-  addButton: {
-    width: 36, height: 36, borderRadius: 18,
-    justifyContent: 'center', alignItems: 'center', elevation: 2
-  },
-  emptyGrid: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyGridText: { fontSize: 20, color: '#94a3b8', textAlign: 'center' },
-});
+  logo: { height: 40, width: 120 },
+  topBtn: { padding: 8, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.15)" },
 
-const modalStyles = StyleSheet.create({
-  centeredView: {
-    flex: 1, justifyContent: "center", alignItems: "center",
-    backgroundColor: 'rgba(0, 0, 0, 0.7)', 
+  // Layout
+  main: { flex: 1, flexDirection: "row" },
+
+  // Sidebar
+  sidebar: { width: 130, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.08)" },
+  catBtn: {
+    paddingVertical: 10, paddingHorizontal: 10, marginHorizontal: 8, marginBottom: 4,
+    borderRadius: 10, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
   },
-  productCard: {
-    backgroundColor: "white", borderRadius: 30, width: '75%', maxWidth: 800,
-    overflow: 'hidden', elevation: 20, shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20,
-  },
-  productImageFull: { width: '100%', height: 300 },
-  productDetails: { padding: 30 },
-  modalTitle: { fontSize: 36, fontWeight: "900", color: '#1e293b', marginBottom: 15 },
-  descriptionSection: { marginBottom: 40 },
-  descriptionText: { fontSize: 18, color: '#64748b', lineHeight: 26 },
-  footerActions: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 25,
-  },
-  backButton: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10 },
-  backButtonText: { fontSize: 18, color: '#94a3b8', fontWeight: '600' },
-  mainButtons: { flexDirection: 'row', gap: 15 },
-  actionBtn: {
-    paddingVertical: 15, paddingHorizontal: 25, borderRadius: 18, minWidth: 160, alignItems: 'center',
-  },
-  btnSolo: { backgroundColor: '#f1f5f9' },
-  btnMenu: {},
-  btnLabel: { fontSize: 18, fontWeight: '800', color: '#1e293b' },
-  btnPrice: { fontSize: 14, color: '#64748b', fontWeight: '600' },
-  btnSubtitle: { fontSize: 12, color: 'rgba(255,255,255,0.8)' },
+  catImage: { width: 70, height: 70, marginBottom: 6, borderRadius: 8 },
+  catText: { fontSize: 12, fontWeight: "600", textAlign: "center" },
+
+  // Menu grid
+  menuArea: { flex: 1 },
+  card: { borderRadius: 14, overflow: "hidden", backgroundColor: "transparent", elevation: 3, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 8 },
+  cardOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 10, paddingTop: 30 },
+  cardText: { color: "white", fontWeight: "700", fontSize: 12, marginBottom: 6 },
+  addBtn: { width: 28, height: 28, borderRadius: 14, justifyContent: "center", alignItems: "center" },
+
+  // Cart panel
+  cartPanel: { width: 280, backgroundColor: "white", borderLeftWidth: 1, borderLeftColor: "#E2E8F0", flexDirection: "column" },
+  cartHeader: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 12 },
+  cartTitle: { color: "white", fontWeight: "700", fontSize: 14, flex: 1 },
+  cartBadge: { backgroundColor: "white", borderRadius: 10, minWidth: 20, height: 20, justifyContent: "center", alignItems: "center", paddingHorizontal: 5 },
+  cartBadgeText: { fontSize: 11, fontWeight: "800", color: "#1e293b" },
+  cartEmpty: { flex: 1, justifyContent: "center", alignItems: "center", gap: 10 },
+  cartEmptyText: { color: "#CBD5E1", fontWeight: "600", fontSize: 14 },
+  cartItem: { flexDirection: "row", gap: 8, backgroundColor: "#F8FAFC", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "#E2E8F0" },
+  cartItemName: { fontSize: 13, fontWeight: "700", color: "#1e293b", lineHeight: 18 },
+  cartItemOption: { fontSize: 10, color: MUTED, marginTop: 2 },
+  cartItemPrice: { fontSize: 13, fontWeight: "800", color: "#1e293b", marginTop: 6 },
+  cartItemRight: { alignItems: "center", gap: 8 },
+  cartDeleteBtn: { padding: 4, backgroundColor: "#FEF2F2", borderRadius: 6 },
+  qtyRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#F1F5F9", borderRadius: 8, padding: 2 },
+  qtyBtn: { width: 26, height: 26, justifyContent: "center", alignItems: "center" },
+  qtyText: { fontSize: 13, fontWeight: "700", minWidth: 18, textAlign: "center", color: "#1e293b" },
+  cartFooter: { borderTopWidth: 1, borderTopColor: "#E2E8F0", padding: 14, gap: 12 },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  totalLabel: { fontSize: 13, color: MUTED, fontWeight: "600" },
+  totalAmount: { fontSize: 22, fontWeight: "900" },
+  validateBtn: { height: 50, borderRadius: 14, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
+  validateText: { color: "white", fontWeight: "800", fontSize: 16 },
+
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
+  modalCard: { backgroundColor: "white", borderRadius: 24, width: "65%", maxWidth: 700, overflow: "hidden", elevation: 20 },
+  modalImage: { width: "100%", height: 220 },
+  modalBody: { padding: 24 },
+  modalTitle: { fontSize: 28, fontWeight: "900", color: "#1e293b", marginBottom: 10 },
+  modalDesc: { fontSize: 15, color: MUTED, lineHeight: 22, marginBottom: 24 },
+  modalActions: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: 1, borderTopColor: "#F1F5F9", paddingTop: 20 },
+  modalCancel: { flexDirection: "row", alignItems: "center", gap: 6 },
+  modalCancelText: { color: MUTED, fontWeight: "600", fontSize: 15 },
+  btnSolo: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 14, backgroundColor: "#F1F5F9", alignItems: "center" },
+  btnSoloLabel: { fontSize: 15, fontWeight: "800", color: "#1e293b" },
+  btnSoloPrice: { fontSize: 12, color: MUTED },
+  btnMenu: { paddingVertical: 12, paddingHorizontal: 24, borderRadius: 14, alignItems: "center" },
+  btnMenuLabel: { fontSize: 15, fontWeight: "800", color: "white" },
+  btnMenuPrice: { fontSize: 12, color: "rgba(255,255,255,0.75)" },
+
+  // Cross-sell
+  csHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", padding: 20, borderBottomWidth: 1, borderBottomColor: "#F1F5F9" },
+  csTitle: { fontSize: 18, fontWeight: "900", marginBottom: 2 },
+  csSubtitle: { fontSize: 13, color: MUTED },
+  csGrid: { flexDirection: "row", flexWrap: "wrap", gap: 14, padding: 16 },
+  csCard: { width: 160, borderRadius: 14, overflow: "hidden", elevation: 3 },
+  csImage: { width: "100%", height: 110 },
+  csAddBtn: { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 8, flexDirection: "row", justifyContent: "center", alignItems: "center" },
+  csQtyRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#F1F5F9", borderRadius: 8, padding: 2 },
+  csFooter: { flexDirection: "row", gap: 12, padding: 16, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
+  csSkip: { flex: 1, height: 50, borderRadius: 12, justifyContent: "center", alignItems: "center", backgroundColor: "#F1F5F9" },
+  csConfirm: { flex: 2, height: 50, borderRadius: 12, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
 });
