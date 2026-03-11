@@ -51,7 +51,7 @@ class KioskConfigSerializer(serializers.ModelSerializer):
             'primary_color', 'secondary_color',
             'background_color', 'card_bg_color', 'text_color',
             'sidebar_color', 'category_bg_color', 'selected_category_bg_color', 'category_text_color',
-            'logo', 'screensaver_video', 'card_style',
+            'logo', 'screensaver_image', 'screensaver_video', 'card_style',
         ]
 
 

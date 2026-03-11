@@ -33,6 +33,7 @@ class KioskConfig(models.Model):
     category_text_color        = models.CharField(max_length=7, default='#94a3b8')
     # Médias
     logo                 = models.ImageField(upload_to='kiosk/logos/', blank=True, null=True)
+    screensaver_image    = models.ImageField(upload_to='kiosk/screensaver/', blank=True, null=True)
     screensaver_video    = models.FileField(upload_to='kiosk/videos/', blank=True, null=True)
     # Design des cartes
     CARD_STYLE_CHOICES = [

@@ -284,7 +284,8 @@ class KioskConfigView(APIView):
             'selected_category_bg_color': config.selected_category_bg_color,
             'category_text_color':        config.category_text_color,
             'logo_url':             request.build_absolute_uri(config.logo.url) if config.logo else None,
-            'screensaver_video_url':request.build_absolute_uri(config.screensaver_video.url) if config.screensaver_video else None,
+            'screensaver_image_url': request.build_absolute_uri(config.screensaver_image.url) if config.screensaver_image else None,
+            'screensaver_video_url': request.build_absolute_uri(config.screensaver_video.url) if config.screensaver_video else None,
             'card_style':           config.card_style,
         })
 
