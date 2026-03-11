@@ -2,5 +2,4 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "python manage.py migrate --noinput && python manage.py collectstatic --noinput && daphne -b 0.0.0.0 -p $PORT born_dz.asgi:application"
-
+startCommand = "python manage.py migrate --noinput && python manage.py create_demo_data && python manage.py collectstatic --noinput && daphne -b 0.0.0.0 -p $PORT born_dz.asgi:application"
