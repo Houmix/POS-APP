@@ -105,8 +105,8 @@ sans rien installer. Elle repose sur 3 services hébergés :
 ```
 clickgo-site.vercel.app/demo        ← page d'entrée (liens vers tout)
         │
-        ├── born-app.vercel.app             ← Borne client (Expo web build)
-        ├── born-app-2xag.vercel.app        ← Caisse + KDS (Expo web build)
+        ├── borne-clickgo.vercel.app        ← Borne client (Expo web build)
+        ├── pos-clickgo.vercel.app          ← Caisse + KDS (Expo web build)
         ├── borndz-production.up.railway.app/order/display/   ← Écran salle
         └── borndz-production.up.railway.app  ← API Django (backend commun)
 ```

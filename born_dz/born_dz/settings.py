@@ -254,8 +254,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://clickgo-siteweb-production.up.railway.app",
     "https://clickgo-interactive.com",
     "https://www.clickgo-interactive.com",
-    # Apps Expo web (Vercel) — ajouter ici les vraies URLs après déploiement
-    # "https://pos-demo.vercel.app",
-    # "https://born-demo.vercel.app",
+    "https://pos-clickgo.vercel.app",
+    "https://borne-clickgo.vercel.app",
 ] + [f"https://{d}" for d in config('CORS_EXTRA_ORIGINS', default='', cast=Csv()) if d]
 

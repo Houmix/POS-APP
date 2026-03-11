@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {% block headerContent %}
-    <title>MenuGo</title>
+    <title>ClickGo</title>
     {% endblock %}
     <link rel="stylesheet" href="{% static 'styles.css' %}">
 </head>
@@ -16,7 +16,7 @@
                 <nav class="nav">
                     <div class="nav-left">
                         <a href="{% url 'index' %}">
-                            <img class="logo" src="{% static 'img/MenuGo-SF.png' %}" alt="MenuGo Logo">
+                            <img class="logo" src="{% static 'img/MenuGo-SF.png' %}" alt="ClickGo Logo">
                         </a>
                     </div>
             
@@ -50,7 +50,7 @@
                 Votre navigateur ne supporte pas les vidéos HTML5.
             </video>
             <div class="hero-content">
-                <h2 id="Bienvenue">Bienvenue chez Borne DZ</h2>
+                <h2 id="Bienvenue">Bienvenue chez ClickGo</h2>
                 <p>Votre solution moderne pour des bornes de commande interactives en Algérie.</p>
             </div>
         </section>
@@ -58,7 +58,7 @@
         <section class="features">
         <div class="features-content">
           <div class="features-card">
-            <h3>Pourquoi choisir <span class="highlight">MenuGo</span> ?</h3>
+            <h3>Pourquoi choisir <span class="highlight">ClickGo</span> ?</h3>
             <p>
               Nos bornes interactives sont conçues pour offrir une expérience client moderne et intuitive, 
               tout en optimisant la gestion des commandes pour les restaurateurs.
@@ -72,8 +72,8 @@
           </div>
       
           <div class="features-images">
-            <img src="{% static 'img/born1.png' %}" alt="Borne DZ 1" class="img-1" />
-            <img src="{% static 'img/born2.png' %}" alt="Borne DZ 2" class="img-2" />
+            <img src="{% static 'img/born1.png' %}" alt="ClickGo 1" class="img-1" />
+            <img src="{% static 'img/born2.png' %}" alt="ClickGo 2" class="img-2" />
           </div>
         </div>
         </section>
@@ -442,7 +442,7 @@
     {% endblock %}
 </main>
     <footer>
-        2025 © MenuGo. All rights reserved. | 
+        2025 © ClickGo. All rights reserved. | 
         <a href="{% url 'ConditionsGenerales' %}#condition">Conditions générales | </a>
         <a href="{% url 'ConditionsGenerales' %}#politique">Politique de confidentialité | </a>
         <a href="{% url 'index' %}#contact">Contactez nous | </a>
