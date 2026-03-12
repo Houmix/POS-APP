@@ -5,7 +5,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import { getPosUrl, getRestaurantId } from '@/utils/serverConfig';
+import { getPosUrl, getRestaurantId, loadRestaurantId } from '@/utils/serverConfig';
 
 export interface KioskTheme {
     primaryColor: string;
@@ -45,7 +45,8 @@ export function KioskThemeProvider({ children }: { children: React.ReactNode }) 
     const [theme, setTheme] = useState<KioskTheme>(DEFAULT_THEME);
 
     const fetchTheme = useCallback(async () => {
-        const restaurantId = getRestaurantId();
+        let restaurantId = getRestaurantId();
+        if (!restaurantId) restaurantId = await loadRestaurantId();
         const cacheKey = restaurantId ? `${THEME_CACHE_KEY}_${restaurantId}` : THEME_CACHE_KEY;
 
         if (!restaurantId) {

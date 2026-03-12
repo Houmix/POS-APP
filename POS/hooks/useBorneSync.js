@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AppState, Alert } from 'react-native';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios'; 
 
 // L'URL du serveur est maintenant dynamique (configurée par l'utilisateur au premier démarrage).
-import { getPosUrl, getRestaurantId } from '@/utils/serverConfig';
+import { getPosUrl, getRestaurantId, loadRestaurantId } from '@/utils/serverConfig';
 // Constantes pour la connexion et la cache
 // WEBSOCKET_URL est calculé dynamiquement pour utiliser l'IP courante du serveur
 const GROUP_MENU_KEY = 'GroupMenu';
@@ -23,17 +23,16 @@ export function useBorneSync() {
         setIsLoading(true);
         try {
             const accessToken = await AsyncStorage.getItem("token");
-            const currentRestaurantId = getRestaurantId();
-            
+
+            // Récupère l'ID restaurant en mémoire, sinon depuis AsyncStorage
+            let currentRestaurantId = getRestaurantId();
+            if (!currentRestaurantId) currentRestaurantId = await loadRestaurantId();
+
             if (!accessToken || !currentRestaurantId) {
-                console.log("Missing token or restaurant ID:");
-                console.log(accessToken);
-                console.log(currentRestaurantId);
-                console.error("[SYNC ERROR] Token ou ID Restaurant manquant.");
-                Alert.alert("Erreur d'authentification", "Veuillez vous reconnecter pour synchroniser les données.");
+                console.error("[SYNC ERROR] Token ou ID Restaurant manquant.", { accessToken: !!accessToken, currentRestaurantId });
                 return;
             }
-            
+
             setRestaurantId(currentRestaurantId);
             const headers = { Authorization: `Bearer ${accessToken}` };
 
@@ -59,7 +58,6 @@ export function useBorneSync() {
 
         } catch (error) {
             console.error('[SYNC ERROR] Échec du rechargement des données de menu:', error.message);
-            Alert.alert("Erreur de Synchro", "Échec du rechargement des données de menu.");
         } finally {
             setIsLoading(false);
         }

@@ -230,25 +230,47 @@ export default function MenuScreen() {
   };
 
   // ── Layout ────────────────────────────────────────────────────────
+  const { width: screenWidth } = Dimensions.get("window");
+  const SIDEBAR_W = 100;
+  const CART_W = 280;
+  const GRID_PADDING = 12;
+  const CARD_GAP = 12;
+  const menuAreaW = screenWidth - SIDEBAR_W - CART_W;
+  const numCols = menuAreaW >= 600 ? 3 : 2;
+  const cardW = (menuAreaW - GRID_PADDING * 2 - CARD_GAP * (numCols - 1)) / numCols;
+
   const filteredMenus = menus.filter(
     (item) => item.group_menu === selectedCategory?.id
   );
 
+  const getDisplayPrice = (item: any) => {
+    if (item.extra) return `+${item.solo_price}`;
+    if (item.price && parseFloat(item.price) > 0) return `${item.price}`;
+    return `${item.solo_price}`;
+  };
+
   // ── Render menu card ──────────────────────────────────────────────
   const renderMenuCard = (item: any) => {
     const imageSource = item.photo ? { uri: `${getPosUrl()}${item.photo}` } : require("@/assets/logo.png");
-    const price = item.extra ? `+${item.solo_price}` : item.price && parseFloat(item.price) > 0 ? item.price : item.solo_price;
+    const price = getDisplayPrice(item);
     const style = theme.cardStyle || "gradient";
 
     if (style === "macdo") {
       return (
-        <TouchableOpacity key={item.id} style={[styles.card, { aspectRatio: 0.85, backgroundColor: theme.cardBgColor }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
-          <Image source={imageSource} style={{ width: "100%", aspectRatio: 1.2 }} resizeMode="cover" />
-          <View style={{ padding: 8, flex: 1, justifyContent: "space-between" }}>
-            <Text style={{ color: theme.textColor, fontWeight: "700", fontSize: 12 }} numberOfLines={2}>{item.name}</Text>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-              <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 13 }}>{price} DA</Text>
-              <View style={[styles.addBtn, { backgroundColor: theme.secondaryColor }]}><Feather name="plus" size={14} color="white" /></View>
+        <TouchableOpacity
+          key={item.id}
+          style={[styles.card, { width: cardW, backgroundColor: theme.cardBgColor }]}
+          onPress={() => handleAddToCart(item)}
+          activeOpacity={0.85}
+        >
+          <View style={{ flex: 6, overflow: "hidden" }}>
+            <Image source={imageSource} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+          </View>
+          <View style={{ flex: 4, padding: 10, justifyContent: "space-between", backgroundColor: theme.cardBgColor }}>
+            <Text style={{ color: theme.textColor, fontWeight: "700", fontSize: 13, lineHeight: 18 }} numberOfLines={2}>{item.name}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 15 }}>{price} DA</Text>
+              <View style={[styles.addBtn, { backgroundColor: theme.secondaryColor }]}><Feather name="plus" size={16} color="white" /></View>
             </View>
           </View>
         </TouchableOpacity>
@@ -257,17 +279,22 @@ export default function MenuScreen() {
 
     if (style === "magazine") {
       return (
-        <TouchableOpacity key={item.id} style={[styles.card, { aspectRatio: 0.8 }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
+        <TouchableOpacity
+          key={item.id}
+          style={[styles.card, { width: cardW }]}
+          onPress={() => handleAddToCart(item)}
+          activeOpacity={0.85}
+        >
           <Image source={imageSource} style={StyleSheet.absoluteFill} resizeMode="cover" />
-          <View style={{ position: "absolute", top: 8, left: 8, right: 8, backgroundColor: "rgba(15,23,42,0.65)", borderRadius: 20, paddingVertical: 5, paddingHorizontal: 10 }}>
-            <Text style={{ color: "white", fontWeight: "700", fontSize: 11 }} numberOfLines={1}>{item.name}</Text>
+          <View style={{ position: "absolute", top: 10, left: 10, right: 10, backgroundColor: "rgba(15,23,42,0.65)", borderRadius: 100, paddingVertical: 7, paddingHorizontal: 12 }}>
+            <Text style={{ color: "white", fontWeight: "700", fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
           </View>
-          <View style={{ position: "absolute", bottom: 8, left: 8, right: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <View style={{ backgroundColor: theme.secondaryColor, borderRadius: 20, paddingVertical: 4, paddingHorizontal: 10 }}>
-              <Text style={{ color: "white", fontWeight: "900", fontSize: 12 }}>{price} DA</Text>
+          <View style={{ position: "absolute", bottom: 10, left: 10, right: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View style={{ backgroundColor: theme.secondaryColor, borderRadius: 100, paddingVertical: 6, paddingHorizontal: 14 }}>
+              <Text style={{ color: "white", fontWeight: "900", fontSize: 14 }}>{price} DA</Text>
             </View>
-            <View style={{ backgroundColor: "white", width: 30, height: 30, borderRadius: 15, justifyContent: "center", alignItems: "center" }}>
-              <Feather name="plus" size={16} color={theme.primaryColor} />
+            <View style={{ backgroundColor: "white", width: 36, height: 36, borderRadius: 18, justifyContent: "center", alignItems: "center", elevation: 4 }}>
+              <Feather name="plus" size={18} color={theme.primaryColor} />
             </View>
           </View>
         </TouchableOpacity>
@@ -276,13 +303,18 @@ export default function MenuScreen() {
 
     // gradient (défaut)
     return (
-      <TouchableOpacity key={item.id} style={[styles.card, { aspectRatio: 0.75 }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
+      <TouchableOpacity
+        key={item.id}
+        style={[styles.card, { width: cardW }]}
+        onPress={() => handleAddToCart(item)}
+        activeOpacity={0.85}
+      >
         <Image source={imageSource} style={StyleSheet.absoluteFill} resizeMode="cover" />
-        <LinearGradient colors={["transparent", "rgba(0,0,0,0.82)"]} style={styles.cardOverlay}>
+        <LinearGradient colors={["transparent", "rgba(0,0,0,0.85)"]} style={styles.cardOverlay}>
           <Text style={styles.cardText} numberOfLines={2}>{item.name}</Text>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 14 }}>{price} DA</Text>
-            <View style={[styles.addBtn, { backgroundColor: theme.secondaryColor }]}><Feather name="plus" size={14} color="white" /></View>
+            <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 15 }}>{price} DA</Text>
+            <View style={[styles.addBtn, { backgroundColor: theme.secondaryColor }]}><Feather name="plus" size={16} color="white" /></View>
           </View>
         </LinearGradient>
       </TouchableOpacity>
@@ -323,16 +355,26 @@ export default function MenuScreen() {
       <View style={styles.main}>
 
         {/* ── SIDEBAR CATÉGORIES ──────────────────────────────────── */}
-        <ScrollView style={[styles.sidebar, { backgroundColor: theme.sidebarColor }]} contentContainerStyle={{ paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={[styles.sidebar, { backgroundColor: theme.sidebarColor }]}
+          contentContainerStyle={{ paddingVertical: 10, alignItems: "center" }}
+          showsVerticalScrollIndicator={false}
+        >
           {categories.map((category) => {
             const isSelected = selectedCategory?.id === category.id;
             return (
               <TouchableOpacity
                 key={category.id}
-                style={[styles.catBtn, { backgroundColor: isSelected ? theme.selectedCategoryBgColor : "transparent" }, isSelected && { borderLeftColor: theme.secondaryColor }]}
+                style={[
+                  styles.catBtn,
+                  { backgroundColor: isSelected ? theme.selectedCategoryBgColor : theme.categoryBgColor },
+                  isSelected && { borderLeftColor: theme.secondaryColor },
+                ]}
                 onPress={() => { handleUserActivity(); setSelectedCategory(category); }}
               >
-                <Text style={[styles.catText, { color: isSelected ? "white" : theme.categoryTextColor }]} numberOfLines={3}>{category.name}</Text>
+                <Text style={[styles.catText, { color: isSelected ? theme.secondaryColor : theme.categoryTextColor }]} numberOfLines={3}>
+                  {category.name}
+                </Text>
               </TouchableOpacity>
             );
           })}
@@ -348,12 +390,12 @@ export default function MenuScreen() {
           ) : (
             <FlatList
               data={filteredMenus}
-              numColumns={3}
-              key={3}
+              numColumns={numCols}
+              key={numCols}
               keyExtractor={(item) => item.id.toString()}
               renderItem={({ item }) => renderMenuCard(item)}
-              contentContainerStyle={{ padding: 12, gap: 12 }}
-              columnWrapperStyle={{ gap: 12 }}
+              contentContainerStyle={{ padding: GRID_PADDING, gap: CARD_GAP }}
+              columnWrapperStyle={numCols > 1 ? { gap: CARD_GAP } : undefined}
               showsVerticalScrollIndicator={false}
             />
           )}
@@ -540,16 +582,21 @@ const styles = StyleSheet.create({
   main: { flex: 1, flexDirection: "row" },
 
   // Sidebar
-  sidebar: { width: 90, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.08)" },
+  sidebar: { width: 100, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.08)" },
   catBtn: {
-    paddingVertical: 12, paddingHorizontal: 8, marginHorizontal: 6, marginBottom: 4,
-    borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
+    width: "85%", paddingVertical: 12, paddingHorizontal: 8, marginBottom: 6,
+    borderRadius: 10, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
+    minHeight: 60, justifyContent: "center",
   },
-  catText: { fontSize: 11, fontWeight: "600", textAlign: "center" },
+  catText: { fontSize: 12, fontWeight: "600", textAlign: "center" },
 
   // Menu grid
   menuArea: { flex: 1 },
-  card: { flex: 1, borderRadius: 14, overflow: "hidden", backgroundColor: "transparent", elevation: 3, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 8 },
+  card: {
+    aspectRatio: 0.72, borderRadius: 18, overflow: "hidden", backgroundColor: "#1e293b",
+    elevation: 6, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
   cardOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 10, paddingTop: 30 },
   cardText: { color: "white", fontWeight: "700", fontSize: 12, marginBottom: 6 },
   addBtn: { width: 28, height: 28, borderRadius: 14, justifyContent: "center", alignItems: "center" },
