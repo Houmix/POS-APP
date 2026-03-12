@@ -230,16 +230,8 @@ export default function MenuScreen() {
   };
 
   // ── Layout ────────────────────────────────────────────────────────
-  const screenWidth = Dimensions.get("window").width;
-  const SIDEBAR_W = 130;
-  const CART_W = 280;
-  const menuAreaW = screenWidth - SIDEBAR_W - CART_W;
-  const numCols = menuAreaW >= 600 ? 3 : 2;
-  const cardW = (menuAreaW - 16 * (numCols + 1)) / numCols;
-
   const filteredMenus = menus.filter(
-    (item) => item.group_menu === selectedCategory?.id && item.avalaible &&
-      categories.some((c) => c.id === item.group_menu && c.avalaible)
+    (item) => item.group_menu === selectedCategory?.id
   );
 
   // ── Render menu card ──────────────────────────────────────────────
@@ -250,9 +242,9 @@ export default function MenuScreen() {
 
     if (style === "macdo") {
       return (
-        <TouchableOpacity key={item.id} style={[styles.card, { width: cardW, backgroundColor: theme.cardBgColor }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
-          <Image source={imageSource} style={{ width: "100%", height: cardW * 0.6 }} resizeMode="cover" />
-          <View style={{ padding: 8 }}>
+        <TouchableOpacity key={item.id} style={[styles.card, { aspectRatio: 0.85, backgroundColor: theme.cardBgColor }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
+          <Image source={imageSource} style={{ width: "100%", aspectRatio: 1.2 }} resizeMode="cover" />
+          <View style={{ padding: 8, flex: 1, justifyContent: "space-between" }}>
             <Text style={{ color: theme.textColor, fontWeight: "700", fontSize: 12 }} numberOfLines={2}>{item.name}</Text>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
               <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 13 }}>{price} DA</Text>
@@ -265,7 +257,7 @@ export default function MenuScreen() {
 
     if (style === "magazine") {
       return (
-        <TouchableOpacity key={item.id} style={[styles.card, { width: cardW, aspectRatio: 0.8 }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
+        <TouchableOpacity key={item.id} style={[styles.card, { aspectRatio: 0.8 }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
           <Image source={imageSource} style={StyleSheet.absoluteFill} resizeMode="cover" />
           <View style={{ position: "absolute", top: 8, left: 8, right: 8, backgroundColor: "rgba(15,23,42,0.65)", borderRadius: 20, paddingVertical: 5, paddingHorizontal: 10 }}>
             <Text style={{ color: "white", fontWeight: "700", fontSize: 11 }} numberOfLines={1}>{item.name}</Text>
@@ -284,7 +276,7 @@ export default function MenuScreen() {
 
     // gradient (défaut)
     return (
-      <TouchableOpacity key={item.id} style={[styles.card, { width: cardW, aspectRatio: 0.75 }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
+      <TouchableOpacity key={item.id} style={[styles.card, { aspectRatio: 0.75 }]} onPress={() => handleAddToCart(item)} activeOpacity={0.85}>
         <Image source={imageSource} style={StyleSheet.absoluteFill} resizeMode="cover" />
         <LinearGradient colors={["transparent", "rgba(0,0,0,0.82)"]} style={styles.cardOverlay}>
           <Text style={styles.cardText} numberOfLines={2}>{item.name}</Text>
@@ -331,30 +323,23 @@ export default function MenuScreen() {
       <View style={styles.main}>
 
         {/* ── SIDEBAR CATÉGORIES ──────────────────────────────────── */}
-        <ScrollView style={[styles.sidebar, { backgroundColor: theme.sidebarColor }]} contentContainerStyle={{ paddingVertical: 12 }} showsVerticalScrollIndicator={false}>
-          {categories.filter((c) => c.avalaible).map((category) => {
+        <ScrollView style={[styles.sidebar, { backgroundColor: theme.sidebarColor }]} contentContainerStyle={{ paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
+          {categories.map((category) => {
             const isSelected = selectedCategory?.id === category.id;
             return (
               <TouchableOpacity
                 key={category.id}
-                style={[styles.catBtn, { backgroundColor: isSelected ? theme.selectedCategoryBgColor : "transparent" }, isSelected && { borderLeftColor: theme.secondaryColor, borderLeftWidth: 3 }]}
+                style={[styles.catBtn, { backgroundColor: isSelected ? theme.selectedCategoryBgColor : "transparent" }, isSelected && { borderLeftColor: theme.secondaryColor }]}
                 onPress={() => { handleUserActivity(); setSelectedCategory(category); }}
               >
-                {category.photo && (
-                  <Image
-                    source={{ uri: `${getPosUrl()}${category.photo}` }}
-                    style={styles.catImage}
-                    resizeMode="contain"
-                  />
-                )}
-                <Text style={[styles.catText, { color: isSelected ? "white" : theme.categoryTextColor }]} numberOfLines={2}>{category.name}</Text>
+                <Text style={[styles.catText, { color: isSelected ? "white" : theme.categoryTextColor }]} numberOfLines={3}>{category.name}</Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
         {/* ── GRILLE MENUS ────────────────────────────────────────── */}
-        <View style={[styles.menuArea, { width: menuAreaW }]}>
+        <View style={styles.menuArea}>
           {filteredMenus.length === 0 ? (
             <View style={styles.center}>
               <Ionicons name="fast-food-outline" size={48} color={MUTED} />
@@ -363,12 +348,12 @@ export default function MenuScreen() {
           ) : (
             <FlatList
               data={filteredMenus}
-              numColumns={numCols}
-              key={numCols}
+              numColumns={3}
+              key={3}
               keyExtractor={(item) => item.id.toString()}
               renderItem={({ item }) => renderMenuCard(item)}
               contentContainerStyle={{ padding: 12, gap: 12 }}
-              columnWrapperStyle={numCols > 1 ? { gap: 12 } : undefined}
+              columnWrapperStyle={{ gap: 12 }}
               showsVerticalScrollIndicator={false}
             />
           )}
@@ -555,17 +540,16 @@ const styles = StyleSheet.create({
   main: { flex: 1, flexDirection: "row" },
 
   // Sidebar
-  sidebar: { width: 130, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.08)" },
+  sidebar: { width: 90, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.08)" },
   catBtn: {
-    paddingVertical: 10, paddingHorizontal: 10, marginHorizontal: 8, marginBottom: 4,
-    borderRadius: 10, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
+    paddingVertical: 12, paddingHorizontal: 8, marginHorizontal: 6, marginBottom: 4,
+    borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
   },
-  catImage: { width: 70, height: 70, marginBottom: 6, borderRadius: 8 },
-  catText: { fontSize: 12, fontWeight: "600", textAlign: "center" },
+  catText: { fontSize: 11, fontWeight: "600", textAlign: "center" },
 
   // Menu grid
   menuArea: { flex: 1 },
-  card: { borderRadius: 14, overflow: "hidden", backgroundColor: "transparent", elevation: 3, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 8 },
+  card: { flex: 1, borderRadius: 14, overflow: "hidden", backgroundColor: "transparent", elevation: 3, shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 8 },
   cardOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, padding: 10, paddingTop: 30 },
   cardText: { color: "white", fontWeight: "700", fontSize: 12, marginBottom: 6 },
   addBtn: { width: 28, height: 28, borderRadius: 14, justifyContent: "center", alignItems: "center" },
