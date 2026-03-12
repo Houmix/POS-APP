@@ -16,9 +16,11 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getPosUrl, SERVER_URL_KEY, RESTAURANT_ID_KEY, loadRestaurantId, getRestaurantId } from "@/utils/serverConfig";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import { useKioskTheme } from "@/contexts/KioskThemeContext";
 
 export default function IdentificationScreen() {
   const navigation = useNavigation();
+  const theme = useKioskTheme();
   const [errorMessage, setErrorMessage] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -198,7 +200,10 @@ export default function IdentificationScreen() {
 
           <View style={styles.content}>
             <View style={styles.logoContainer}>
-              <Image source={require('@/assets/logo.png')} style={{ width: 80, height: 80 }} resizeMode="contain" />
+              {theme.logoUrl
+                ? <Image source={{ uri: theme.logoUrl }} style={{ width: 80, height: 80 }} resizeMode="contain" />
+                : <Image source={require('@/assets/logo.png')} style={{ width: 80, height: 80 }} resizeMode="contain" />
+              }
             </View>
 
             <Text style={styles.title}>Bienvenue</Text>
