@@ -201,6 +201,110 @@ export default function MenuScreen() {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
 
+  // ── Composition modal ─────────────────────────────────────────────
+  const [compVisible, setCompVisible] = useState(false);
+  const [compItem, setCompItem] = useState<any>(null);
+  const [compIsSolo, setCompIsSolo] = useState(false);
+  const [compSteps, setCompSteps] = useState<any[]>([]);
+  const [compLoading, setCompLoading] = useState(false);
+  const [compSelected, setCompSelected] = useState<Record<number, number[]>>({});
+
+  const { getStepsForMenu } = useBorneSync();
+
+  const openCompositionModal = async (item: any, isSolo: boolean) => {
+    setCompItem(item);
+    setCompIsSolo(isSolo);
+    setCompSelected({});
+    setCompSteps([]);
+    setCompVisible(true);
+    setCompLoading(true);
+    try {
+      const mode = isSolo ? 'solo' : 'full';
+      const data = await getStepsForMenu(item.id, mode);
+      setCompSteps(data || []);
+    } catch { setCompSteps([]); }
+    finally { setCompLoading(false); }
+  };
+
+  const compToggleOption = (stepId: number, optionId: number, maxOptions: number) => {
+    setCompSelected(prev => {
+      const current = prev[stepId] || [];
+      if (maxOptions === 1) return { ...prev, [stepId]: [optionId] };
+      if (current.includes(optionId)) return { ...prev, [stepId]: current.filter(id => id !== optionId) };
+      if (maxOptions && current.length >= maxOptions) return prev;
+      return { ...prev, [stepId]: [...current, optionId] };
+    });
+  };
+
+  const compBasePrice = parseFloat(
+    compIsSolo ? (compItem?.solo_price || compItem?.price || 0) : (compItem?.price || 0)
+  );
+
+  const compTotalPrice = useMemo(() => {
+    let extras = 0;
+    compSteps.forEach(step => {
+      const sel = compSelected[step.id] || [];
+      step.stepoptions?.forEach((opt: any) => {
+        if (sel.includes(opt.id)) extras += parseFloat(opt.option?.extra_price || 0);
+      });
+    });
+    return compBasePrice + extras;
+  }, [compSelected, compSteps, compBasePrice]);
+
+  const compIsComplete = compSteps.length === 0 || compSteps.every(s => (compSelected[s.id]?.length || 0) > 0);
+  const compDoneCount = compSteps.filter(s => (compSelected[s.id]?.length || 0) > 0).length;
+
+  const addOrderToCart = async (newOrder: any) => {
+    const existing = await AsyncStorage.getItem("orderList");
+    const list = existing ? JSON.parse(existing) : [];
+    const areOptionsEqual = (s1: any[], s2: any[]) => {
+      if (!s1 && !s2) return true;
+      if (!s1 || !s2 || s1.length !== s2.length) return false;
+      for (const step1 of s1) {
+        const step2 = s2.find((s: any) => s.stepId === step1.stepId);
+        if (!step2) return false;
+        const o1 = step1.selectedOptions.map((o: any) => o.optionId).sort();
+        const o2 = step2.selectedOptions.map((o: any) => o.optionId).sort();
+        if (o1.length !== o2.length || !o1.every((v: any, i: number) => v === o2[i])) return false;
+      }
+      return true;
+    };
+    const idx = list.findIndex((item: any) =>
+      item.menuId === newOrder.menuId && item.solo === newOrder.solo &&
+      item.extra === newOrder.extra && areOptionsEqual(item.steps, newOrder.steps)
+    );
+    if (idx >= 0) list[idx].quantity += 1;
+    else list.push(newOrder);
+    await AsyncStorage.setItem("orderList", JSON.stringify(list));
+  };
+
+  const handleCompConfirm = async () => {
+    if (!compItem) return;
+    const order = {
+      menuName: compIsSolo ? `${compItem.name} (Solo)` : compItem.name,
+      menuId: compItem.id,
+      price: compTotalPrice,
+      quantity: 1,
+      solo: compIsSolo,
+      extra: false,
+      steps: compSteps.map((step: any) => ({
+        stepId: step.id,
+        stepName: step.name,
+        selectedOptions: step.stepoptions
+          .filter((opt: any) => compSelected[step.id]?.includes(opt.id))
+          .map((opt: any) => ({
+            optionId: opt.id,
+            option: opt.id,
+            optionName: opt.option.name,
+            optionPrice: opt.option.extra_price,
+          })),
+      })),
+    };
+    await addOrderToCart(order);
+    setCompVisible(false);
+    refreshCart();
+  };
+
   const handleAddToCart = async (item: any) => {
     handleUserActivity();
     if (item.extra) {
@@ -210,7 +314,8 @@ export default function MenuScreen() {
       else existing.push({ menuId: item.id, menuName: item.name, extra: true, quantity: 1, price: item.price || 0, steps: [] });
       await updateCart(existing);
     } else if (item.offer_menu_choice === false) {
-      router.push({ pathname: "/order/step", params: { menuId: item.id, menuName: item.name, price: item.solo_price || item.price || 0, isSolo: "false" } });
+      if (theme.compositionMode === 'modal') openCompositionModal(item, false);
+      else router.push({ pathname: "/order/step", params: { menuId: item.id, menuName: item.name, price: item.solo_price || item.price || 0, isSolo: "false" } });
     } else {
       setSelectedItem(item);
       setIsModalVisible(true);
@@ -220,23 +325,25 @@ export default function MenuScreen() {
   const handleSoloAdd = () => {
     if (!selectedItem) return;
     setIsModalVisible(false);
-    router.push({ pathname: "/order/step", params: { menuId: selectedItem.id, menuName: selectedItem.name, price: selectedItem.solo_price || selectedItem.price || 0, isSolo: "true" } });
+    if (theme.compositionMode === 'modal') openCompositionModal(selectedItem, true);
+    else router.push({ pathname: "/order/step", params: { menuId: selectedItem.id, menuName: selectedItem.name, price: selectedItem.solo_price || selectedItem.price || 0, isSolo: "true" } });
   };
 
   const handleMenuAdd = () => {
     if (!selectedItem) return;
     setIsModalVisible(false);
-    router.push({ pathname: "/order/step", params: { menuId: selectedItem.id, menuName: selectedItem.name, price: selectedItem.price || 0, isSolo: "false" } });
+    if (theme.compositionMode === 'modal') openCompositionModal(selectedItem, false);
+    else router.push({ pathname: "/order/step", params: { menuId: selectedItem.id, menuName: selectedItem.name, price: selectedItem.price || 0, isSolo: "false" } });
   };
 
   // ── Layout ────────────────────────────────────────────────────────
   const { width: screenWidth } = Dimensions.get("window");
-  const SIDEBAR_W = 100;
+  const SIDEBAR_W = 110;
   const CART_W = 280;
   const GRID_PADDING = 12;
   const CARD_GAP = 12;
   const menuAreaW = screenWidth - SIDEBAR_W - CART_W;
-  const numCols = menuAreaW >= 600 ? 3 : 2;
+  const numCols = menuAreaW >= 800 ? 4 : menuAreaW >= 500 ? 3 : 2;
   const cardW = (menuAreaW - GRID_PADDING * 2 - CARD_GAP * (numCols - 1)) / numCols;
 
   const filteredMenus = menus.filter(
@@ -501,6 +608,116 @@ export default function MenuScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* ── MODAL COMPOSITION ─────────────────────────────────────── */}
+      <Modal animationType="fade" transparent visible={compVisible} onRequestClose={() => setCompVisible(false)}>
+        <View style={compStyles.overlay}>
+          <View style={compStyles.card}>
+            {/* Header */}
+            <View style={[compStyles.header, { backgroundColor: theme.primaryColor }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={compStyles.headerTitle} numberOfLines={1}>
+                  {compIsSolo ? `${compItem?.name} (Solo)` : compItem?.name}
+                </Text>
+                <Text style={compStyles.headerSub}>
+                  {compDoneCount}/{compSteps.length} étape{compSteps.length > 1 ? 's' : ''} complète{compSteps.length > 1 ? 's' : ''}
+                </Text>
+              </View>
+              <View style={compStyles.priceBadge}>
+                <Text style={[compStyles.priceText, { color: theme.primaryColor }]}>{compTotalPrice.toFixed(0)} DA</Text>
+              </View>
+              <TouchableOpacity onPress={() => setCompVisible(false)} style={compStyles.closeBtn}>
+                <Feather name="x" size={20} color="white" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Progress bar */}
+            {compSteps.length > 0 && (
+              <View style={compStyles.progressRow}>
+                {compSteps.map((s: any, i: number) => (
+                  <View key={i} style={[compStyles.progressSeg, { backgroundColor: (compSelected[s.id]?.length || 0) > 0 ? theme.primaryColor : '#E2E8F0' }]} />
+                ))}
+              </View>
+            )}
+
+            {/* Steps scroll */}
+            {compLoading ? (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={theme.primaryColor} />
+                <Text style={{ color: MUTED, marginTop: 12 }}>Chargement des options...</Text>
+              </View>
+            ) : compSteps.length === 0 ? (
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name="checkmark-circle" size={48} color={SUCCESS} />
+                <Text style={{ color: MUTED, marginTop: 12, fontSize: 15 }}>Aucune option à configurer</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 24 }} showsVerticalScrollIndicator={false}>
+                {compSteps.map((step: any) => {
+                  const isDone = (compSelected[step.id]?.length || 0) > 0;
+                  return (
+                    <View key={step.id}>
+                      <View style={compStyles.stepHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={compStyles.stepName}>{step.name}</Text>
+                          <Text style={compStyles.stepHint}>
+                            {step.max_options === 1 ? 'Choisissez une option' : `Jusqu'à ${step.max_options} options`}
+                          </Text>
+                        </View>
+                        {isDone && <Ionicons name="checkmark-circle" size={22} color={SUCCESS} />}
+                      </View>
+                      <View style={compStyles.optionsGrid}>
+                        {step.stepoptions?.map((opt: any) => {
+                          const isSelected = compSelected[step.id]?.includes(opt.id);
+                          return (
+                            <TouchableOpacity
+                              key={opt.id}
+                              style={[compStyles.optCard, isSelected && { borderColor: theme.primaryColor, backgroundColor: theme.primaryColor + '15' }]}
+                              onPress={() => compToggleOption(step.id, opt.id, step.max_options)}
+                              activeOpacity={0.8}
+                            >
+                              {isSelected && (
+                                <View style={compStyles.checkBadge}>
+                                  <Ionicons name="checkmark-circle" size={18} color={theme.primaryColor} />
+                                </View>
+                              )}
+                              {opt.option?.photo ? (
+                                <Image source={{ uri: `${getPosUrl()}${opt.option.photo}` }} style={compStyles.optImage} resizeMode="contain" />
+                              ) : (
+                                <View style={[compStyles.optImage, { backgroundColor: '#F1F5F9', borderRadius: 8, justifyContent: 'center', alignItems: 'center' }]}>
+                                  <Ionicons name="fast-food-outline" size={28} color={MUTED} />
+                                </View>
+                              )}
+                              <Text style={[compStyles.optName, { color: theme.textColor }]} numberOfLines={2}>{opt.option?.name}</Text>
+                              {opt.option?.extra_price > 0 && (
+                                <Text style={[compStyles.optExtra, { color: theme.secondaryColor }]}>+{opt.option.extra_price} DA</Text>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {/* Footer */}
+            <View style={compStyles.footer}>
+              <TouchableOpacity
+                style={[compStyles.addBtn, { backgroundColor: compIsComplete ? SUCCESS : '#CBD5E1' }]}
+                onPress={handleCompConfirm}
+                disabled={!compIsComplete}
+              >
+                <Feather name="shopping-cart" size={20} color="white" />
+                <Text style={compStyles.addBtnText}>
+                  {compIsComplete ? `Ajouter au panier — ${compTotalPrice.toFixed(0)} DA` : `Complétez toutes les étapes (${compDoneCount}/${compSteps.length})`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* ── MODAL CROSS-SELL ───────────────────────────────────────── */}
       <Modal visible={showCrossSell} transparent animationType="fade" onRequestClose={() => setShowCrossSell(false)}>
         <View style={styles.modalOverlay}>
@@ -582,18 +799,18 @@ const styles = StyleSheet.create({
   main: { flex: 1, flexDirection: "row" },
 
   // Sidebar
-  sidebar: { width: 100, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.08)" },
+  sidebar: { width: 110, minWidth: 110, maxWidth: 110, flexShrink: 0, flexGrow: 0, borderRightWidth: 1, borderRightColor: "rgba(255,255,255,0.08)" },
   catBtn: {
-    width: "85%", paddingVertical: 12, paddingHorizontal: 8, marginBottom: 6,
-    borderRadius: 10, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
-    minHeight: 60, justifyContent: "center",
+    width: "88%", paddingVertical: 10, paddingHorizontal: 6, marginBottom: 4,
+    borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
+    minHeight: 48, justifyContent: "center",
   },
-  catText: { fontSize: 12, fontWeight: "600", textAlign: "center" },
+  catText: { fontSize: 10, fontWeight: "600", textAlign: "center" },
 
   // Menu grid
   menuArea: { flex: 1 },
   card: {
-    aspectRatio: 0.72, borderRadius: 18, overflow: "hidden", backgroundColor: "#1e293b",
+    aspectRatio: 0.85, borderRadius: 14, overflow: "hidden", backgroundColor: "#1e293b",
     elevation: 6, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
   },
@@ -654,4 +871,29 @@ const styles = StyleSheet.create({
   csFooter: { flexDirection: "row", gap: 12, padding: 16, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
   csSkip: { flex: 1, height: 50, borderRadius: 12, justifyContent: "center", alignItems: "center", backgroundColor: "#F1F5F9" },
   csConfirm: { flex: 2, height: 50, borderRadius: 12, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
+});
+
+const compStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "center", alignItems: "center" },
+  card: { width: "88%", maxWidth: 860, height: "90%", backgroundColor: "white", borderRadius: 24, overflow: "hidden", flexDirection: "column", elevation: 20 },
+  header: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 14 },
+  headerTitle: { fontSize: 18, fontWeight: "800", color: "white", flex: 1 },
+  headerSub: { fontSize: 12, color: "rgba(255,255,255,0.8)", marginTop: 2 },
+  priceBadge: { backgroundColor: "white", borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6 },
+  priceText: { fontWeight: "900", fontSize: 16 },
+  closeBtn: { padding: 6, backgroundColor: "rgba(255,255,255,0.2)", borderRadius: 10 },
+  progressRow: { flexDirection: "row", gap: 4, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: "#F8FAFC" },
+  progressSeg: { flex: 1, height: 4, borderRadius: 2 },
+  stepHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  stepName: { fontSize: 16, fontWeight: "800", color: "#1e293b" },
+  stepHint: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  optionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  optCard: { width: "22%", minWidth: 110, borderRadius: 14, padding: 10, alignItems: "center", borderWidth: 2, borderColor: "#E2E8F0", backgroundColor: "white", elevation: 2 },
+  checkBadge: { position: "absolute", top: 6, right: 6 },
+  optImage: { width: 64, height: 64, marginBottom: 8 },
+  optName: { fontSize: 12, fontWeight: "700", textAlign: "center" },
+  optExtra: { fontSize: 11, fontWeight: "600", marginTop: 4 },
+  footer: { padding: 16, borderTopWidth: 1, borderTopColor: "#E2E8F0" },
+  addBtn: { height: 54, borderRadius: 16, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },
+  addBtnText: { color: "white", fontWeight: "800", fontSize: 15 },
 });

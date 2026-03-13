@@ -22,6 +22,20 @@ class Order(models.Model):
     refund = models.BooleanField(default=False)
     cancelled = models.BooleanField(default=False)
     take_away = models.BooleanField(default=False)
+    KDS_STATUS_CHOICES = [
+        ('pending_validation', 'En attente de validation'),
+        ('new', 'Nouvelle'),
+        ('in_progress', 'En préparation'),
+        ('done', 'Prête'),
+    ]
+    kds_status = models.CharField(max_length=20, choices=KDS_STATUS_CHOICES, default='pending_validation')
+    customer_identifier = models.CharField(max_length=100, blank=True, default='')
+    DELIVERY_TYPE_CHOICES = [
+        ('sur_place', 'Sur place'),
+        ('emporter', 'À emporter'),
+        ('livraison', 'Livraison'),
+    ]
+    delivery_type = models.CharField(max_length=20, choices=DELIVERY_TYPE_CHOICES, default='sur_place')
     def __str__(self):
         return f"Order {self.id} - {self.total_price()} DA"
     def total_price(self):

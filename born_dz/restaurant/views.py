@@ -287,6 +287,7 @@ class KioskConfigView(APIView):
             'screensaver_image_url': request.build_absolute_uri(config.screensaver_image.url) if config.screensaver_image else None,
             'screensaver_video_url': request.build_absolute_uri(config.screensaver_video.url) if config.screensaver_video else None,
             'card_style':           config.card_style,
+            'composition_mode':     config.composition_mode,
         })
 
     def put(self, request):

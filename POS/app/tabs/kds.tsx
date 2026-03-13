@@ -23,6 +23,9 @@ interface OrderItem {
 interface KDSOrder {
   order_id: number;
   order_status: string;
+  kds_status: string;
+  customer_identifier: string;
+  delivery_type: string;
   cash: boolean;
   paid: boolean;
   take_away: boolean;
@@ -34,25 +37,25 @@ interface KDSOrder {
 }
 
 const COLUMNS = [
-  { key: 'pending',     label: 'Nouvelles',      color: '#f59e0b', bg: '#fffbeb', icon: 'inbox'        as const },
-  { key: 'in_progress', label: 'En préparation', color: '#3b82f6', bg: '#eff6ff', icon: 'zap'          as const },
-  { key: 'ready',       label: 'Prêtes',         color: '#10b981', bg: '#f0fdf4', icon: 'check-circle' as const },
+  { key: 'pending_validation', label: 'À valider',      color: '#ef4444', bg: '#fef2f2', icon: 'clock'        as const },
+  { key: 'new',               label: 'Nouvelles',       color: '#f59e0b', bg: '#fffbeb', icon: 'inbox'        as const },
+  { key: 'in_progress',       label: 'En préparation',  color: '#3b82f6', bg: '#eff6ff', icon: 'zap'          as const },
+  { key: 'done',              label: 'Prêtes',           color: '#10b981', bg: '#f0fdf4', icon: 'check-circle' as const },
 ];
 
-const NEXT_STATUS: Record<string, string> = {
-  pending:     'in_progress',
-  in_progress: 'ready',
-  ready:       'delivered',
+const NEXT_KDS_STATUS: Record<string, string> = {
+  new:         'in_progress',
+  in_progress: 'done',
 };
 const ACTION_LABEL: Record<string, string> = {
-  pending:     '▶  Commencer',
-  in_progress: '✓  Marquer prêt',
-  ready:       '⬆  Livré',
+  pending_validation: '✓  Valider',
+  new:                '▶  Commencer',
+  in_progress:        '✓  Marquer prêt',
 };
 const ACTION_COLOR: Record<string, string> = {
-  pending:     '#f59e0b',
-  in_progress: '#3b82f6',
-  ready:       '#10b981',
+  pending_validation: '#ef4444',
+  new:                '#f59e0b',
+  in_progress:        '#3b82f6',
 };
 
 export default function KDSScreen() {
@@ -73,7 +76,7 @@ export default function KDSScreen() {
     try {
       const resId = restaurantIdRef.current;
       if (!resId) return;
-      const r = await fetch(`${getPosUrl()}/order/api/kds/orders/${resId}/`);
+      const r = await fetch(`${getPosUrl()}/order/api/kds/orders/${resId}/?include_pending=1`);
       if (r.ok) {
         const data = await r.json();
         setOrders(data.orders || []);
@@ -106,19 +109,16 @@ export default function KDSScreen() {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type !== 'kds_message') return;
-        const { type, order_id, status: newStatus } = msg.data;
+        const { type, order_id, kds_status: newKdsStatus } = msg.data;
 
         if (type === 'new_order') {
           fetchOrders();
         } else if (type === 'order_updated') {
-          setOrders(prev => {
-            if (['delivered', 'cancelled', 'completed'].includes(newStatus)) {
-              return prev.filter(o => o.order_id !== order_id);
-            }
-            return prev.map(o =>
-              o.order_id === order_id ? { ...o, order_status: newStatus } : o
-            );
-          });
+          setOrders(prev =>
+            prev.map(o =>
+              o.order_id === order_id ? { ...o, kds_status: newKdsStatus || o.kds_status } : o
+            )
+          );
         }
       } catch {}
     };
@@ -131,21 +131,33 @@ export default function KDSScreen() {
   }, [fetchOrders]);
 
   const updateStatus = async (order: KDSOrder) => {
-    const next = NEXT_STATUS[order.order_status];
-    if (!next || updatingId !== null) return;
+    if (updatingId !== null) return;
     setUpdatingId(order.order_id);
     try {
-      const r = await fetch(`${getPosUrl()}/order/api/Updateorder/${order.order_id}/`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: next }),
-      });
-      if (r.ok) {
-        if (['delivered', 'completed'].includes(next)) {
-          setOrders(prev => prev.filter(o => o.order_id !== order.order_id));
-        } else {
+      if (order.kds_status === 'pending_validation') {
+        // Valider la commande espèces → envoyer en cuisine
+        const r = await fetch(`${getPosUrl()}/order/api/validateOrder/${order.order_id}/`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (r.ok) {
           setOrders(prev =>
-            prev.map(o => o.order_id === order.order_id ? { ...o, order_status: next } : o)
+            prev.map(o => o.order_id === order.order_id
+              ? { ...o, kds_status: 'new', order_status: 'confirmed' }
+              : o)
+          );
+        }
+      } else {
+        const next = NEXT_KDS_STATUS[order.kds_status];
+        if (!next) return;
+        const r = await fetch(`${getPosUrl()}/order/api/Updateorder/${order.order_id}/`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kds_status: next }),
+        });
+        if (r.ok) {
+          setOrders(prev =>
+            prev.map(o => o.order_id === order.order_id ? { ...o, kds_status: next } : o)
           );
         }
       }
@@ -192,11 +204,24 @@ export default function KDSScreen() {
     return { text: `${m}m ${String(s).padStart(2, '0')}s`, minutes: m };
   };
 
+  const DELIVERY_LABEL: Record<string, string> = {
+    sur_place: 'Sur place',
+    emporter:  'Emporter',
+    livraison: 'Livraison',
+  };
+  const DELIVERY_COLOR: Record<string, string> = {
+    sur_place: '#64748b',
+    emporter:  '#f59e0b',
+    livraison: '#f97316',
+  };
+
   const renderCard = (order: KDSOrder) => {
     const { text: elapsed, minutes } = getElapsed(order.created_at);
     const isUrgent   = minutes >= 10;
-    const col        = COLUMNS.find(c => c.key === order.order_status);
+    const col        = COLUMNS.find(c => c.key === order.kds_status);
     const isUpdating = updatingId === order.order_id;
+    const deliveryLabel = DELIVERY_LABEL[order.delivery_type] || (order.take_away ? 'Emporter' : 'Sur place');
+    const deliveryColor = DELIVERY_COLOR[order.delivery_type] || '#64748b';
 
     return (
       <View key={order.order_id} style={[styles.card, { borderTopColor: col?.color || '#94a3b8' }]}>
@@ -205,10 +230,13 @@ export default function KDSScreen() {
         <View style={styles.cardHeader}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Text style={styles.orderId}>#{String(order.order_id).padStart(3, '0')}</Text>
-            {order.take_away && (
-              <View style={styles.badge}>
-                <Feather name="package" size={10} color="white" />
-                <Text style={styles.badgeText}>Emporter</Text>
+            <View style={[styles.badge, { backgroundColor: deliveryColor }]}>
+              <Text style={styles.badgeText}>{deliveryLabel}</Text>
+            </View>
+            {order.cash && (
+              <View style={[styles.badge, { backgroundColor: '#10b981' }]}>
+                <Feather name="dollar-sign" size={10} color="white" />
+                <Text style={styles.badgeText}>Espèces</Text>
               </View>
             )}
             {!order.cash && (
@@ -222,6 +250,12 @@ export default function KDSScreen() {
             {isUrgent ? '⚠ ' : ''}{elapsed}
           </Text>
         </View>
+        {order.customer_identifier ? (
+          <View style={styles.identifierRow}>
+            <Feather name="user" size={12} color="#64748b" />
+            <Text style={styles.identifierText}>{order.customer_identifier}</Text>
+          </View>
+        ) : null}
 
         {/* Items */}
         <View style={styles.divider} />
@@ -247,11 +281,11 @@ export default function KDSScreen() {
         <View style={styles.divider} />
         <View style={styles.cardFooter}>
           <Text style={styles.totalText}>{order.total_price.toFixed(0)} DA</Text>
-          {NEXT_STATUS[order.order_status] && (
+          {ACTION_LABEL[order.kds_status] && (
             <TouchableOpacity
               style={[
                 styles.actionBtn,
-                { backgroundColor: ACTION_COLOR[order.order_status] },
+                { backgroundColor: ACTION_COLOR[order.kds_status] },
                 isUpdating && styles.btnDisabled,
               ]}
               onPress={() => updateStatus(order)}
@@ -259,7 +293,7 @@ export default function KDSScreen() {
             >
               {isUpdating
                 ? <ActivityIndicator size="small" color="white" />
-                : <Text style={styles.actionBtnText}>{ACTION_LABEL[order.order_status]}</Text>
+                : <Text style={styles.actionBtnText}>{ACTION_LABEL[order.kds_status]}</Text>
               }
             </TouchableOpacity>
           )}
@@ -314,7 +348,7 @@ export default function KDSScreen() {
       >
         {COLUMNS.map(col => {
           const colOrders = orders
-            .filter(o => o.order_status === col.key)
+            .filter(o => o.kds_status === col.key)
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
           return (
@@ -400,6 +434,9 @@ const styles = StyleSheet.create({
   badge:       { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#f59e0b', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
   badgeText:   { color: 'white', fontSize: 10, fontWeight: '700' },
   elapsed:     { fontSize: 13, fontWeight: '700' },
+
+  identifierRow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 14, paddingBottom: 6 },
+  identifierText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
 
   divider:     { height: 1, backgroundColor: '#f1f5f9', marginHorizontal: 14 },
 

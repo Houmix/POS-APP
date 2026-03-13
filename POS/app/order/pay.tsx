@@ -46,6 +46,9 @@ export default function PaymentScreen() {
                 user: Employee_id,
                 items: order,
                 restaurant: parseInt(restaurantId || "0", 10),
+                takeaway: (order as any).takeaway || false,
+                delivery_type: (order as any).delivery_type || 'sur_place',
+                customer_identifier: (order as any).customer_identifier || '',
             };
             
             console.log("Données à envoyer :", dataToSend);

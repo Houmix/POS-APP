@@ -31,6 +31,9 @@ class OrderSerializer(serializers.ModelSerializer):
             'refund', 
             'cancelled', 
             'take_away',
+            'kds_status',
+            'customer_identifier',
+            'delivery_type',
             'items',
             'total_price'
         ]

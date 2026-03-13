@@ -258,7 +258,8 @@
     // ── État local ────────────────────────────────────────────
     let orders = [];   // liste complète des commandes actives
 
-    const PREPARING_STATUSES = ['pending', 'confirmed', 'in_progress'];
+    // Statuts caissier (order_status) — pas les statuts cuisine (kds_status)
+    const PREPARING_STATUSES = ['confirmed', 'in_progress'];
     const READY_STATUSES      = ['ready'];
 
     // ── Rendu ─────────────────────────────────────────────────
@@ -292,7 +293,8 @@
         chip.dataset.orderId = o.order_id;
         chip.innerHTML = `
           <span>#${o.order_id}</span>
-          ${o.take_away ? '<span class="takeaway-tag">À emporter</span>' : ''}
+          ${o.customer_identifier ? `<span class="takeaway-tag">${o.customer_identifier}</span>` : ''}
+          ${o.delivery_type === 'livraison' ? '<span class="takeaway-tag">Livraison</span>' : o.take_away ? '<span class="takeaway-tag">À emporter</span>' : ''}
         `;
         grid.appendChild(chip);
       });

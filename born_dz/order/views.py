@@ -90,17 +90,25 @@ class OrderCreate(APIView):
              take_away_bool = raw_takeaway.lower() in ['true', '1', 'yes']
         else:
              take_away_bool = bool(raw_takeaway)
-            
+
         print(f"  take_away (raw): {raw_takeaway} | take_away (bool): {take_away_bool}")
-             
+
+        # customer_identifier et delivery_type
+        customer_identifier = data.get('customer_identifier', '')
+        delivery_type = data.get('delivery_type', 'sur_place')
+        if delivery_type not in ('sur_place', 'emporter', 'livraison'):
+            delivery_type = 'sur_place'
+
         # Définir le statut et l'état de paiement selon le mode de règlement
         if card:
             # Si Carte : On valide directement et on marque comme payé
             initial_status = 'in_progress'
+            initial_kds_status = 'new'
             is_paid = True
         else:
-            # Si Espèce : On attend la confirmation (A confirmer) et le paiement
+            # Si Espèce : En attente de validation caissier, pas encore sur KDS
             initial_status = 'pending'
+            initial_kds_status = 'pending_validation'
             is_paid = False
         # ------------------------
 
@@ -110,8 +118,10 @@ class OrderCreate(APIView):
                 restaurant=restaurant,
                 cash=not card,
                 take_away=take_away_bool,
-                # On applique les nouvelles variables ici :
-                status=initial_status, 
+                delivery_type=delivery_type,
+                customer_identifier=customer_identifier,
+                status=initial_status,
+                kds_status=initial_kds_status,
                 paid=is_paid
             )
             print(f"  Commande créée: ID={order.id} | Status={initial_status} | Payé={is_paid}")
@@ -203,24 +213,25 @@ class OrderCreate(APIView):
         except Exception as e:
             print(f"  Erreur post-process (QR/Ticket): {e}")
 
-        # 7. NOTIFICATION KDS via WebSocket
-        try:
-            from channels.layers import get_channel_layer
-            from asgiref.sync import async_to_sync
-            from borne_sync.consumers import KDS_GROUP_NAME
-            channel_layer = get_channel_layer()
-            if channel_layer:
-                async_to_sync(channel_layer.group_send)(
-                    KDS_GROUP_NAME,
-                    {'type': 'kds.message', 'data': {
-                        'type': 'new_order',
-                        'order_id': order.id,
-                        'restaurant_id': restaurant.id,
-                        'status': initial_status,
-                    }}
-                )
-        except Exception as kds_err:
-            print(f"  [KDS] Erreur notification (non bloquant): {kds_err}")
+        # 7. NOTIFICATION KDS via WebSocket (seulement pour les commandes carte, pas espèces)
+        if card:
+            try:
+                from channels.layers import get_channel_layer
+                from asgiref.sync import async_to_sync
+                from borne_sync.consumers import KDS_GROUP_NAME
+                channel_layer = get_channel_layer()
+                if channel_layer:
+                    async_to_sync(channel_layer.group_send)(
+                        KDS_GROUP_NAME,
+                        {'type': 'kds.message', 'data': {
+                            'type': 'new_order',
+                            'order_id': order.id,
+                            'restaurant_id': restaurant.id,
+                            'kds_status': initial_kds_status,
+                        }}
+                    )
+            except Exception as kds_err:
+                print(f"  [KDS] Erreur notification (non bloquant): {kds_err}")
 
         return Response({
             "message": "Commande créée avec succès",
@@ -299,6 +310,9 @@ class POSOrderGet(APIView):
                 response_data.append({
                     "order_id": order.id,
                     "order_status": order.status,
+                    "kds_status": order.kds_status,
+                    "customer_identifier": order.customer_identifier,
+                    "delivery_type": order.delivery_type,
                     "refund": order.refund,
                     "created_at": order.created_at,
                     "total_price": float(order.total_price()),
@@ -327,7 +341,14 @@ class OrderUpdate(APIView):
             order = Order.objects.get(id=order_id)
         except Order.DoesNotExist:
             return Response({"error": "Commande non trouvé"}, status=status.HTTP_404_NOT_FOUND)
-        serializer = OrderSerializer(order, data=request.data, partial=True)
+
+        # Si kds_status passe à 'done', on met aussi le status caissier à 'ready'
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        new_kds_status = data.get('kds_status')
+        if new_kds_status == 'done' and 'status' not in data:
+            data['status'] = 'ready'
+
+        serializer = OrderSerializer(order, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
             # Notification KDS
@@ -342,7 +363,8 @@ class OrderUpdate(APIView):
                         {'type': 'kds.message', 'data': {
                             'type': 'order_updated',
                             'order_id': order_id,
-                            'status': request.data.get('status', order.status),
+                            'kds_status': new_kds_status or order.kds_status,
+                            'status': data.get('status', order.status),
                         }}
                     )
             except Exception as kds_err:
@@ -351,18 +373,62 @@ class OrderUpdate(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class ValidateCashOrder(APIView):
+    """Le caissier valide une commande espèces → envoie sur KDS."""
+    permission_classes = []
+    authentication_classes = []
+
+    def put(self, request, order_id):
+        try:
+            order = Order.objects.get(id=order_id)
+        except Order.DoesNotExist:
+            return Response({"error": "Commande introuvable"}, status=status.HTTP_404_NOT_FOUND)
+
+        if not order.cash:
+            return Response({"error": "Cette commande n'est pas en espèces"}, status=status.HTTP_400_BAD_REQUEST)
+
+        order.kds_status = 'new'
+        order.status = 'confirmed'
+        order.save(update_fields=['kds_status', 'status'])
+
+        # Notifier KDS via WebSocket
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            from borne_sync.consumers import KDS_GROUP_NAME
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                async_to_sync(channel_layer.group_send)(
+                    KDS_GROUP_NAME,
+                    {'type': 'kds.message', 'data': {
+                        'type': 'new_order',
+                        'order_id': order.id,
+                        'kds_status': 'new',
+                    }}
+                )
+        except Exception as kds_err:
+            print(f"  [KDS] Erreur notification validate (non bloquant): {kds_err}")
+
+        return Response({"message": "Commande validée et envoyée en cuisine"}, status=status.HTTP_200_OK)
+
+
 class KDSOrderGet(APIView):
-    """Commandes actives du jour pour l'écran KDS (pending, in_progress, ready)."""
+    """Commandes actives du jour pour l'écran KDS (new, in_progress, done)."""
     permission_classes = []
     authentication_classes = []
 
     def get(self, request, restaurant_id):
         from django.utils.timezone import now
         today = now().date()
-        active_statuses = ['pending', 'in_progress', 'ready', 'confirmed']
+        # include_pending=1 → inclut aussi les commandes espèces en attente de validation (pour le KDS caissier)
+        include_pending = request.query_params.get('include_pending', '0') == '1'
+        if include_pending:
+            active_kds_statuses = ['pending_validation', 'new', 'in_progress', 'done']
+        else:
+            active_kds_statuses = ['new', 'in_progress', 'done']
         orders = Order.objects.filter(
             restaurant=restaurant_id,
-            status__in=active_statuses,
+            kds_status__in=active_kds_statuses,
             created_at__date=today,
         ).prefetch_related(
             'items__menu',
@@ -389,16 +455,19 @@ class KDSOrderGet(APIView):
                     "composition": options,
                 })
             response_data.append({
-                "order_id":     order.id,
-                "order_status": order.status,
-                "cash":         order.cash,
-                "paid":         order.paid,
-                "take_away":    order.take_away,
-                "created_at":   order.created_at.isoformat(),
-                "total_price":  float(order.total_price()),
-                "items":        order_items,
-                "cancelled":    order.cancelled,
-                "refund":       order.refund,
+                "order_id":            order.id,
+                "order_status":        order.status,
+                "kds_status":          order.kds_status,
+                "customer_identifier": order.customer_identifier,
+                "delivery_type":       order.delivery_type,
+                "cash":                order.cash,
+                "paid":                order.paid,
+                "take_away":           order.take_away,
+                "created_at":          order.created_at.isoformat(),
+                "total_price":         float(order.total_price()),
+                "items":               order_items,
+                "cancelled":           order.cancelled,
+                "refund":              order.refund,
             })
         return Response({"orders": response_data}, status=status.HTTP_200_OK)
 

@@ -14,6 +14,7 @@ urlpatterns = [
     path('api/kpi/<int:restaurantId>', KpiView.as_view(), name='api_get_kpi'),
     path('api/export/<int:restaurant_id>/', export_orders_csv, name='export_orders'),
     path('api/kds/orders/<int:restaurant_id>/', KDSOrderGet.as_view(), name='kds_orders'),
+    path('api/validateOrder/<int:order_id>/', ValidateCashOrder.as_view(), name='validate_order'),
     path('display/<int:restaurant_id>/', customer_display, name='customer_display'),
     path('display/', customer_display, name='customer_display_auto'),
 ]

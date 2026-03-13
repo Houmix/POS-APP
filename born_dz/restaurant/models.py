@@ -42,6 +42,12 @@ class KioskConfig(models.Model):
         ('magazine', 'Magazine (badge flottant)'),
     ]
     card_style           = models.CharField(max_length=20, choices=CARD_STYLE_CHOICES, default='gradient')
+    # Mode de composition : modale intégrée ou page dédiée
+    COMPOSITION_MODE_CHOICES = [
+        ('modal', 'Modale intégrée'),
+        ('page', 'Page dédiée'),
+    ]
+    composition_mode     = models.CharField(max_length=10, choices=COMPOSITION_MODE_CHOICES, default='page')
     updated_at           = models.DateTimeField(auto_now=True)
 
     def __str__(self):
