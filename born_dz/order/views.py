@@ -514,81 +514,115 @@ def generate_ticket_content(request, order_id):
 
 
 def format_order_as_ticket(order_id):
+    """Génère un ticket ESC/POS pour imprimante thermique 80mm (48 colonnes)."""
     order = get_object_or_404(Order, id=order_id)
-    lines = []
-    WIDTH = 42 
-    
-    # Header
-    lines.append("=" * WIDTH)
-    lines.append(str(order.restaurant.name).center(WIDTH))
-    lines.append("=" * WIDTH)
-    lines.append("")
-    lines.append(f"Commande N° {order.id}")
-    lines.append(f"Date: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    
+
+    # ── Commandes ESC/POS ──────────────────────────────────────────────────────
+    INIT      = '\x1b\x40'         # Initialiser l'imprimante
+    BOLD_ON   = '\x1b\x45\x01'    # Gras activé (noir foncé)
+    BOLD_OFF  = '\x1b\x45\x00'    # Gras désactivé
+    CENTER    = '\x1b\x61\x01'    # Alignement centré
+    LEFT      = '\x1b\x61\x00'    # Alignement gauche
+    DBL_SIZE  = '\x1d\x21\x11'    # Double hauteur + largeur
+    DBL_WIDTH = '\x1d\x21\x10'    # Double largeur seule
+    NORMAL    = '\x1d\x21\x00'    # Taille normale
+    LF        = '\n'               # Saut de ligne
+    CUT       = '\x1d\x56\x00'    # Coupe papier
+
+    WIDTH  = 48   # 80mm papier pleine largeur (Font A, 12×24 dots)
+    HALF_W = 24   # largeur en mode double-width
+
+    buf = []
+
+    # ── Initialisation ─────────────────────────────────────────────────────────
+    buf.append(INIT)
+
+    # ── Entête : nom du restaurant en double taille + gras ────────────────────
+    resto_name = str(order.restaurant.name)[:HALF_W]
+    buf.append(CENTER + BOLD_ON + DBL_SIZE)
+    buf.append(resto_name.center(HALF_W) + LF)
+    buf.append(NORMAL + BOLD_OFF)
+
+    # Séparateur
+    buf.append(CENTER + BOLD_ON)
+    buf.append('=' * WIDTH + LF)
+    buf.append(BOLD_OFF + LEFT)
+
+    # Infos commande
+    buf.append(LF)
+    buf.append(BOLD_ON + f'Commande N deg {order.id}' + BOLD_OFF + LF)
+    buf.append(f'Date : {datetime.now().strftime("%d/%m/%Y %H:%M")}' + LF)
+
     if hasattr(order, 'table') and order.table:
-        lines.append(f"Table: {order.table.number}")
+        buf.append(f'Table : {order.table.number}' + LF)
     if hasattr(order, 'user') and order.user:
         serveur = order.user.first_name or order.user.username
-        lines.append(f"Serveur: {serveur}")
-    
-    lines.append("")
-    lines.append("-" * WIDTH)
-    lines.append("ARTICLES".center(WIDTH))
-    lines.append("-" * WIDTH)
-    lines.append("")
-    
-    subtotal = 0
+        buf.append(f'Serveur : {serveur}' + LF)
+
+    buf.append(LF)
+    buf.append(BOLD_ON + '-' * WIDTH + BOLD_OFF + LF)
+    buf.append(CENTER + BOLD_ON + 'ARTICLES' + BOLD_OFF + LF)
+    buf.append(BOLD_ON + '-' * WIDTH + BOLD_OFF + LF)
+    buf.append(LEFT + LF)
+
+    # ── Articles ───────────────────────────────────────────────────────────────
     for item in order.items.all():
-        if item.menu:
-            quantity = item.quantity
-            menu_name = item.menu.name[:25]
-            if item.solo or item.extra:
-                menu_price = float(getattr(item.menu, 'solo_price', 0) or 0)
-            else:
-                menu_price = float(getattr(item.menu, 'price', 0) or 0)
-            item_total = quantity * menu_price
-            
-            left_part = f"{quantity}x {menu_name}"
-            right_part = f"{item_total:.2f} DA"
-            spaces = WIDTH - len(left_part) - len(right_part)
-            lines.append(left_part + " " * max(1, spaces) + right_part)
-            
-            for option_item in item.options.all():
-                option_name = "Option"
-                extra_price = 0
-                if hasattr(option_item, 'option'):
-                    if hasattr(option_item.option, 'option'):
-                        option_name = getattr(option_item.option.option, 'name', 'Option')
-                    extra_price = float(getattr(option_item.option, 'extra_price', 0) or 0)
-                
-                option_line = f"  + {option_name[:25]}"
-                option_price = f"{extra_price:.2f} DA"
-                spaces = WIDTH - len(option_line) - len(option_price)
-                lines.append(option_line + " " * max(1, spaces) + option_price)
-                item_total += extra_price
-            
-            subtotal += item_total
-    
-    lines.append("")
-    lines.append("-" * WIDTH)
-    
-    total = float(order.total_price())
-    left_part = "TOTAL À PAYER:"
-    right_part = f"{total:.2f} DA"
-    spaces = WIDTH - len(left_part) - len(right_part)
-    lines.append(left_part + " " * max(1, spaces) + right_part)
-    lines.append("=" * WIDTH)
-    lines.append("")
-    lines.append("Merci de votre visite !".center(WIDTH))
-    lines.append("")
-    lines.append("=" * WIDTH)
-    lines.append("")
-    lines.append("")
-    
+        if not item.menu:
+            continue
+
+        quantity  = item.quantity
+        menu_name = item.menu.name[:28]
+        if item.solo or item.extra:
+            menu_price = float(getattr(item.menu, 'solo_price', 0) or 0)
+        else:
+            menu_price = float(getattr(item.menu, 'price', 0) or 0)
+        item_total = quantity * menu_price
+
+        left_part  = f'{quantity}x {menu_name}'
+        right_part = f'{item_total:.2f} DA'
+        spaces     = WIDTH - len(left_part) - len(right_part)
+        buf.append(BOLD_ON + left_part + ' ' * max(1, spaces) + right_part + BOLD_OFF + LF)
+
+        for option_item in item.options.all():
+            option_name = 'Option'
+            extra_price = 0
+            if hasattr(option_item, 'option'):
+                if hasattr(option_item.option, 'option'):
+                    option_name = getattr(option_item.option.option, 'name', 'Option')
+                extra_price = float(getattr(option_item.option, 'extra_price', 0) or 0)
+
+            opt_line  = f'  + {option_name[:26]}'
+            opt_price = f'{extra_price:.2f} DA'
+            spaces    = WIDTH - len(opt_line) - len(opt_price)
+            buf.append(opt_line + ' ' * max(1, spaces) + opt_price + LF)
+            item_total += extra_price
+
+    # ── Total en double largeur + gras ─────────────────────────────────────────
+    buf.append(LF)
+    buf.append(BOLD_ON + '=' * WIDTH + BOLD_OFF + LF)
+
+    total      = float(order.total_price())
+    total_str  = f'{total:.2f} DA'
+    label      = 'TOTAL :'
+    # En mode double largeur HALF_W colonnes visibles
+    spaces     = HALF_W - len(label) - len(total_str)
+    buf.append(DBL_WIDTH + BOLD_ON)
+    buf.append(label + ' ' * max(1, spaces) + total_str + LF)
+    buf.append(NORMAL + BOLD_OFF)
+
+    buf.append(BOLD_ON + '=' * WIDTH + BOLD_OFF + LF)
+    buf.append(LF)
+
+    # Merci
+    buf.append(CENTER + BOLD_ON + 'Merci de votre visite !' + BOLD_OFF + LF)
+    buf.append(LF + LF + LF)
+
+    # ── Coupe papier ───────────────────────────────────────────────────────────
+    buf.append(CUT)
+
     return {
-        "content": "\n".join(lines),
-        "format": "TEXT"
+        "content": ''.join(buf),
+        "format": "ESCPOS"
     }
 
 # ==========================================

@@ -21,8 +21,11 @@ import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 export default function OrderScreen() {
   // 1. Interface
   interface Order {
-    order_id: number; 
+    order_id: number;
     order_status: string;
+    kds_status: string;
+    delivery_type: string;
+    customer_identifier?: string;
     cash: boolean;
     created_at: string;
     last_updated?: string;
@@ -42,7 +45,7 @@ export default function OrderScreen() {
     paid?: boolean;
     refund?: boolean;
     cancelled?: boolean;
-    id?: number; 
+    id?: number;
   }
 
   const [orders, setOrders] = useState<Order[]>([]);
@@ -179,19 +182,40 @@ export default function OrderScreen() {
     });
   };
 
+  // --- Valider une commande espèces (envoie sur KDS) ---
+  const validateCashOrder = async (orderId: number) => {
+    try {
+      const accessToken = await AsyncStorage.getItem("token");
+      await axios.put(
+        `${getPosUrl()}/order/api/validateOrder/${orderId}/`,
+        {},
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      setOrders(prev =>
+        prev.map(o => o.order_id === orderId
+          ? { ...o, kds_status: "new", order_status: "confirmed" }
+          : o
+        )
+      );
+    } catch (error: any) {
+      console.error("❌ Erreur validation:", error);
+      Alert.alert("Erreur", "Impossible de valider la commande.");
+    }
+  };
+
   // --- LOGIQUE D'ACTION ---
   const handleAction = async (orderId: number, action: string) => {
     try {
       console.log(`🚀 Exécution Action: ${action} sur #${orderId}`);
-      
+
       let updateData: any = {};
       if (action === "Valider") updateData = { paid: true, status: "in_progress" };
       else if (action === "Annuler") updateData = { cancelled: true, status: "cancelled" };
       else if (action === "Rembourser") updateData = { refund: true, status: "refund" };
-      else if (action === "Prête") updateData = { status: "ready" }; 
+      else if (action === "Prête") updateData = { status: "ready" };
 
       const accessToken = await AsyncStorage.getItem("token");
-      
+
       const response = await axios.put(
         `${getPosUrl()}/order/api/Updateorder/${orderId}/`,
         updateData,
@@ -488,12 +512,26 @@ export default function OrderScreen() {
             <MaterialCommunityIcons name="package-variant" size={16} color="#666" />
             <Text style={styles.infoText}>{order.items.length} article(s)</Text>
           </View>
-          {order.takeaway && (
+          <View style={styles.infoRow}>
+            <MaterialCommunityIcons
+              name={
+                order.delivery_type === "emporter" ? "bag-personal" :
+                order.delivery_type === "livraison" ? "moped" : "silverware-fork-knife"
+              }
+              size={16}
+              color="#666"
+            />
+            <Text style={styles.infoText}>
+              {order.delivery_type === "emporter" ? "À emporter" :
+               order.delivery_type === "livraison" ? "Livraison" : "Sur place"}
+            </Text>
+          </View>
+          {order.customer_identifier ? (
             <View style={styles.infoRow}>
-              <MaterialCommunityIcons name="bag-personal" size={16} color="#666" />
-              <Text style={styles.infoText}>À emporter</Text>
+              <MaterialCommunityIcons name="phone" size={16} color="#756fbf" />
+              <Text style={[styles.infoText, { color: "#756fbf" }]}>{order.customer_identifier}</Text>
             </View>
-          )}
+          ) : null}
         </View>
 
         <TouchableOpacity
@@ -505,40 +543,12 @@ export default function OrderScreen() {
         </TouchableOpacity>
 
         <View style={styles.actionsContainer}>
-          {isPaid ? (
-            isRefunded ? (
-              <View style={[styles.statusBadgeInline, { backgroundColor: "#e0e0e0" }]}>
-                <MaterialCommunityIcons name="undo" size={16} color="#666" />
-                <Text style={{ color: "#666", fontWeight: "600", marginLeft: 8 }}>Remboursée</Text>
-              </View>
-            ) : isCancelled ? (
-              <View style={[styles.statusBadgeInline, { backgroundColor: "#f8d7da" }]}>
-                <MaterialCommunityIcons name="close-circle" size={16} color="#dc3545" />
-                <Text style={{ color: "#dc3545", fontWeight: "600", marginLeft: 8 }}>Annulée</Text>
-              </View>
-            ) : (
-              <View style={{ flex: 1, flexDirection: 'row' }}>
-                {order.order_status === "in_progress" && (
-                  <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: "#28a745" }]}
-                    onPress={() => handleAction(order.order_id, "Prête")}
-                  >
-                    <MaterialCommunityIcons name="check-all" size={18} color="#fff" />
-                    <Text style={styles.actionButtonText}>Prête</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )
-          ) : isCancelled ? (
-            <View style={[styles.statusBadgeInline, { backgroundColor: "#f8d7da" }]}>
-              <MaterialCommunityIcons name="close-circle" size={16} color="#dc3545" />
-              <Text style={{ color: "#dc3545", fontWeight: "600", marginLeft: 8 }}>Annulée</Text>
-            </View>
-          ) : (
+          {/* Colonne "À valider" : espèces en attente de validation caissier */}
+          {order.kds_status === "pending_validation" && (
             <>
               <TouchableOpacity
                 style={[styles.actionButton, styles.validateButton]}
-                onPress={() => handleAction(order.order_id, "Valider")}
+                onPress={() => validateCashOrder(order.order_id)}
               >
                 <MaterialCommunityIcons name="check-circle" size={18} color="#fff" />
                 <Text style={styles.actionButtonText}>Valider</Text>
@@ -552,14 +562,38 @@ export default function OrderScreen() {
               </TouchableOpacity>
             </>
           )}
+
+          {/* Colonne "Prête" : imprimer le ticket */}
+          {order.kds_status === "done" && (
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: "#28a745", flex: 1 }]}
+              onPress={() => handleReprint(order.order_id)}
+              disabled={printing}
+            >
+              <MaterialCommunityIcons name="printer" size={18} color="#fff" />
+              <Text style={styles.actionButtonText}>Imprimer</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Rembourser (si payé) */}
+          {isPaid && !isRefunded && !isCancelled && order.kds_status !== "pending_validation" && (
+            <TouchableOpacity
+              style={[styles.actionButton, { backgroundColor: "#6c757d" }]}
+              onPress={() => confirmRefund(order.order_id)}
+            >
+              <MaterialCommunityIcons name="undo" size={18} color="#fff" />
+              <Text style={styles.actionButtonText}>Rembourser</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
   };
 
-  const renderColumn = (title: string, status: string, icon: any) => {
+  const renderColumn = (title: string, status: string | string[], icon: any) => {
+    const statusList = Array.isArray(status) ? status : [status];
     const filteredOrders = orders.filter((order) => {
-      const matchesStatus = order.order_status === status;
+      const matchesStatus = statusList.includes(order.kds_status);
       const matchesSearch = order.order_id.toString().includes(searchQuery);
       return matchesStatus && matchesSearch;
     });
@@ -636,11 +670,11 @@ export default function OrderScreen() {
         </View>
       </View>
 
-      {/* Colonnes Kanban */}
+      {/* Colonnes Kanban KDS */}
       <View style={styles.columnsContainer}>
-        {renderColumn("À confirmer", "pending", "clock-outline")}
-        {renderColumn("En cours", "in_progress", "chef-hat")}
-        {renderColumn("Prête", "ready", "check-circle")}
+        {renderColumn("À valider", "pending_validation", "clock-outline")}
+        {renderColumn("En préparation", ["new", "in_progress"], "chef-hat")}
+        {renderColumn("Prête", "done", "check-circle")}
       </View>
 
       {/* Modale Historique */}
