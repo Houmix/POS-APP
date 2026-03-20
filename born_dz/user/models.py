@@ -1,9 +1,26 @@
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from restaurant.models import Restaurant
 from django.conf import settings
-# Import nécessaire pour le hachage manuel
 from django.contrib.auth.hashers import make_password, is_password_usable
+
+
+class UserManager(BaseUserManager):
+    def create_user(self, phone, password=None, **extra_fields):
+        if not phone:
+            raise ValueError("Le numéro de téléphone est obligatoire")
+        extra_fields.setdefault('is_active', True)
+        user = self.model(phone=phone, **extra_fields)
+        if password:
+            user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, phone, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        return self.create_user(phone, password, **extra_fields)
+
 
 class Role(models.Model):
     ROLE_CHOICES = [
@@ -20,8 +37,10 @@ class Role(models.Model):
 
 class User(AbstractUser):
     USERNAME_FIELD = 'phone'
-    REQUIRED_FIELDS = ['email']
-    
+    REQUIRED_FIELDS = []
+
+    objects = UserManager()
+
     username = models.CharField(max_length=150, blank=True, null=True, unique=False)
     
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, null=True, blank=True)
