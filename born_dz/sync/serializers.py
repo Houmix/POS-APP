@@ -209,6 +209,10 @@ def full_snapshot(restaurant_id, base_url=''):
         'restaurant': {
             'id': restaurant.id,
             'name': restaurant.name,
+            'address': restaurant.address,
+            'phone': restaurant.phone,
+            'immat': restaurant.immat,
+            'logo_url': _photo_url(restaurant.logo, base_url),
         },
         'kiosk_config': kiosk_config_data,
         'group_menus': [serialize_group_menu(g, base_url) for g in group_menus],

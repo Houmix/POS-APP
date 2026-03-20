@@ -261,6 +261,20 @@ class RestaurantDeleteView(APIView):
             )
 
 
+def _resolve_media_url(request, file_field, remote_url_fallback=None):
+    """
+    Retourne l'URL d'un média :
+    - Si le fichier existe localement → URL absolue locale
+    - Sinon → remote_url_fallback (URL stockée lors de la sync cloud→local)
+    """
+    if file_field:
+        try:
+            return request.build_absolute_uri(file_field.url)
+        except Exception:
+            pass
+    return remote_url_fallback or None
+
+
 class KioskConfigView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -283,9 +297,9 @@ class KioskConfigView(APIView):
             'category_bg_color':          config.category_bg_color,
             'selected_category_bg_color': config.selected_category_bg_color,
             'category_text_color':        config.category_text_color,
-            'logo_url':             request.build_absolute_uri((config.logo or config.restaurant.logo).url) if (config.logo or config.restaurant.logo) else None,
+            'logo_url':             _resolve_media_url(request, config.logo or config.restaurant.logo, config.logo_remote_url),
             'screensaver_image_url': request.build_absolute_uri(config.screensaver_image.url) if config.screensaver_image else None,
-            'screensaver_video_url': request.build_absolute_uri(config.screensaver_video.url) if config.screensaver_video else None,
+            'screensaver_video_url': _resolve_media_url(request, config.screensaver_video, config.screensaver_video_remote_url),
             'card_style':           config.card_style,
             'composition_mode':     config.composition_mode,
         })

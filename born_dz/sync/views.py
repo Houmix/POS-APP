@@ -302,52 +302,78 @@ def apply_snapshot(request):
 
         if restaurant_id:
             from restaurant.models import Restaurant
+            restaurant_address = restaurant_data.get('address', '-')
+            restaurant_phone = restaurant_data.get('phone', '0000000000')
+            restaurant_immat = restaurant_data.get('immat', '-')
+
             restaurant, _ = Restaurant.objects.get_or_create(
                 id=restaurant_id,
-                defaults={'name': restaurant_name, 'address': '-', 'phone': '0000000000', 'immat': '-'}
+                defaults={
+                    'name': restaurant_name,
+                    'address': restaurant_address,
+                    'phone': restaurant_phone,
+                    'immat': restaurant_immat,
+                }
             )
-            # Mettre à jour le nom si différent
-            if restaurant.name != restaurant_name and restaurant_name:
-                Restaurant.objects.filter(id=restaurant_id).update(name=restaurant_name)
+            # Mettre à jour tous les champs si différents
+            update_fields = {}
+            if restaurant_name and restaurant.name != restaurant_name:
+                update_fields['name'] = restaurant_name
+            if restaurant_address and restaurant_address != '-' and restaurant.address != restaurant_address:
+                update_fields['address'] = restaurant_address
+            if restaurant_phone and restaurant_phone != '0000000000' and restaurant.phone != restaurant_phone:
+                update_fields['phone'] = restaurant_phone
+            if restaurant_immat and restaurant_immat != '-' and restaurant.immat != restaurant_immat:
+                update_fields['immat'] = restaurant_immat
+            if update_fields:
+                Restaurant.objects.filter(id=restaurant_id).update(**update_fields)
 
-        # Ordre d'insertion important (respecter les FK)
-        table_order = ['kiosk_config', 'group_menu', 'menu', 'option', 'step', 'menu_step', 'step_option']
-        plurals = {
-            'kiosk_config': 'kiosk_config',   # objet unique (pas une liste)
-            'group_menu': 'group_menus',
-            'menu': 'menus',
-            'option': 'options',
-            'step': 'steps',
-            'menu_step': 'menu_steps',
-            'step_option': 'step_options',
-        }
+        from menu.models import GroupMenu, Menu, Step, MenuStep, StepOption, Option
+        from restaurant.models import KioskConfig
 
         results = {}
 
         with transaction.atomic():
+            # ── 1. Purger TOUTES les données locales dans l'ordre inverse des FK ──
+            if restaurant_id:
+                step_ids = list(Step.objects.filter(restaurant_id=restaurant_id).values_list('id', flat=True))
+                menu_ids = list(Menu.objects.filter(group_menu__restaurant_id=restaurant_id).values_list('id', flat=True))
+                # Collecter les option_ids AVANT de supprimer les StepOptions
+                option_ids = list(StepOption.objects.filter(step_id__in=step_ids).values_list('option_id', flat=True).distinct())
+                # Supprimer dans l'ordre (dépendances d'abord)
+                StepOption.objects.filter(step_id__in=step_ids).delete()
+                MenuStep.objects.filter(step_id__in=step_ids).delete()
+                MenuStep.objects.filter(menu_id__in=menu_ids).delete()
+                Step.objects.filter(restaurant_id=restaurant_id).delete()
+                Menu.objects.filter(group_menu__restaurant_id=restaurant_id).delete()
+                GroupMenu.objects.filter(restaurant_id=restaurant_id).delete()
+                # Supprimer les options qui n'ont plus aucune liaison step_option
+                if option_ids:
+                    Option.objects.filter(id__in=option_ids, stepoptions__isnull=True).delete()
+                KioskConfig.objects.filter(restaurant_id=restaurant_id).delete()
+
+            # ── 2. kiosk_config (objet unique, keyed by restaurant_id) ──────────
+            config_data = body.get('kiosk_config')
+            if config_data and isinstance(config_data, dict):
+                _apply_change('kiosk_config', 'create', config_data)
+                results['kiosk_config'] = 1
+            else:
+                results['kiosk_config'] = 0
+
+            # ── 3. Insérer dans l'ordre FK ─────────────────────────────────────
+            table_order = ['group_menu', 'menu', 'option', 'step', 'menu_step', 'step_option']
+            plurals = {
+                'group_menu': 'group_menus',
+                'menu': 'menus',
+                'option': 'options',
+                'step': 'steps',
+                'menu_step': 'menu_steps',
+                'step_option': 'step_options',
+            }
+
             for table_name in table_order:
                 json_key = plurals[table_name]
-
-                # kiosk_config est un objet unique (pas une liste)
-                if table_name == 'kiosk_config':
-                    config_data = body.get('kiosk_config')
-                    if config_data and isinstance(config_data, dict):
-                        _apply_change('kiosk_config', 'create', config_data)
-                        results['kiosk_config'] = 1
-                    else:
-                        results['kiosk_config'] = 0
-                    continue
-
                 items = body.get(json_key, [])
-                Model = get_model_for_table(table_name)
-
-                # Supprimer les anciennes données locales pour ce restaurant
-                if table_name == 'group_menu' and restaurant_id:
-                    Model.objects.filter(restaurant_id=restaurant_id).delete()
-                elif table_name == 'step' and restaurant_id:
-                    Model.objects.filter(restaurant_id=restaurant_id).delete()
-
-                # Insérer/mettre à jour (idempotent via update_or_create)
                 count = 0
                 for item_data in items:
                     try:
@@ -477,6 +503,18 @@ def _apply_change(table_name, action, data, restaurant_id=None):
 
     with sync_apply_guard():
         if action == 'create':
+            # KioskConfig : pas d'id dans les données, clé = restaurant_id
+            if table_name == 'kiosk_config':
+                resto_id = clean_data.pop('restaurant_id', None)
+                if resto_id:
+                    # Retirer les champs fichier (ne pas écraser un FileField local avec une URL distante)
+                    clean_data.pop('logo', None)
+                    clean_data.pop('screensaver_video', None)
+                    clean_data.pop('screensaver_image', None)
+                    # logo_remote_url / screensaver_video_remote_url restent dans clean_data
+                    Model.objects.update_or_create(restaurant_id=resto_id, defaults=clean_data)
+                return
+
             obj_id = clean_data.get('id')
             if obj_id:
                 # update_or_create pour gérer les doublons (idempotent)
