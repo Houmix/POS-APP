@@ -31,15 +31,9 @@ export default function IdentificationScreen() {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [activeField, setActiveField] = useState<"phone" | "password" | null>(null);
 
-  // ── Vérification de licence (via HTTP → caisse) ──
-  const [licenseLoading, setLicenseLoading] = useState(true);
-  const [licenseValid, setLicenseValid] = useState(true); // optimiste par défaut
-
-  // Tous les hooks AVANT les returns conditionnels (règle React)
   useEffect(() => {
-    // Réinitialise la session ET vérifie la licence
-    const init = async () => {
-      // Effacer uniquement les clés de session, pas la config serveur
+    // Réinitialise uniquement les clés de session (garde la config serveur)
+    const clearSession = async () => {
       try {
         const allKeys = await AsyncStorage.getAllKeys();
         const sessionKeys = allKeys.filter(
@@ -47,58 +41,11 @@ export default function IdentificationScreen() {
         );
         if (sessionKeys.length > 0) await AsyncStorage.multiRemove(sessionKeys);
       } catch (e) {
-        console.error("Erreur lors de la réinitialisation de session :", e);
-      }
-
-      await loadRestaurantId();
-      const restaurantId = getRestaurantId();
-
-      try {
-        // Dans Electron, on interroge directement le LicenseManager (pas de HTTP)
-        const win = typeof window !== 'undefined' ? (window as any) : null;
-        if (win?.licenseAPI) {
-          const status = await win.licenseAPI.getStatus();
-          // valid si activé + valide, ou si pas encore activé (laisse passer au premier run)
-          setLicenseValid(!status.activated || status.valid === true);
-        } else {
-          // Fallback web : vérifie via le Django local
-          const response = await axios.get(
-            `${getPosUrl()}/api/license/restaurant-status/?restaurant_id=${restaurantId || 1}`,
-            { timeout: 5000 }
-          );
-          setLicenseValid(response.data.valid === true);
-        }
-      } catch {
-        // Si la caisse est injoignable, on laisse passer (mode hors ligne)
-        setLicenseValid(true);
-      } finally {
-        setLicenseLoading(false);
+        console.error("Erreur réinitialisation session :", e);
       }
     };
-    init();
+    clearSession();
   }, []);
-
-  if (licenseLoading) {
-    return (
-      <View style={styles.splash}>
-        <Text style={styles.splashText}>ClickGo</Text>
-        <ActivityIndicator size="large" color="#4CAF50" style={{ marginTop: 20 }} />
-        <Text style={styles.splashSub}>Vérification de la licence...</Text>
-      </View>
-    );
-  }
-
-  if (!licenseValid) {
-    return (
-      <View style={styles.splash}>
-        <Text style={styles.splashText}>Licence invalide</Text>
-        <Text style={styles.splashSub}>
-          Aucune licence active trouvée pour ce restaurant.{'\n'}
-          Contactez l'administrateur ClickGo.
-        </Text>
-      </View>
-    );
-  }
 
   const handleKeyPress = (val: string) => {
     if (val === "delete") {
