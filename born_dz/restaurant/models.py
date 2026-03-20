@@ -31,10 +31,13 @@ class KioskConfig(models.Model):
     category_bg_color          = models.CharField(max_length=7, default='#1e293b')
     selected_category_bg_color = models.CharField(max_length=7, default='#334155')
     category_text_color        = models.CharField(max_length=7, default='#94a3b8')
-    # Médias
+    # Médias (fichiers locaux au serveur)
     logo                 = models.ImageField(upload_to='kiosk/logos/', blank=True, null=True)
     screensaver_image    = models.ImageField(upload_to='kiosk/screensaver/', blank=True, null=True)
     screensaver_video    = models.FileField(upload_to='kiosk/videos/', blank=True, null=True)
+    # URLs distantes (remplies sur les Django locaux lors de la sync depuis le serveur distant)
+    logo_remote_url          = models.URLField(blank=True, null=True)
+    screensaver_video_remote_url = models.URLField(blank=True, null=True)
     # Design des cartes
     CARD_STYLE_CHOICES = [
         ('gradient', 'Gradient sombre'),

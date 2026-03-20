@@ -54,11 +54,20 @@ export default function IdentificationScreen() {
       const restaurantId = getRestaurantId();
 
       try {
-        const response = await axios.get(
-          `${getPosUrl()}/api/license/restaurant-status/?restaurant_id=${restaurantId || 1}`,
-          { timeout: 5000 }
-        );
-        setLicenseValid(response.data.valid === true);
+        // Dans Electron, on interroge directement le LicenseManager (pas de HTTP)
+        const win = typeof window !== 'undefined' ? (window as any) : null;
+        if (win?.licenseAPI) {
+          const status = await win.licenseAPI.getStatus();
+          // valid si activé + valide, ou si pas encore activé (laisse passer au premier run)
+          setLicenseValid(!status.activated || status.valid === true);
+        } else {
+          // Fallback web : vérifie via le Django local
+          const response = await axios.get(
+            `${getPosUrl()}/api/license/restaurant-status/?restaurant_id=${restaurantId || 1}`,
+            { timeout: 5000 }
+          );
+          setLicenseValid(response.data.valid === true);
+        }
       } catch {
         // Si la caisse est injoignable, on laisse passer (mode hors ligne)
         setLicenseValid(true);

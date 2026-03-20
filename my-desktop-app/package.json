@@ -41,12 +41,13 @@
       "splash.html",
       "package.json",
       "pyinstaller_bundle.js",
+      "modules/**/*",
       "node_modules/**/*",
       "!node_modules/.cache"
     ],
     "extraResources": [
       {
-        "from": "dist/python-build/born_dz",
+        "from": "dist/python-build/clickgo_server",
         "to": "born_dz",
         "filter": ["**/*"]
       },

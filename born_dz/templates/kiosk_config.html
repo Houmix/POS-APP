@@ -1,0 +1,132 @@
+{% extends "site_vitrine.html" %}
+{% load static %}
+
+{% block headerContent %}
+<title>Personnalisation Borne</title>
+<style>
+    .config-section {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    .color-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+    }
+    .color-field {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .color-field input[type="color"] {
+        width: 50px;
+        height: 40px;
+        border: none;
+        cursor: pointer;
+        border-radius: 6px;
+    }
+    .color-field input[type="text"] {
+        flex: 1;
+        font-family: monospace;
+    }
+    .preview-bar {
+        height: 40px;
+        border-radius: 8px;
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        color: white;
+        font-weight: bold;
+    }
+    .success-msg {
+        display: none;
+        color: green;
+        font-weight: bold;
+        margin-top: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="config-section">
+    <h2 class="fw-bold mb-4">Personnalisation de la borne — {{ restaurant.name }}</h2>
+
+    {% if success %}
+    <div class="alert alert-success">Configuration mise a jour avec succes !</div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="card shadow-sm mb-4 p-4">
+            <h5 class="fw-bold mb-3">Couleurs</h5>
+            <div class="color-grid">
+                {% for field in form %}
+                    {% if "color" in field.html_name %}
+                    <div class="mb-2">
+                        <label class="form-label">{{ field.label }}</label>
+                        <div class="color-field">
+                            <input type="color" value="{{ field.value }}"
+                                   oninput="document.getElementById('{{ field.html_name }}_text').value=this.value;document.getElementById('{{ field.auto_id }}').value=this.value">
+                            <input type="text" id="{{ field.html_name }}_text"
+                                   value="{{ field.value }}" class="form-control"
+                                   oninput="document.getElementById('{{ field.auto_id }}').value=this.value"
+                                   maxlength="7" placeholder="#000000">
+                            {{ field.as_hidden }}
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4 p-4">
+            <h5 class="fw-bold mb-3">Style des cartes</h5>
+            <div class="mb-3">
+                <label class="form-label">Style</label>
+                {{ form.card_style }}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Mode composition</label>
+                {{ form.composition_mode }}
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4 p-4">
+            <h5 class="fw-bold mb-3">Medias</h5>
+            <div class="mb-3">
+                <label class="form-label">Logo de la borne</label>
+                {% if config.logo %}
+                    <div class="mb-2">
+                        <img src="{{ config.logo.url }}" alt="Logo actuel" height="60" class="rounded">
+                        <span class="text-muted ms-2">Logo actuel</span>
+                    </div>
+                {% endif %}
+                {{ form.logo }}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Image economiseur d'ecran</label>
+                {% if config.screensaver_image %}
+                    <div class="mb-2">
+                        <img src="{{ config.screensaver_image.url }}" alt="Ecran de veille actuel" height="60" class="rounded">
+                    </div>
+                {% endif %}
+                {{ form.screensaver_image }}
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Video economiseur d'ecran</label>
+                {% if config.screensaver_video %}
+                    <div class="mb-2">
+                        <small class="text-muted">Video : {{ config.screensaver_video.name }}</small>
+                    </div>
+                {% endif %}
+                {{ form.screensaver_video }}
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg w-100">Enregistrer et appliquer sur la borne</button>
+    </form>
+</div>
+{% endblock %}

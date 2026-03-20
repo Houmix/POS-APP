@@ -32,6 +32,16 @@ from .serializers import (
 # ─────────────────────────────────────────
 def health(request):
     """Ping simple pour vérifier la connectivité."""
+    # Nettoyage des vieux SyncLog (> 7 jours) pour éviter le bloat
+    try:
+        from datetime import timedelta
+        cutoff = datetime.now(dt_timezone.utc) - timedelta(days=7)
+        deleted, _ = SyncLog.objects.filter(created_at__lt=cutoff).delete()
+        if deleted:
+            print(f"[SYNC] Nettoyage SyncLog : {deleted} entrées supprimées (> 7 jours)")
+    except Exception:
+        pass
+
     return JsonResponse({
         'status': 'ok',
         'timestamp': datetime.now(dt_timezone.utc).isoformat()
@@ -83,7 +93,8 @@ def snapshot(request):
         if not restaurant_id:
             return JsonResponse({'success': False, 'error': 'restaurant_id requis'}, status=400)
 
-        data = full_snapshot(int(restaurant_id))
+        base_url = request.build_absolute_uri('/').rstrip('/')
+        data = full_snapshot(int(restaurant_id), base_url=base_url)
         data['success'] = True
         data['server_timestamp'] = datetime.now(dt_timezone.utc).isoformat()
         return JsonResponse(data)
@@ -284,12 +295,14 @@ def apply_snapshot(request):
         body = json.loads(request.body)
 
         # Ordre d'insertion important (respecter les FK)
-        table_order = ['group_menu', 'menu', 'option', 'step', 'step_option']
+        table_order = ['kiosk_config', 'group_menu', 'menu', 'option', 'step', 'menu_step', 'step_option']
         plurals = {
+            'kiosk_config': 'kiosk_config',   # objet unique (pas une liste)
             'group_menu': 'group_menus',
             'menu': 'menus',
             'option': 'options',
             'step': 'steps',
+            'menu_step': 'menu_steps',
             'step_option': 'step_options',
         }
 
@@ -298,16 +311,23 @@ def apply_snapshot(request):
         with transaction.atomic():
             for table_name in table_order:
                 json_key = plurals[table_name]
+
+                # kiosk_config est un objet unique (pas une liste)
+                if table_name == 'kiosk_config':
+                    config_data = body.get('kiosk_config')
+                    if config_data and isinstance(config_data, dict):
+                        _apply_change('kiosk_config', 'create', config_data)
+                        results['kiosk_config'] = 1
+                    else:
+                        results['kiosk_config'] = 0
+                    continue
+
                 items = body.get(json_key, [])
                 Model = get_model_for_table(table_name)
 
                 # Supprimer les anciennes données locales
                 if table_name == 'group_menu' and body.get('restaurant', {}).get('id'):
                     Model.objects.filter(restaurant_id=body['restaurant']['id']).delete()
-                elif items:
-                    existing_ids = [item['id'] for item in items if 'id' in item]
-                    # On ne supprime que si on a des données de remplacement
-                    # pour éviter de vider par erreur
 
                 # Insérer/mettre à jour
                 count = 0
@@ -364,9 +384,13 @@ def _apply_change(table_name, action, data, restaurant_id=None):
     """
     Applique un changement (create/update/delete) sur le bon modèle Django.
     Gère les types Decimal pour les champs prix.
+    Le guard sync_apply_guard empêche les signaux menu de créer des SyncLog
+    en boucle lors d'un apply local.
     """
+    from sync.signal_guard import sync_apply_guard
+
     Model = get_model_for_table(table_name)
-    
+
     # Copie pour ne pas modifier l'original
     clean_data = dict(data)
 
@@ -379,26 +403,27 @@ def _apply_change(table_name, action, data, restaurant_id=None):
     # Convertir 'created_at' string → on l'ignore (auto_now_add)
     clean_data.pop('created_at', None)
 
-    if action == 'create':
-        obj_id = clean_data.get('id')
-        if obj_id:
-            # update_or_create pour gérer les doublons (idempotent)
-            defaults = {k: v for k, v in clean_data.items() if k != 'id'}
-            Model.objects.update_or_create(id=obj_id, defaults=defaults)
+    with sync_apply_guard():
+        if action == 'create':
+            obj_id = clean_data.get('id')
+            if obj_id:
+                # update_or_create pour gérer les doublons (idempotent)
+                defaults = {k: v for k, v in clean_data.items() if k != 'id'}
+                Model.objects.update_or_create(id=obj_id, defaults=defaults)
+            else:
+                Model.objects.create(**clean_data)
+
+        elif action == 'update':
+            obj_id = clean_data.pop('id', None)
+            if not obj_id:
+                raise ValueError(f"'id' requis pour update sur {table_name}")
+            Model.objects.filter(id=obj_id).update(**clean_data)
+
+        elif action == 'delete':
+            obj_id = clean_data.get('id')
+            if not obj_id:
+                raise ValueError(f"'id' requis pour delete sur {table_name}")
+            Model.objects.filter(id=obj_id).delete()
+
         else:
-            Model.objects.create(**clean_data)
-
-    elif action == 'update':
-        obj_id = clean_data.pop('id', None)
-        if not obj_id:
-            raise ValueError(f"'id' requis pour update sur {table_name}")
-        Model.objects.filter(id=obj_id).update(**clean_data)
-
-    elif action == 'delete':
-        obj_id = clean_data.get('id')
-        if not obj_id:
-            raise ValueError(f"'id' requis pour delete sur {table_name}")
-        Model.objects.filter(id=obj_id).delete()
-
-    else:
-        raise ValueError(f"Action inconnue: {action}")
+            raise ValueError(f"Action inconnue: {action}")

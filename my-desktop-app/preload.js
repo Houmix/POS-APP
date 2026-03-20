@@ -1,10 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// ── Impression ──
 contextBridge.exposeInMainWorld('electronAPI', {
     printTicket: (text) => ipcRenderer.invoke('print-ticket', text)
 });
-
-const { contextBridge, ipcRenderer } = require('electron');
 
 // ── Sync BDD ──
 contextBridge.exposeInMainWorld('syncAPI', {
@@ -23,4 +22,3 @@ contextBridge.exposeInMainWorld('licenseAPI', {
     verify:     () => ipcRenderer.invoke('license-verify'),
     onStatusChange: (cb) => ipcRenderer.on('license-status', (_, data) => cb(data)),
 });
-

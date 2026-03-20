@@ -169,7 +169,10 @@ function runPyInstaller() {
         
         console.log("OK PyInstaller terminé. Recherche du fichier généré...");
         
-        const targetDir = path.join(buildDir, 'born_dz');
+        // Le nom du dossier dépend du .spec (clickgo_server) ou du mode standard (born_dz)
+        const possibleNames = ['clickgo_server', 'born_dz'];
+        const targetDir = possibleNames.map(n => path.join(buildDir, n)).find(d => fs.existsSync(d))
+            || path.join(buildDir, 'born_dz');
         
         if (!fs.existsSync(targetDir)) {
              console.error(`No Le dossier ${targetDir} n'a pas été créé.`);

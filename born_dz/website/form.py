@@ -1,7 +1,8 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
-from user.models import Employee 
+from user.models import Employee
 from django.core.mail import send_mail
+from restaurant.models import KioskConfig
 from django.utils.crypto import get_random_string
 from django.urls import reverse
 from django.conf import settings
@@ -139,6 +140,34 @@ class UserContactUsForm(forms.Form):
 
 
     
+
+class KioskConfigForm(forms.ModelForm):
+    class Meta:
+        model = KioskConfig
+        fields = [
+            'primary_color', 'secondary_color',
+            'background_color', 'card_bg_color', 'text_color',
+            'sidebar_color', 'category_bg_color', 'selected_category_bg_color', 'category_text_color',
+            'logo', 'screensaver_image', 'screensaver_video',
+            'card_style', 'composition_mode',
+        ]
+        widgets = {
+            'primary_color':              forms.TextInput(attrs={'class': 'form-control'}),
+            'secondary_color':            forms.TextInput(attrs={'class': 'form-control'}),
+            'background_color':           forms.TextInput(attrs={'class': 'form-control'}),
+            'card_bg_color':              forms.TextInput(attrs={'class': 'form-control'}),
+            'text_color':                 forms.TextInput(attrs={'class': 'form-control'}),
+            'sidebar_color':              forms.TextInput(attrs={'class': 'form-control'}),
+            'category_bg_color':          forms.TextInput(attrs={'class': 'form-control'}),
+            'selected_category_bg_color': forms.TextInput(attrs={'class': 'form-control'}),
+            'category_text_color':        forms.TextInput(attrs={'class': 'form-control'}),
+            'card_style':                 forms.Select(attrs={'class': 'form-select'}),
+            'composition_mode':           forms.Select(attrs={'class': 'form-select'}),
+            'logo':                       forms.ClearableFileInput(attrs={'class': 'form-control'}),
+            'screensaver_image':          forms.ClearableFileInput(attrs={'class': 'form-control'}),
+            'screensaver_video':          forms.ClearableFileInput(attrs={'class': 'form-control'}),
+        }
+
 
 class LoginForm(forms.Form):
     mail=forms.EmailField(

@@ -17,5 +17,5 @@ urlpatterns = [
     path('api1/', views.kpi_revenue_api, name='kpi_revenue_api'),
     path('api2/', views.kpi_top_menus_api, name='kpi_top_menus_api'),
     path('OrderDetail/<int:order_id>/', views.order_detail, name='OrderDetail'),
-
+    path('kiosk-config/', views.kiosk_config_view, name='kiosk_config'),
 ]

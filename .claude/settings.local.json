@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m venv venv)",
+      "Bash(venv/Scripts/pip install:*)",
+      "Bash(node pyinstaller_bundle.js)",
+      "Bash(node_modules/.bin/electron-builder --win)",
+      "Bash(CSC_IDENTITY_AUTO_DISCOVERY=false node_modules/.bin/electron-builder --win)",
+      "Bash(CSC_IDENTITY_AUTO_DISCOVERY=false node_modules/.bin/electron-builder --win --dir)",
+      "Bash(grep -r winCodeSign C:/Users/Houmame/Documents/POS-APP/my-desktop-app/node_modules/app-builder-lib/out/ --include=*.js -l)",
+      "Bash(grep -rn winCodeSign C:/Users/Houmame/Documents/POS-APP/my-desktop-app/node_modules/ --include=*.js -l)",
+      "Bash(find C:/Users/Houmame/Documents/POS-APP/my-desktop-app/node_modules/ -name *.json)",
+      "Bash(xargs grep:*)",
+      "Bash(cp:*)",
+      "Bash(CSC_IDENTITY_AUTO_DISCOVERY=false node_modules/.bin/electron-builder --win --prepackaged dist/win-unpacked)",
+      "Bash(grep -rn \"discover\\\\|sync/discover\" C:/Users/Houmame/Documents/POS-APP/born_dz/sync/ --include=*.py)",
+      "Bash(grep -E \"^/c/Users.*/$\")",
+      "Bash(ls -d /c/Users/Houmame/Documents/POS-APP/born_dz/*/)",
+      "Bash(ls -d */)",
+      "Bash(venv/Scripts/python -c \":*)",
+      "Bash(grep -r menu /c/Users/Houmame/Documents/POS-APP/POS/app/ --include=*.tsx --include=*.ts -l)",
+      "Bash(grep -r \"groupmenus\\\\|group_menus\\\\|api/menu\\\\|GetMenu\" /c/Users/Houmame/Documents/POS-APP/POS/app/ --include=*.tsx --include=*.ts -n)",
+      "Bash(python manage.py makemigrations restaurant --name=\"add_remote_url_to_kioskconfig\")",
+      "Bash(venv/Scripts/python.exe manage.py makemigrations restaurant --name=\"add_remote_url_to_kioskconfig\")",
+      "Bash(find /c/Users/Houmame/Documents/POS-APP/POS -name \"*.tsx\\\\|*.ts\")",
+      "Bash(grep -r \"SYNC_GROUP_NAME\\\\|borne_sync\\\\|consumers\" /c/Users/Houmame/Documents/POS-APP/born_dz --include=*.py)",
+      "Bash(find C:UsersHoumameDocumentsPOS-APPborn_dz -name *.html -path */templates/*)"
+    ]
+  }
+}

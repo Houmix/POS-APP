@@ -1,11 +1,11 @@
 from django.shortcuts import render,redirect
 from django.contrib.auth.forms import UserCreationForm
-from .form import SignUpForm, LoginForm,passwordForgetForm,new_passwordForm,ContactUsForm, UserContactUsForm
+from .form import SignUpForm, LoginForm, passwordForgetForm, new_passwordForm, ContactUsForm, UserContactUsForm, KioskConfigForm
 from django.core.mail import send_mail
-from menu.models import GroupMenu, Menu, Step, StepOption
+from menu.models import GroupMenu, Menu, Step, MenuStep, StepOption
 from order.models import Order
 from user.models import Employee
-from restaurant.models import Restaurant
+from restaurant.models import Restaurant, KioskConfig
 from django.contrib.auth import login as authLogin, logout as authLogout
 # Create your views here.
 from user.models import User
@@ -181,7 +181,7 @@ def menu(request):
                     'menu': menu,
                     'steps': []
                 }
-                steps = Step.objects.filter(menu=menu).all()
+                steps = Step.objects.filter(menu_steps__menu=menu).all()
                 for step in steps:
                     step_dict = {
                     'step': step,
@@ -198,8 +198,8 @@ def menu(request):
             'all_data': all_data
         }
 
-        steps = Step.objects.filter(menu__in=menus)
-        steps_options = StepOption.objects.filter(step__menu__in=menus)
+        steps = Step.objects.filter(restaurant=restaurant)
+        steps_options = StepOption.objects.filter(step__restaurant=restaurant)
         groupByGroupMenu={}
         
     return render(request,"admin/base_site.html",context)
@@ -337,6 +337,33 @@ def kpi_top_menus_api(request):
     data = [m[1] for m in sorted_data]
 
     return JsonResponse({'labels': labels, 'data': data})
+
+def kiosk_config_view(request):
+    """Page de personnalisation de la borne (couleurs, logo, style)."""
+    user_id = request.user.id
+    employee = Employee.objects.get(user=user_id)
+    restaurant = Restaurant.objects.get(id=employee.restaurant.id)
+    config, _ = KioskConfig.objects.get_or_create(restaurant=restaurant)
+
+    if request.method == 'POST':
+        form = KioskConfigForm(request.POST, request.FILES, instance=config)
+        if form.is_valid():
+            form.save()
+            return render(request, 'kiosk_config.html', {
+                'form': KioskConfigForm(instance=config),
+                'config': config,
+                'restaurant': restaurant,
+                'success': True,
+            })
+    else:
+        form = KioskConfigForm(instance=config)
+
+    return render(request, 'kiosk_config.html', {
+        'form': form,
+        'config': config,
+        'restaurant': restaurant,
+    })
+
 
 def order_detail(request, order_id):
     try:

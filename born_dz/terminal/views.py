@@ -350,6 +350,91 @@ def create_or_renew(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def sync_local(request):
+    """
+    Appelé par le LicenseManager Electron après activation/vérification réussie
+    sur le serveur distant. Met à jour le SQLite LOCAL avec les données de licence
+    pour que l'app Expo puisse faire son /api/license/restaurant-status/ localement.
+
+    Body :
+    {
+        "restaurant_id": 1,
+        "restaurant_name": "Mon Restaurant",
+        "plan": "standard",
+        "features": [],
+        "expires_at": "2026-01-01T00:00:00+00:00",
+        "status": "active"
+    }
+    """
+    try:
+        body = json.loads(request.body)
+        restaurant_id = body.get('restaurant_id')
+        plan = body.get('plan', 'standard')
+        features = body.get('features', [])
+        expires_at_raw = body.get('expires_at')
+        status = body.get('status', 'active')
+
+        if not restaurant_id:
+            return JsonResponse({'success': False, 'error': 'restaurant_id requis'}, status=400)
+
+        from restaurant.models import Restaurant
+        from datetime import timedelta
+
+        # Récupère ou crée le restaurant localement
+        restaurant, _ = Restaurant.objects.get_or_create(
+            id=restaurant_id,
+            defaults={'name': body.get('restaurant_name', f'Restaurant #{restaurant_id}')}
+        )
+
+        # Parse expires_at
+        expires_at = None
+        if expires_at_raw:
+            try:
+                expires_at = datetime.fromisoformat(expires_at_raw.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                pass
+
+        # Cherche une licence active/existante pour ce restaurant
+        lic = License.objects.filter(restaurant=restaurant).order_by('-created_at').first()
+
+        if lic:
+            # Mise à jour
+            lic.plan = plan
+            lic.features = features
+            lic.expires_at = expires_at
+            lic.status = status
+            lic.max_terminals = 99  # illimité côté local (la vraie limite est sur le serveur distant)
+            lic.save()
+            created = False
+        else:
+            # Création avec une clé placeholder locale
+            lic = License.objects.create(
+                key=License.generate_key(),
+                restaurant=restaurant,
+                plan=plan,
+                features=features,
+                expires_at=expires_at,
+                status=status,
+                max_terminals=99,
+            )
+            created = True
+
+        return JsonResponse({
+            'success': True,
+            'created': created,
+            'restaurant_id': restaurant_id,
+            'plan': lic.plan,
+            'expires_at': lic.expires_at.isoformat() if lic.expires_at else None,
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'JSON invalide'}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 @require_http_methods(["GET"])
 def info(request):
     """

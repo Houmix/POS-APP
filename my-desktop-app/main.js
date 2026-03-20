@@ -373,13 +373,22 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
 
         const allPrinters = await mainWindow.webContents.getPrintersAsync();
 
-        const physicalPrinters = allPrinters.filter(p => {
-            const name = p.name.toLowerCase();
-            return !VIRTUAL_PRINTER_KEYWORDS.some(kw => name.includes(kw.toLowerCase()));
+        log(`[Impression] ${allPrinters.length} imprimante(s) détectée(s) au total:`, 'info');
+        allPrinters.forEach((p, i) => {
+            log(`  [${i+1}] "${p.name}" | status=${p.status} | isDefault=${p.isDefault}`, 'info');
         });
 
+        const physicalPrinters = allPrinters.filter(p => {
+            const name = p.name.toLowerCase();
+            const isVirtual = VIRTUAL_PRINTER_KEYWORDS.some(kw => name.includes(kw.toLowerCase()));
+            if (isVirtual) log(`  --> Ignorée (virtuelle): "${p.name}"`, 'info');
+            return !isVirtual;
+        });
+
+        log(`[Impression] ${physicalPrinters.length} imprimante(s) physique(s) retenues`, 'info');
+
         if (physicalPrinters.length === 0) {
-            log('[Impression] Aucune imprimante via spooler → scan ports COM...', 'warning');
+            log('[Impression] Aucune imprimante physique via spooler → scan ports COM...', 'warning');
             const dataBuffer = Buffer.from(fullContent, 'latin1');
             const comResults = await printToComPorts(dataBuffer);
             const comSuccess = comResults.some(r => r.status === 'success');
@@ -405,19 +414,30 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
                 fs.writeFileSync(scriptPath, psScript, { encoding: 'utf-8' });
 
                 // Exécuter le script
-                const output = execSync(
-                    `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
-                    { windowsHide: true, timeout: 10000, encoding: 'utf-8' }
-                ).trim();
+                log(`[Impression] Exécution PowerShell: ${scriptPath}`, 'info');
+                let output;
+                try {
+                    output = execSync(
+                        `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
+                        { windowsHide: true, timeout: 10000, encoding: 'utf-8' }
+                    ).trim();
+                } catch (psErr) {
+                    const stdout = psErr.stdout ? psErr.stdout.trim() : '';
+                    const stderr = psErr.stderr ? psErr.stderr.trim() : '';
+                    log(`[Impression] PowerShell stdout: ${stdout}`, 'error');
+                    log(`[Impression] PowerShell stderr: ${stderr}`, 'error');
+                    throw new Error(`PowerShell échoué: ${psErr.message} | stderr: ${stderr}`);
+                }
 
                 // Nettoyage du script
                 try { fs.unlinkSync(scriptPath); } catch (e) {}
 
+                log(`[Impression] PowerShell output: "${output}"`, 'info');
                 if (output === 'True') {
                     log(`[Impression] OK "${printerName}"`, 'success');
                     results.push({ printer: printerName, status: 'success' });
                 } else {
-                    throw new Error(`WritePrinter a retourné: ${output}`);
+                    throw new Error(`WritePrinter a retourné: "${output}"`);
                 }
 
             } catch (err) {
@@ -517,24 +537,30 @@ log(`Backend: ${backendPath}`, 'info');
 log(`Frontend: ${frontendPath}`, 'info');
 
 function checkRequirements() {
-  if (!djangoExecInfo) return false;
-  
+  if (!isDev && !djangoExecInfo) {
+    log('ERREUR: backend Django introuvable !', 'error');
+    return false;
+  }
+
   if (!isDev && !fs.existsSync(webBuildPath)) {
     log('ERREUR: web-build manquant !', 'error');
     app.quit();
     return false;
   }
-  
+
   if (isDev && !fs.existsSync(webBuildPath)) {
     log('web-build manquant, Expo sera utilisé', 'warning');
   }
-  
+
   return true;
 }
 
 //  OK CORRECTION startDjango (ligne ~110)
 function startDjango(callback) {
-  if (!djangoExecInfo) return;
+  if (!djangoExecInfo) {
+    log('Mode dev: Django doit être lancé manuellement sur le port 8000', 'warning');
+    return callback();
+  }
 
   log('Vérification et nettoyage du port 8000...', 'info');
 
@@ -732,9 +758,6 @@ function createMainWindow() {
       console.log('\n  === IMPRIMANTES DISPONIBLES ===');
       printers.forEach((p, i) => {
         console.log(`[${i+1}] "${p.name}" ${p.isDefault ? '  (Par défaut)' : ''}`);
-        if (p.name === POS_PRINTER_NAME) {
-          console.log('     OK IMPRIMANTE POS TROUVÉE !');
-        }
       });
       console.log('===================================\n');
     } catch (err) {

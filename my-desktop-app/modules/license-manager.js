@@ -85,6 +85,7 @@ class LicenseManager {
                 };
                 this.isValid = true;
                 this._saveLicense();
+                await this._syncToLocal();
                 this._log(`Activé ! Restaurant: ${data.restaurant_name} (${data.plan})`, 'success');
                 this._notify('license-status', this.getStatus());
                 return { success: true, license: this.getStatus() };
@@ -98,6 +99,50 @@ class LicenseManager {
             this._log(`Erreur: ${err.message}`, 'error');
             return { success: false, message: `Connexion impossible: ${err.message}` };
         }
+    }
+
+    // ==========================================
+    //  SYNC LOCALE → Django local (SQLite)
+    // ==========================================
+
+    async _syncToLocal() {
+        if (!this.license) return;
+        try {
+            await this._httpLocal('POST', '/api/license/sync-local/', {
+                restaurant_id: this.license.restaurantId,
+                restaurant_name: this.license.restaurantName,
+                plan: this.license.plan,
+                features: this.license.features || [],
+                expires_at: this.license.expiresAt || null,
+                status: 'active',
+            });
+            this._log('Licence synchronisée avec le Django local.', 'info');
+        } catch (err) {
+            // Non bloquant : le Django local n'est peut-être pas encore démarré
+            this._log(`Sync local ignorée: ${err.message}`, 'warning');
+        }
+    }
+
+    _httpLocal(method, endpoint, body = null) {
+        // Toujours sur 127.0.0.1:8000 (Django local)
+        const localUrl = `http://127.0.0.1:8000${endpoint}`;
+        return new Promise((resolve, reject) => {
+            const u = new URL(localUrl);
+            const opts = {
+                hostname: u.hostname, port: u.port || 8000,
+                path: u.pathname + u.search, method,
+                headers: { 'Content-Type': 'application/json' },
+                timeout: 5000
+            };
+            const req = http.request(opts, res => {
+                let d = ''; res.on('data', c => d += c);
+                res.on('end', () => resolve({ statusCode: res.statusCode, body: d }));
+            });
+            req.on('error', reject);
+            req.on('timeout', () => { req.destroy(); reject(new Error('Timeout local')); });
+            if (body) req.write(JSON.stringify(body));
+            req.end();
+        });
     }
 
     // ==========================================
@@ -157,6 +202,7 @@ class LicenseManager {
                 if (data.features) this.license.features = data.features;
                 if (data.plan) this.license.plan = data.plan;
                 this._saveLicense();
+                await this._syncToLocal();
                 this._notify('license-status', this.getStatus());
                 return { valid: true };
             }
