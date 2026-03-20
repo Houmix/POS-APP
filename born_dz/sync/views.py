@@ -289,10 +289,26 @@ def apply_snapshot(request):
     Reçoit un snapshot complet (de /api/sync/snapshot/) et remplace
     toutes les données locales pour ce restaurant.
 
-    Appelé par le SyncManager Electron sur le Django LOCAL lors de la 1ère sync.
+    Appelé par le SyncManager Electron sur le Django LOCAL lors de la 1ère sync,
+    ou par le bouton "Sync cloud → local" de l'admin web.
     """
     try:
         body = json.loads(request.body)
+
+        # ── 0. S'assurer que le Restaurant existe localement ──────────────────
+        restaurant_data = body.get('restaurant', {})
+        restaurant_id = restaurant_data.get('id')
+        restaurant_name = restaurant_data.get('name', 'Restaurant')
+
+        if restaurant_id:
+            from restaurant.models import Restaurant
+            restaurant, _ = Restaurant.objects.get_or_create(
+                id=restaurant_id,
+                defaults={'name': restaurant_name, 'address': '-', 'phone': '0000000000', 'immat': '-'}
+            )
+            # Mettre à jour le nom si différent
+            if restaurant.name != restaurant_name and restaurant_name:
+                Restaurant.objects.filter(id=restaurant_id).update(name=restaurant_name)
 
         # Ordre d'insertion important (respecter les FK)
         table_order = ['kiosk_config', 'group_menu', 'menu', 'option', 'step', 'menu_step', 'step_option']
@@ -325,20 +341,27 @@ def apply_snapshot(request):
                 items = body.get(json_key, [])
                 Model = get_model_for_table(table_name)
 
-                # Supprimer les anciennes données locales
-                if table_name == 'group_menu' and body.get('restaurant', {}).get('id'):
-                    Model.objects.filter(restaurant_id=body['restaurant']['id']).delete()
+                # Supprimer les anciennes données locales pour ce restaurant
+                if table_name == 'group_menu' and restaurant_id:
+                    Model.objects.filter(restaurant_id=restaurant_id).delete()
+                elif table_name == 'step' and restaurant_id:
+                    Model.objects.filter(restaurant_id=restaurant_id).delete()
 
-                # Insérer/mettre à jour
+                # Insérer/mettre à jour (idempotent via update_or_create)
                 count = 0
                 for item_data in items:
-                    _apply_change(table_name, 'create', item_data)
-                    count += 1
+                    try:
+                        _apply_change(table_name, 'create', item_data)
+                        count += 1
+                    except Exception as row_err:
+                        print(f"[APPLY-SNAPSHOT] Erreur {table_name}: {row_err} — data={item_data}")
                 results[table_name] = count
 
         return JsonResponse({'success': True, 'applied': results})
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
