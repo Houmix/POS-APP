@@ -361,7 +361,7 @@ def apply_snapshot(request):
                 GroupMenu.objects.filter(restaurant_id=restaurant_id).delete()
                 # Supprimer les options qui n'ont plus aucune liaison step_option
                 if option_ids:
-                    Option.objects.filter(id__in=option_ids, stepoptions__isnull=True).delete()
+                    Option.objects.filter(id__in=option_ids, option__isnull=True).delete()
                 KioskConfig.objects.filter(restaurant_id=restaurant_id).delete()
 
             # ── 2. Roles (nécessaires avant les Users) ────────────────────────

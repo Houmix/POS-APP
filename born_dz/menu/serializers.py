@@ -15,6 +15,9 @@ class GroupMenuSerializer(serializers.ModelSerializer):
 
     def get_photo_url(self, obj):
         if obj.photo:
+            photo_name = str(obj.photo)
+            if photo_name.startswith('http://') or photo_name.startswith('https://'):
+                return photo_name
             request = self.context.get('request')
             if request:
                 return request.build_absolute_uri(obj.photo.url)
@@ -42,6 +45,9 @@ class MenuSerializer(serializers.ModelSerializer):
 
     def get_photo_url(self, obj):
         if obj.photo:
+            photo_name = str(obj.photo)
+            if photo_name.startswith('http://') or photo_name.startswith('https://'):
+                return photo_name
             request = self.context.get('request')
             if request:
                 return request.build_absolute_uri(obj.photo.url)
@@ -64,6 +70,9 @@ class OptionSerializer(serializers.ModelSerializer):
 
     def get_photo_url(self, obj):
         if obj.photo:
+            photo_name = str(obj.photo)
+            if photo_name.startswith('http://') or photo_name.startswith('https://'):
+                return photo_name
             request = self.context.get('request')
             if request:
                 return request.build_absolute_uri(obj.photo.url)

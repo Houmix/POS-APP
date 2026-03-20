@@ -16,7 +16,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
-import { getPosUrl, getRestaurantId, buildPhotoUri } from "@/utils/serverConfig";
+import { getPosUrl, getRestaurantId } from "@/utils/serverConfig";
 import Feather from "@expo/vector-icons/Feather";
 import { AntDesign, Ionicons } from "@expo/vector-icons";
 import { useBorneSync } from "@/hooks/useBorneSync.js";
@@ -358,7 +358,7 @@ export default function MenuScreen() {
 
   // ── Render menu card ──────────────────────────────────────────────
   const renderMenuCard = (item: any) => {
-    const imageSource = item.photo ? { uri: buildPhotoUri(item.photo)! } : require("@/assets/logo.png");
+    const imageSource = item.photo_url ? { uri: item.photo_url } : require("@/assets/logo.png");
     const price = getDisplayPrice(item);
     const style = theme.cardStyle || "gradient";
 
@@ -581,8 +581,8 @@ export default function MenuScreen() {
       <Modal animationType="fade" transparent visible={isModalVisible} onRequestClose={() => setIsModalVisible(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsModalVisible(false)}>
           <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
-            {selectedItem?.photo && (
-              <Image source={{ uri: buildPhotoUri(selectedItem.photo)! }} style={styles.modalImage} resizeMode="cover" />
+            {selectedItem?.photo_url && (
+              <Image source={{ uri: selectedItem.photo_url }} style={styles.modalImage} resizeMode="cover" />
             )}
             <View style={styles.modalBody}>
               <Text style={styles.modalTitle}>{selectedItem?.name}</Text>
@@ -680,8 +680,8 @@ export default function MenuScreen() {
                                   <Ionicons name="checkmark-circle" size={18} color={theme.primaryColor} />
                                 </View>
                               )}
-                              {opt.option?.photo ? (
-                                <Image source={{ uri: buildPhotoUri(opt.option.photo)! }} style={compStyles.optImage} resizeMode="contain" />
+                              {opt.option?.photo_url ? (
+                                <Image source={{ uri: opt.option.photo_url }} style={compStyles.optImage} resizeMode="contain" />
                               ) : (
                                 <View style={[compStyles.optImage, { backgroundColor: '#F1F5F9', borderRadius: 8, justifyContent: 'center', alignItems: 'center' }]}>
                                   <Ionicons name="fast-food-outline" size={28} color={MUTED} />
