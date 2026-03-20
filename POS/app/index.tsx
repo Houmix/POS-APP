@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getPosUrl, SERVER_URL_KEY, RESTAURANT_ID_KEY, loadRestaurantId, getRestaurantId } from "@/utils/serverConfig";
+import { getPosUrl, SERVER_URL_KEY, RESTAURANT_ID_KEY, loadRestaurantId, getRestaurantId, saveRestaurantId } from "@/utils/serverConfig";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useKioskTheme } from "@/contexts/KioskThemeContext";
 
@@ -93,8 +93,10 @@ export default function IdentificationScreen() {
          // Sauvegarde legacy
          if (data.user.id) await AsyncStorage.setItem("Empoyee_id", data.user.id.toString());
          if (data.user.phone) await AsyncStorage.setItem("Empoyee_phone", data.user.phone);
-         const restaurantId = data.restaurant_id;
+         const restaurantId = data.restaurant_id?.toString() ?? '';
+         // Sauvegarder dans les deux clés : legacy (tabs) + serverConfig (useBorneSync)
          await AsyncStorage.setItem("Employee_restaurant_id", restaurantId);
+         await saveRestaurantId(restaurantId);
 
          navigation.navigate("tabs" as never);
       } 

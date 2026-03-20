@@ -25,6 +25,12 @@ export function getPosUrl(): string {
     return _currentUrl;
 }
 
+export function buildPhotoUri(photo: string | null | undefined): string | null {
+    if (!photo) return null;
+    if (photo.startsWith('http://') || photo.startsWith('https://')) return photo;
+    return `${getPosUrl()}${photo}`;
+}
+
 export function setPosUrlInMemory(url: string) {
     _currentUrl = url;
 }

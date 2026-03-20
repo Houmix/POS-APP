@@ -334,6 +334,17 @@ def apply_snapshot(request):
 
         results = {}
 
+        # ── Garde : refuser un snapshot vide pour éviter d'effacer les données locales ──
+        group_menus_in = body.get('group_menus', [])
+        menus_in = body.get('menus', [])
+        users_in = body.get('users', [])
+        if not group_menus_in and not menus_in and not users_in:
+            return JsonResponse({
+                'success': False,
+                'error': 'Snapshot vide reçu du cloud (0 catégories, 0 menus, 0 utilisateurs). '
+                         'Vérifiez que ce restaurant_id existe sur le cloud et qu\'il a des données.'
+            }, status=400)
+
         with transaction.atomic():
             # ── 1. Purger TOUTES les données locales dans l'ordre inverse des FK ──
             if restaurant_id:
@@ -364,38 +375,68 @@ def apply_snapshot(request):
                     print(f"[APPLY-SNAPSHOT] Erreur role: {e} — data={role_data}")
             results['roles'] = len(body.get('roles', []))
 
-            # ── 3. Users (mot de passe déjà haché — on bypass le save() custom) ─
-            for user_data in body.get('users', []):
+            # ── 3. Users (mot de passe déjà haché — bypass du save() custom) ───
+            # Construire un mapping cloud_user_id → local_pk pour les employees
+            cloud_id_to_local_pk = {}
+            for user_data in users_in:
                 try:
-                    obj, created = User.objects.get_or_create(
-                        phone=user_data['phone'],
-                        defaults={'id': user_data['id']}
-                    )
-                    # Mettre à jour les champs sans déclencher le re-hachage
-                    User.objects.filter(pk=obj.pk).update(
-                        username=user_data.get('username') or user_data['phone'],
-                        email=user_data.get('email') or f"{user_data['phone']}@born.dz",
-                        password=user_data['password'],   # déjà haché
+                    cloud_uid = user_data['id']
+                    phone = user_data['phone']
+                    email = user_data.get('email') or f"{phone}@born.dz"
+                    username = user_data.get('username') or phone
+
+                    # Chercher par phone d'abord (clé métier), puis par cloud id
+                    existing = User.objects.filter(phone=phone).first()
+                    if not existing:
+                        existing = User.objects.filter(id=cloud_uid).first()
+
+                    if existing:
+                        local_pk = existing.pk
+                    else:
+                        # Créer avec l'id du cloud pour que les FK Employee soient cohérentes
+                        # On passe par QuerySet.create pour bypasser le save() custom
+                        existing = User.objects.create(
+                            id=cloud_uid,
+                            phone=phone,
+                            email=email,
+                            username=username,
+                            is_active=user_data.get('is_active', True),
+                            is_staff=user_data.get('is_staff', False),
+                            is_superuser=user_data.get('is_superuser', False),
+                        )
+                        local_pk = existing.pk
+
+                    # Mettre à jour via QuerySet.update (bypass le save() pour ne pas re-hacher)
+                    User.objects.filter(pk=local_pk).update(
+                        username=username,
+                        email=email,
+                        password=user_data['password'],  # déjà pbkdf2_sha256$...
                         role_id=user_data.get('role_id'),
                         is_active=user_data.get('is_active', True),
                         is_staff=user_data.get('is_staff', False),
                         is_superuser=user_data.get('is_superuser', False),
                     )
+                    cloud_id_to_local_pk[cloud_uid] = local_pk
                 except Exception as e:
-                    print(f"[APPLY-SNAPSHOT] Erreur user: {e} — data={user_data}")
-            results['users'] = len(body.get('users', []))
+                    print(f"[APPLY-SNAPSHOT] Erreur user {user_data.get('phone')}: {e}")
+            results['users'] = len(users_in)
 
             # ── 4. Employees ───────────────────────────────────────────────────
             for emp_data in body.get('employees', []):
                 try:
+                    # Résoudre le user_id local (peut différer du cloud_id)
+                    cloud_uid = emp_data['user_id']
+                    local_user_pk = cloud_id_to_local_pk.get(cloud_uid, cloud_uid)
+
                     defaults = {
+                        'user_id': local_user_pk,
+                        'restaurant_id': emp_data.get('restaurant_id'),
                         'first_name': emp_data.get('first_name', ''),
                         'last_name': emp_data.get('last_name', ''),
                         'contract_type': emp_data.get('contract_type', ''),
                         'national_id': emp_data.get('national_id', ''),
                         'address': emp_data.get('address', ''),
                         'monthly_hours': emp_data.get('monthly_hours'),
-                        'restaurant_id': emp_data.get('restaurant_id'),
                     }
                     if emp_data.get('hire_date'):
                         from datetime import date
@@ -403,12 +444,9 @@ def apply_snapshot(request):
                     if emp_data.get('hourly_rate') is not None:
                         defaults['hourly_rate'] = Decimal(str(emp_data['hourly_rate']))
 
-                    Employee.objects.update_or_create(
-                        id=emp_data['id'],
-                        defaults={**defaults, 'user_id': emp_data['user_id']}
-                    )
+                    Employee.objects.update_or_create(id=emp_data['id'], defaults=defaults)
                 except Exception as e:
-                    print(f"[APPLY-SNAPSHOT] Erreur employee: {e} — data={emp_data}")
+                    print(f"[APPLY-SNAPSHOT] Erreur employee {emp_data.get('id')}: {e}")
             results['employees'] = len(body.get('employees', []))
 
             # ── 5. kiosk_config (objet unique, keyed by restaurant_id) ──────────

@@ -4,6 +4,7 @@ import { KioskThemeProvider } from "@/contexts/KioskThemeContext";
 import { useEffect, useState, useCallback } from "react";
 import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { saveRestaurantId } from "@/utils/serverConfig";
 import SetupWizard from "@/components/SetupWizard";
 
 // Django local — toujours sur le même poste
@@ -45,6 +46,8 @@ export default function RootLayout() {
       if (res.ok) {
         const data = await res.json();
         restaurantId = data.restaurant_id || null;
+        // Synchroniser la clé serverConfig avec ce que retourne le serveur local
+        if (restaurantId) await saveRestaurantId(restaurantId.toString());
       }
     } catch {
       // Serveur injoignable
