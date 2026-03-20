@@ -13,6 +13,9 @@ import axios from 'axios';
 import { getPosUrl } from '@/utils/serverConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const CLOUD_URL = 'https://borndz-production.up.railway.app';
+const LOCAL_URL = 'http://127.0.0.1:8000';
+
 // 1. IMPORT MODIFIÉ POUR LE TOAST
 import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
 
@@ -177,33 +180,42 @@ export default function MenuAdminPage() {
     };
 
     const handleForceSync = async () => {
+        if (!restaurantId) {
+            showError('Sync impossible', 'Restaurant non identifié. Reconnectez-vous.');
+            return;
+        }
         setIsSyncing(true);
-        setSyncMessage('Connexion au serveur cloud...');
         try {
-            const win = typeof window !== 'undefined' ? (window as any) : null;
-
-            if (win?.syncAPI?.forceReset) {
-                // Contexte Electron : le SyncManager gère tout (clear + bootstrap)
-                setSyncMessage('Effacement BDD locale...');
-                await win.syncAPI.forceReset();
-                setSyncMessage('Re-synchronisation depuis le cloud...');
-                // Attendre que le bootstrap soit terminé (le sync manager met ~2-5s)
-                await new Promise(resolve => setTimeout(resolve, 3000));
-            } else {
-                // Fallback : appel direct HTTP (mode dev / non-Electron)
-                setSyncMessage('Effacement des données locales...');
-                await axios.post(`${getPosUrl()}/api/sync/clear-local/`, {
-                    restaurant_id: restaurantId
-                });
-                setSyncMessage('Déclenchement re-bootstrap...');
-                await axios.post(`${getPosUrl()}/api/sync/force-refresh/`, {});
-                await new Promise(resolve => setTimeout(resolve, 2000));
+            // 1. Télécharger le snapshot complet depuis le cloud
+            setSyncMessage('Téléchargement depuis le cloud...');
+            const snapshotRes = await axios.get(
+                `${CLOUD_URL}/api/sync/snapshot/?restaurant_id=${restaurantId}`,
+                { timeout: 30000 }
+            );
+            if (!snapshotRes.data.success) {
+                throw new Error('Le cloud n\'a retourné aucune donnée. Vérifiez la connexion.');
             }
 
+            // 2. Appliquer le snapshot en local (clear + import en une transaction atomique)
+            setSyncMessage('Application des données en local...');
+            const applyRes = await axios.post(
+                `${LOCAL_URL}/api/sync/apply-snapshot/`,
+                snapshotRes.data,
+                { timeout: 30000 }
+            );
+            if (!applyRes.data.success) {
+                throw new Error(applyRes.data.error || 'Échec de l\'application des données.');
+            }
+
+            // 3. Recharger l'affichage
             setSyncMessage('Rechargement des données...');
             await fetchInitialData();
             setSyncMessage('');
-            showSuccess('Synchronisation terminée', 'Les données ont été rechargées depuis le serveur cloud.');
+            const applied = applyRes.data.applied || {};
+            showSuccess(
+                'Synchronisation terminée',
+                `${applied.group_menu ?? 0} catégories, ${applied.menu ?? 0} menus, ${applied.users ?? 0} utilisateur(s).`
+            );
         } catch (e: any) {
             setSyncMessage('');
             showError('Erreur de sync', e.message || 'Impossible de synchroniser avec le cloud.');
@@ -525,7 +537,7 @@ export default function MenuAdminPage() {
             <View style={styles.photoPreviewContainer}>
                 {photo || currentPhotoUrl ? (
                     <View style={styles.photoWrapper}>
-                        <Image source={{ uri: photo ? photo.uri : `${getPosUrl()}${currentPhotoUrl}` }} style={styles.photoPreview} />
+                        <Image source={{ uri: photo ? photo.uri : currentPhotoUrl }} style={styles.photoPreview} />
                         {photo && <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removeImage(setPhoto)}><X size={16} color="white" /></TouchableOpacity>}
                     </View>
                 ) : (
@@ -557,7 +569,7 @@ export default function MenuAdminPage() {
             <Text style={styles.listHeader}>Groupes existants ({groups.length})</Text>
             {groups.map((g: any) => (
                 <View key={g.id} style={styles.listItem}>
-                    {g.photo && <Image source={{ uri: `${getPosUrl()}${g.photo}` }} style={styles.listItemPhoto} />}
+                    {g.photo_url && <Image source={{ uri: g.photo_url }} style={styles.listItemPhoto} />}
                     <View style={styles.listItemInfo}>
                         <Text style={styles.itemTitle}>{g.name}</Text>
                         <Text style={styles.itemSubTitle}>{g.description}</Text>
@@ -606,7 +618,7 @@ export default function MenuAdminPage() {
             <Text style={styles.listHeader}>Articles existants ({menus.length})</Text>
             {menus.map((m: any) => (
                 <View key={m.id} style={styles.menuListItem}>
-                    {m.photo && <Image source={{ uri: `${getPosUrl()}${m.photo}` }} style={styles.menuPhoto} />}
+                    {m.photo_url && <Image source={{ uri: m.photo_url }} style={styles.menuPhoto} />}
                     <View style={styles.menuListHeader}>
                         <View style={{flex: 1}}>
                             <Text style={styles.itemTitle}>{m.name}</Text>
@@ -646,7 +658,7 @@ export default function MenuAdminPage() {
             <Text style={styles.listHeader}>Options existantes ({options.length})</Text>
             {options.map((o: any) => (
                 <View key={o.id} style={styles.listItem}>
-                    {o.photo && <Image source={{ uri: `${getPosUrl()}${o.photo}` }} style={styles.listItemPhoto} />}
+                    {o.photo_url && <Image source={{ uri: o.photo_url }} style={styles.listItemPhoto} />}
                     <View style={styles.listItemInfo}>
                         <Text style={styles.itemTitle}>{o.name}</Text>
                         <Text style={styles.itemSubTitle}>{o.type} • {o.extra_price > 0 ? `+${o.extra_price} DA` : 'Inclus'}</Text>
@@ -730,7 +742,7 @@ export default function MenuAdminPage() {
                         <View style={styles.modalHeader}><Text style={styles.modalTitle}>Modifier le Groupe</Text><TouchableOpacity onPress={() => setEditGroupModal(false)}><X size={24} color={COLORS.secondary} /></TouchableOpacity></View>
                         <TextInput style={styles.input} placeholder="Nom" value={editingGroup?.name || ''} onChangeText={(t) => setEditingGroup({...editingGroup, name: t})} />
                         <TextInput style={styles.input} placeholder="Description" value={editingGroup?.description || ''} onChangeText={(t) => setEditingGroup({...editingGroup, description: t})} />
-                        {renderPhotoPicker(selectedGroupPhoto, setSelectedGroupPhoto, editingGroup?.photo)}
+                        {renderPhotoPicker(selectedGroupPhoto, setSelectedGroupPhoto, editingGroup?.photo_url)}
                         <TouchableOpacity style={styles.submitBtn} onPress={handleUpdateGroup}><Save size={20} color="white" /><Text style={styles.btnText}>Enregistrer</Text></TouchableOpacity>
                     </View>
                 </View>
@@ -762,7 +774,7 @@ export default function MenuAdminPage() {
                                     {MENU_TYPES.map((type) => (<Picker.Item key={type.value} label={type.label} value={type.value} />))}
                                 </Picker>
                             </View>
-                            {renderPhotoPicker(selectedMenuPhoto, setSelectedMenuPhoto, editingMenu?.photo)}
+                            {renderPhotoPicker(selectedMenuPhoto, setSelectedMenuPhoto, editingMenu?.photo_url)}
                             <TouchableOpacity style={styles.submitBtn} onPress={handleUpdateMenu}><Save size={20} color="white" /><Text style={styles.btnText}>Enregistrer</Text></TouchableOpacity>
                         </View>
                     </ScrollView>
@@ -780,7 +792,7 @@ export default function MenuAdminPage() {
                             </View>
                             <TextInput style={[styles.input, {flex: 1}]} placeholder="Prix +" keyboardType="numeric" value={editingOption?.extra_price || ''} onChangeText={(t) => setEditingOption({...editingOption, extra_price: t})} />
                         </View>
-                        {renderPhotoPicker(selectedOptionPhoto, setSelectedOptionPhoto, editingOption?.photo)}
+                        {renderPhotoPicker(selectedOptionPhoto, setSelectedOptionPhoto, editingOption?.photo_url)}
                         <TouchableOpacity style={styles.submitBtn} onPress={handleUpdateOption}><Save size={20} color="white" /><Text style={styles.btnText}>Enregistrer</Text></TouchableOpacity>
                     </View>
                 </View>

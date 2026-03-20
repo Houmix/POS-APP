@@ -3,7 +3,6 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, Image, ActivityIndi
 import { useEffect, useState, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AntDesign, Ionicons } from '@expo/vector-icons';
-import { getPosUrl } from "@/utils/serverConfig";
 import { useBorneSync } from '@/hooks/useBorneSync';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useKioskTheme } from '@/contexts/KioskThemeContext';
@@ -211,7 +210,7 @@ export default function MenuStepsScreen() {
                                     <Ionicons name="checkmark-circle" size={24} color={theme.primaryColor} />
                                 </View>
                             )}
-                            <Image source={{ uri: `${getPosUrl()}${item.option.photo}` }} style={styles.optionImage} resizeMode="contain" />
+                            {item.option.photo_url && <Image source={{ uri: item.option.photo_url }} style={styles.optionImage} resizeMode="contain" />}
                             <Text style={[styles.optionName, { color: theme.textColor }]}>{item.option.name}</Text>
                             {item.option.extra_price > 0 && <Text style={[styles.optionExtra, { color: theme.primaryColor }]}>+{item.option.extra_price} DA</Text>}
                         </TouchableOpacity>
