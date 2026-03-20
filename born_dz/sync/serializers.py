@@ -11,29 +11,61 @@ from restaurant.models import Restaurant, KioskConfig
 
 
 # ──────────────────────────────────────────
+#  HELPER : URL de photo (local ou distant)
+# ──────────────────────────────────────────
+
+def _photo_url(photo_field, base_url=''):
+    """
+    Renvoie l'URL de la photo, en gérant deux cas :
+    - Serveur distant (base_url fourni) → URL absolue avec le domaine du serveur
+    - Django local (après sync) → la valeur stockée est déjà une URL absolue distante,
+      on la renvoie telle quelle pour que la borne puisse charger l'image depuis le cloud.
+    """
+    if not photo_field:
+        return None
+    name = str(photo_field)
+    if not name:
+        return None
+    # Déjà une URL absolue (stockée depuis un sync distant)
+    if name.startswith('http://') or name.startswith('https://'):
+        return name
+    # Fichier local → construire l'URL absolue
+    if base_url:
+        try:
+            relative = photo_field.url  # ex: /media/restaurant/menu/burger.jpg
+            return f"{base_url.rstrip('/')}{relative}"
+        except Exception:
+            return f"{base_url.rstrip('/')}/media/{name.lstrip('/')}"
+    try:
+        return photo_field.url
+    except Exception:
+        return None
+
+
+# ──────────────────────────────────────────
 #  MODEL → JSON  (pour envoyer aux bornes)
 # ──────────────────────────────────────────
 
-def serialize_group_menu(obj):
+def serialize_group_menu(obj, base_url=''):
     return {
         'id': obj.id,
         'name': obj.name,
         'description': obj.description,
-        'photo': obj.photo.url if obj.photo else None,
+        'photo': _photo_url(obj.photo, base_url),
         'avalaible': obj.avalaible,
         'extra': obj.extra,
         'position': obj.position,
         'restaurant_id': obj.restaurant_id,
     }
 
-def serialize_menu(obj):
+def serialize_menu(obj, base_url=''):
     return {
         'id': obj.id,
         'name': obj.name,
         'description': obj.description,
         'price': str(obj.price),
         'solo_price': str(obj.solo_price),
-        'photo': obj.photo.url if obj.photo else None,
+        'photo': _photo_url(obj.photo, base_url),
         'group_menu_id': obj.group_menu_id,
         'avalaible': obj.avalaible,
         'extra': obj.extra,
@@ -41,11 +73,11 @@ def serialize_menu(obj):
         'type': obj.type,
     }
 
-def serialize_option(obj):
+def serialize_option(obj, base_url=''):
     return {
         'id': obj.id,
         'name': obj.name,
-        'photo': obj.photo.url if obj.photo else None,
+        'photo': _photo_url(obj.photo, base_url),
         'type': obj.type,
         'avalaible': obj.avalaible,
         'extra_price': str(obj.extra_price),
@@ -179,9 +211,9 @@ def full_snapshot(restaurant_id, base_url=''):
             'name': restaurant.name,
         },
         'kiosk_config': kiosk_config_data,
-        'group_menus': [serialize_group_menu(g) for g in group_menus],
-        'menus': [serialize_menu(m) for m in menus],
-        'options': [serialize_option(o) for o in options],
+        'group_menus': [serialize_group_menu(g, base_url) for g in group_menus],
+        'menus': [serialize_menu(m, base_url) for m in menus],
+        'options': [serialize_option(o, base_url) for o in options],
         'steps': [serialize_step(s) for s in steps],
         'menu_steps': [serialize_menu_step(ms) for ms in menu_steps],
         'step_options': [serialize_step_option(so) for so in step_options],

@@ -21,6 +21,32 @@ from .models import Menu, GroupMenu, Option, Step, MenuStep, StepOption
 #  Helper : créer un SyncLog sans importer circulairement
 # ─────────────────────────────────────────────────────
 
+def _get_base_url():
+    """
+    Retourne l'URL de base du serveur en ligne.
+    On la lit depuis SERVER_BASE_URL dans les settings (à définir dans .env),
+    sinon on cherche railway.app dans ALLOWED_HOSTS comme fallback.
+    """
+    try:
+        from django.conf import settings
+        # Priorité 1 : variable explicite dans les settings
+        base = getattr(settings, 'SERVER_BASE_URL', '')
+        if base:
+            return base.rstrip('/')
+        # Priorité 2 : chercher railway.app ou le premier host de production connu
+        priority_keywords = ('railway.app', 'vercel.app', 'heroku')
+        for host in getattr(settings, 'ALLOWED_HOSTS', []):
+            if host and any(kw in host for kw in priority_keywords):
+                return f"https://{host}"
+        # Fallback : premier host non-local
+        for host in getattr(settings, 'ALLOWED_HOSTS', []):
+            if host and host not in ('127.0.0.1', 'localhost', '*') and not host.startswith('192.168.'):
+                return f"https://{host}"
+    except Exception:
+        pass
+    return ''
+
+
 def _log_change(table_name, action, record_id, data, restaurant_id):
     """Crée une entrée SyncLog (restaurant_id peut être None pour Option)."""
     if restaurant_id is None:
@@ -78,7 +104,7 @@ def group_menu_saved(sender, instance, created, **kwargs):
     from sync.serializers import serialize_group_menu
     action = 'create' if created else 'update'
     print(f"[SYNC] GroupMenu '{instance.name}' {action} → SyncLog + WebSocket")
-    _log_change('group_menu', action, instance.id, serialize_group_menu(instance), instance.restaurant_id)
+    _log_change('group_menu', action, instance.id, serialize_group_menu(instance, _get_base_url()), instance.restaurant_id)
     _notify_bornes()
 
 
@@ -114,7 +140,7 @@ def menu_saved(sender, instance, created, **kwargs):
     action = 'create' if created else 'update'
     restaurant_id = _menu_restaurant_id(instance)
     print(f"[SYNC] Menu '{instance.name}' {action} → SyncLog + WebSocket")
-    _log_change('menu', action, instance.id, serialize_menu(instance), restaurant_id)
+    _log_change('menu', action, instance.id, serialize_menu(instance, _get_base_url()), restaurant_id)
     _notify_bornes()
 
 
@@ -155,7 +181,7 @@ def option_saved(sender, instance, created, **kwargs):
     action = 'create' if created else 'update'
     restaurant_id = _option_restaurant_id(instance)
     print(f"[SYNC] Option '{instance.name}' {action} → SyncLog")
-    _log_change('option', action, instance.id, serialize_option(instance), restaurant_id)
+    _log_change('option', action, instance.id, serialize_option(instance, _get_base_url()), restaurant_id)
     _notify_bornes()
 
 

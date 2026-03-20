@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 contextBridge.exposeInMainWorld('syncAPI', {
     syncNow:      () => ipcRenderer.invoke('sync-now'),
     bootstrap:    () => ipcRenderer.invoke('sync-bootstrap'),
+    forceReset:   () => ipcRenderer.invoke('sync-force-reset'),
     getStatus:    () => ipcRenderer.invoke('sync-status'),
     queueChange:  (table, action, data) => ipcRenderer.invoke('sync-queue-change', { table, action, data }),
     onStatusChange: (cb) => ipcRenderer.on('sync-status', (_, data) => cb(data)),

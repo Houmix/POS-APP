@@ -400,6 +400,55 @@ def force_refresh(request):
 
 
 # ─────────────────────────────────────────
+#  CLEAR LOCAL : Vide la BDD locale (appelé avant un re-bootstrap)
+# ─────────────────────────────────────────
+@csrf_exempt
+@require_http_methods(["POST"])
+def clear_local(request):
+    """
+    Supprime toutes les données de menu/config locales pour un restaurant.
+    Appelé par le SyncManager Electron avant un force-reset + re-bootstrap.
+    """
+    try:
+        body = json.loads(request.body)
+        restaurant_id = body.get('restaurant_id')
+
+        from menu.models import GroupMenu, Menu, Step, MenuStep, StepOption, Option
+        from restaurant.models import KioskConfig
+
+        deleted = {}
+
+        with transaction.atomic():
+            if restaurant_id:
+                # Supprimer en cascade (FK) dans l'ordre inverse
+                step_ids = list(Step.objects.filter(restaurant_id=restaurant_id).values_list('id', flat=True))
+                so_count, _ = StepOption.objects.filter(step_id__in=step_ids).delete()
+                ms_count, _ = MenuStep.objects.filter(step_id__in=step_ids).delete()
+                step_count, _ = Step.objects.filter(restaurant_id=restaurant_id).delete()
+                menu_count, _ = Menu.objects.filter(group_menu__restaurant_id=restaurant_id).delete()
+                gm_count, _ = GroupMenu.objects.filter(restaurant_id=restaurant_id).delete()
+                kc_count, _ = KioskConfig.objects.filter(restaurant_id=restaurant_id).delete()
+                deleted = {
+                    'kiosk_config': kc_count,
+                    'group_menus': gm_count,
+                    'menus': menu_count,
+                    'steps': step_count,
+                    'menu_steps': ms_count,
+                    'step_options': so_count,
+                }
+
+        # Réinitialiser les SyncLog (optionnel, pour repartir propre)
+        if restaurant_id:
+            SyncLog.objects.filter(restaurant_id=restaurant_id).delete()
+
+        print(f"[SYNC] clear-local restaurant_id={restaurant_id} : {deleted}")
+        return JsonResponse({'success': True, 'deleted': deleted})
+
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ─────────────────────────────────────────
 #  HELPER : Applique un changement unitaire
 # ─────────────────────────────────────────
 

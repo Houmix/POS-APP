@@ -35,6 +35,9 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-y($ou%*05+_g)zspa#n-t
 
 DEBUG = config('DEBUG', default=False, cast=bool)
 
+# URL publique du serveur en ligne (utilisée pour les URLs de photos dans la sync)
+SERVER_BASE_URL = config('SERVER_BASE_URL', default='https://borndz-production.up.railway.app')
+
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",

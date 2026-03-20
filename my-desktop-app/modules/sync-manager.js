@@ -29,6 +29,7 @@ class SyncManager {
         this.lastSyncTime = null;
         this.hasBootstrapped = false;     // true après le 1er snapshot
         this.pendingChanges = [];
+        this._localDbChecked = false;     // check BDD locale vide (une seule fois au démarrage)
 
         // Chemins de persistance
         const userDataPath = require('electron').app.getPath('userData');
@@ -63,6 +64,16 @@ class SyncManager {
                 this._log('Connexion rétablie !', 'success');
                 this._notifyRenderer('sync-status', { online: true, message: 'Connexion rétablie' });
                 this.syncNow();
+            } else if (this.isOnline && this.hasBootstrapped && !this._localDbChecked) {
+                // Vérifier UNE SEULE FOIS au démarrage si la BDD locale est vide
+                this._localDbChecked = true;
+                const isEmpty = await this._isLocalDbEmpty();
+                if (isEmpty) {
+                    this._log('BDD locale vide détectée → re-bootstrap automatique', 'warning');
+                    this.hasBootstrapped = false;
+                    this._saveSyncMeta();
+                    this.syncNow();
+                }
             }
             return this.isOnline;
         } catch (err) {
@@ -246,7 +257,35 @@ class SyncManager {
     }
 
     // ==========================================
-    //  4. FILE D'ATTENTE (commandes créées hors ligne)
+    //  4. FORCE RESET (vide la BDD locale et re-bootstrap depuis le cloud)
+    // ==========================================
+
+    async forceReset() {
+        this._log('Force reset : effacement BDD locale et re-bootstrap...', 'warning');
+        this._notifyRenderer('sync-status', { syncing: true, message: 'Réinitialisation en cours...' });
+
+        // Effacer les données locales via l'API Django
+        try {
+            await this._httpRequestRaw(
+                `${this.localApiUrl}/api/sync/clear-local/`, 'POST',
+                { restaurant_id: this.restaurantId }
+            );
+        } catch (e) {
+            this._log(`Avertissement clear-local: ${e.message}`, 'warning');
+        }
+
+        // Réinitialiser l'état de sync
+        this.hasBootstrapped = false;
+        this.lastSyncTime = null;
+        this._localDbChecked = true;  // Pas besoin de re-check après reset
+        this._saveSyncMeta();
+
+        // Relancer le bootstrap complet
+        return await this.bootstrap();
+    }
+
+    // ==========================================
+    //  5. FILE D'ATTENTE (commandes créées hors ligne)
     // ==========================================
 
     /**
@@ -282,6 +321,21 @@ class SyncManager {
     //  5. DÉMARRAGE / ARRÊT
     // ==========================================
 
+    async _isLocalDbEmpty() {
+        if (!this.restaurantId) return false;
+        try {
+            const res = await this._httpRequestRaw(
+                `${this.localApiUrl}/api/sync/snapshot/?restaurant_id=${this.restaurantId}`, 'GET'
+            );
+            if (res.statusCode === 200) {
+                const data = JSON.parse(res.body);
+                const menus = data.menus || [];
+                return menus.length === 0;
+            }
+        } catch (e) { /* local not ready yet */ }
+        return false;
+    }
+
     start() {
         this._log('Démarrage...', 'info');
 
@@ -301,6 +355,7 @@ class SyncManager {
         // ── IPC ──
         ipcMain.handle('sync-now', async () => this.syncNow());
         ipcMain.handle('sync-bootstrap', async () => this.bootstrap());
+        ipcMain.handle('sync-force-reset', async () => this.forceReset());
         ipcMain.handle('sync-status', () => ({
             online: this.isOnline,
             syncing: this.isSyncing,

@@ -24,13 +24,13 @@ const isDev = !app.isPackaged;
 
 // 🔑 Licence
 const licenseManager = new LicenseManager({
-  serverUrl: 'https://clickgo-interactive.com',  // ← VOTRE URL
+  serverUrl: 'https://borndz-production.up.railway.app',
   gracePeriodDays: 7,
 });
 
 // 🔄 Sync
 const syncManager = new SyncManager({
-  serverUrl: 'https://clickgo-interactive.com',  // ← MÊME URL
+  serverUrl: 'https://borndz-production.up.railway.app',
   localApiUrl: 'http://127.0.0.1:8000',
   syncInterval: 30000,
   connectivityCheckInterval: 10000,

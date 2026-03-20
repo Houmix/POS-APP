@@ -12,4 +12,5 @@ urlpatterns = [
     path('apply/',          views.apply_change,    name='sync-apply'),
     path('apply-snapshot/', views.apply_snapshot,  name='sync-apply-snapshot'),
     path('force-refresh/',  views.force_refresh,   name='sync-force-refresh'),
+    path('clear-local/',    views.clear_local,     name='sync-clear-local'),
 ]

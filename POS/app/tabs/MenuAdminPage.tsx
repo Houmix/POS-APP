@@ -128,6 +128,10 @@ export default function MenuAdminPage() {
     const [previewModalVisible, setPreviewModalVisible] = useState(false);
     const [isSubmittingMenu, setIsSubmittingMenu] = useState(false);
 
+    // 🔄 SYNC DEPUIS LE CLOUD
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncMessage, setSyncMessage] = useState('');
+
     useEffect(() => { fetchInitialData(); }, []);
 
     // ============= UTILS =============
@@ -170,6 +174,42 @@ export default function MenuAdminPage() {
             console.error('Erreur:', e.response?.data || e.message);
             showError("Erreur chargement", "Impossible de charger les données");
         } finally { setLoading(false); }
+    };
+
+    const handleForceSync = async () => {
+        setIsSyncing(true);
+        setSyncMessage('Connexion au serveur cloud...');
+        try {
+            const win = typeof window !== 'undefined' ? (window as any) : null;
+
+            if (win?.syncAPI?.forceReset) {
+                // Contexte Electron : le SyncManager gère tout (clear + bootstrap)
+                setSyncMessage('Effacement BDD locale...');
+                await win.syncAPI.forceReset();
+                setSyncMessage('Re-synchronisation depuis le cloud...');
+                // Attendre que le bootstrap soit terminé (le sync manager met ~2-5s)
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            } else {
+                // Fallback : appel direct HTTP (mode dev / non-Electron)
+                setSyncMessage('Effacement des données locales...');
+                await axios.post(`${getPosUrl()}/api/sync/clear-local/`, {
+                    restaurant_id: restaurantId
+                });
+                setSyncMessage('Déclenchement re-bootstrap...');
+                await axios.post(`${getPosUrl()}/api/sync/force-refresh/`, {});
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+
+            setSyncMessage('Rechargement des données...');
+            await fetchInitialData();
+            setSyncMessage('');
+            showSuccess('Synchronisation terminée', 'Les données ont été rechargées depuis le serveur cloud.');
+        } catch (e: any) {
+            setSyncMessage('');
+            showError('Erreur de sync', e.message || 'Impossible de synchroniser avec le cloud.');
+        } finally {
+            setIsSyncing(false);
+        }
     };
 
     const appendImageToFormData = async (formData: FormData, key: string, photo: any) => {
@@ -653,7 +693,24 @@ export default function MenuAdminPage() {
             <View style={styles.content}>
                 <View style={styles.contentHeader}>
                     <Text style={styles.sectionTitle}>{activeTab === 'restaurant' ? 'Restaurant' : activeTab === 'groups' ? 'Groupes de Menu' : activeTab === 'menus' ? 'Articles' : 'Options'}</Text>
-                    <TouchableOpacity onPress={fetchInitialData} style={styles.refreshBtn}><Text style={styles.refreshBtnText}>Actualiser</Text></TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                        <TouchableOpacity
+                            style={[styles.syncBtn, isSyncing && { opacity: 0.6 }]}
+                            onPress={handleForceSync}
+                            disabled={isSyncing}
+                        >
+                            {isSyncing
+                                ? <ActivityIndicator size="small" color="#fff" />
+                                : <Text style={styles.syncBtnIcon}>☁</Text>
+                            }
+                            <Text style={styles.syncBtnText}>
+                                {isSyncing ? syncMessage || 'Sync...' : 'Sync Cloud'}
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={fetchInitialData} style={styles.refreshBtn}>
+                            <Text style={styles.refreshBtnText}>Actualiser</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {loading ? ( <View style={styles.loadingContainer}><ActivityIndicator size="large" color={COLORS.primary} /></View> ) : (
@@ -831,6 +888,17 @@ const styles = StyleSheet.create({
     activeTab: { backgroundColor: COLORS.primary },
     tabText: { fontSize: 15, fontWeight: '600', color: COLORS.muted },
     activeTabText: { color: '#FFF' },
+    syncBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        backgroundColor: COLORS.primary, borderRadius: 10, paddingVertical: 10,
+        paddingHorizontal: 12, marginTop: 12, gap: 8,
+    },
+    syncBtnIcon: { color: '#fff', fontSize: 16 },
+    syncBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+    syncStatusText: {
+        color: COLORS.warning, fontSize: 11, textAlign: 'center',
+        marginTop: 6, paddingHorizontal: 4,
+    },
     sidebarFooter: { marginTop: 'auto', paddingTop: 20, borderTopWidth: 1, borderTopColor: COLORS.border },
     footerText: { color: COLORS.muted, fontSize: 12, textAlign: 'center' },
     footerSubText: { color: COLORS.muted, fontSize: 10, textAlign: 'center', marginTop: 4 },

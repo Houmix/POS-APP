@@ -128,5 +128,66 @@
 
         <button type="submit" class="btn btn-primary btn-lg w-100">Enregistrer et appliquer sur la borne</button>
     </form>
+
+    <div class="card shadow-sm mt-4 p-4 border-warning">
+        <h5 class="fw-bold text-warning mb-2">Synchronisation base de donnees</h5>
+        <p class="text-muted mb-3">
+            Si les menus ou photos ne s'affichent pas correctement sur la borne,
+            utilisez ce bouton pour effacer et recharger toutes les donnees depuis le serveur cloud.
+        </p>
+        <button id="btn-reset-local" class="btn btn-warning btn-lg w-100" onclick="triggerForceReset()">
+            Reinitialiser et re-synchroniser la BDD locale
+        </button>
+        <div id="reset-status" class="mt-2 text-center fw-bold" style="display:none;"></div>
+    </div>
 </div>
+
+<script>
+function triggerForceReset() {
+    if (!confirm("Cela va effacer toutes les donnees locales et les recharger depuis le cloud. Continuer ?")) return;
+
+    const btn = document.getElementById('btn-reset-local');
+    const status = document.getElementById('reset-status');
+    btn.disabled = true;
+    btn.textContent = 'Reinitialisation en cours...';
+    status.style.display = 'block';
+    status.style.color = 'orange';
+    status.textContent = 'Connexion a la caisse locale...';
+
+    // Appel vers le Django local (caisse) sur le reseau local
+    // L'URL 127.0.0.1:8000 fonctionne quand le bouton est clique depuis la caisse elle-meme
+    // ou depuis un navigateur sur le meme reseau avec l'IP de la caisse
+    const localUrl = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
+        ? 'http://127.0.0.1:8000'
+        : `http://${window.location.hostname}:8000`;
+
+    fetch(`${localUrl}/api/sync/clear-local/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restaurant_id: {{ restaurant.id }} })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            status.style.color = 'green';
+            status.textContent = 'BDD locale effacee. Re-synchronisation en cours (30s)...';
+            // Appeler le force-refresh pour que la caisse re-bootstrape
+            return fetch(`${localUrl}/api/sync/force-refresh/`, { method: 'POST' });
+        } else {
+            throw new Error(data.error || 'Erreur inconnue');
+        }
+    })
+    .then(() => {
+        status.textContent = 'Reinitialisation envoyee ! La caisse va se resynchroniser automatiquement.';
+        btn.disabled = false;
+        btn.textContent = 'Reinitialiser et re-synchroniser la BDD locale';
+    })
+    .catch(err => {
+        status.style.color = 'red';
+        status.textContent = `Erreur : ${err.message}. Verifiez que la caisse est allumee et connectee.`;
+        btn.disabled = false;
+        btn.textContent = 'Reinitialiser et re-synchroniser la BDD locale';
+    });
+}
+</script>
 {% endblock %}
