@@ -261,3 +261,6 @@ CORS_ALLOWED_ORIGINS = [
     "https://borne-clickgo.vercel.app",
 ] + [f"https://{d}" for d in config('CORS_EXTRA_ORIGINS', default='', cast=Csv()) if d]
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://borndz-production.up.railway.app",
+]
