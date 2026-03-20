@@ -8,6 +8,7 @@
 from menu.models import GroupMenu, Menu, Option, Step, MenuStep, StepOption
 from order.models import Order, OrderItem, OrderItemOption
 from restaurant.models import Restaurant, KioskConfig
+from user.models import Role, User, Employee
 
 
 # ──────────────────────────────────────────
@@ -144,6 +145,40 @@ def serialize_kiosk_config(obj, base_url=''):
     }
 
 
+def serialize_role(obj):
+    return {
+        'id': obj.id,
+        'role': obj.role,
+    }
+
+def serialize_user(obj):
+    return {
+        'id': obj.id,
+        'phone': obj.phone,
+        'email': obj.email,
+        'username': obj.username or obj.phone,
+        'password': obj.password,   # déjà haché (pbkdf2_...)
+        'role_id': obj.role_id,
+        'is_active': obj.is_active,
+        'is_staff': obj.is_staff,
+        'is_superuser': obj.is_superuser,
+    }
+
+def serialize_employee(obj):
+    return {
+        'id': obj.id,
+        'user_id': obj.user_id,
+        'restaurant_id': obj.restaurant_id,
+        'first_name': obj.first_name,
+        'last_name': obj.last_name,
+        'hire_date': obj.hire_date.isoformat() if obj.hire_date else None,
+        'contract_type': obj.contract_type,
+        'hourly_rate': str(obj.hourly_rate) if obj.hourly_rate is not None else None,
+        'monthly_hours': obj.monthly_hours,
+        'national_id': obj.national_id,
+        'address': obj.address,
+    }
+
 def serialize_order(obj):
     return {
         'id': obj.id,
@@ -205,6 +240,13 @@ def full_snapshot(restaurant_id, base_url=''):
     except KioskConfig.DoesNotExist:
         kiosk_config_data = None
 
+    # Employés du restaurant + leurs comptes utilisateur
+    employees = Employee.objects.filter(restaurant=restaurant).select_related('user')
+    user_ids = employees.values_list('user_id', flat=True).distinct()
+    users = User.objects.filter(id__in=user_ids)
+    role_ids = users.values_list('role_id', flat=True).distinct()
+    roles = Role.objects.filter(id__in=role_ids)
+
     return {
         'restaurant': {
             'id': restaurant.id,
@@ -221,6 +263,9 @@ def full_snapshot(restaurant_id, base_url=''):
         'steps': [serialize_step(s) for s in steps],
         'menu_steps': [serialize_menu_step(ms) for ms in menu_steps],
         'step_options': [serialize_step_option(so) for so in step_options],
+        'roles': [serialize_role(r) for r in roles],
+        'users': [serialize_user(u) for u in users],
+        'employees': [serialize_employee(e) for e in employees],
     }
 
 

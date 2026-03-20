@@ -330,6 +330,7 @@ def apply_snapshot(request):
 
         from menu.models import GroupMenu, Menu, Step, MenuStep, StepOption, Option
         from restaurant.models import KioskConfig
+        from user.models import Role, User, Employee
 
         results = {}
 
@@ -352,7 +353,65 @@ def apply_snapshot(request):
                     Option.objects.filter(id__in=option_ids, stepoptions__isnull=True).delete()
                 KioskConfig.objects.filter(restaurant_id=restaurant_id).delete()
 
-            # ── 2. kiosk_config (objet unique, keyed by restaurant_id) ──────────
+            # ── 2. Roles (nécessaires avant les Users) ────────────────────────
+            for role_data in body.get('roles', []):
+                try:
+                    Role.objects.update_or_create(
+                        id=role_data['id'],
+                        defaults={'role': role_data['role']}
+                    )
+                except Exception as e:
+                    print(f"[APPLY-SNAPSHOT] Erreur role: {e} — data={role_data}")
+            results['roles'] = len(body.get('roles', []))
+
+            # ── 3. Users (mot de passe déjà haché — on bypass le save() custom) ─
+            for user_data in body.get('users', []):
+                try:
+                    obj, created = User.objects.get_or_create(
+                        phone=user_data['phone'],
+                        defaults={'id': user_data['id']}
+                    )
+                    # Mettre à jour les champs sans déclencher le re-hachage
+                    User.objects.filter(pk=obj.pk).update(
+                        username=user_data.get('username') or user_data['phone'],
+                        email=user_data.get('email') or f"{user_data['phone']}@born.dz",
+                        password=user_data['password'],   # déjà haché
+                        role_id=user_data.get('role_id'),
+                        is_active=user_data.get('is_active', True),
+                        is_staff=user_data.get('is_staff', False),
+                        is_superuser=user_data.get('is_superuser', False),
+                    )
+                except Exception as e:
+                    print(f"[APPLY-SNAPSHOT] Erreur user: {e} — data={user_data}")
+            results['users'] = len(body.get('users', []))
+
+            # ── 4. Employees ───────────────────────────────────────────────────
+            for emp_data in body.get('employees', []):
+                try:
+                    defaults = {
+                        'first_name': emp_data.get('first_name', ''),
+                        'last_name': emp_data.get('last_name', ''),
+                        'contract_type': emp_data.get('contract_type', ''),
+                        'national_id': emp_data.get('national_id', ''),
+                        'address': emp_data.get('address', ''),
+                        'monthly_hours': emp_data.get('monthly_hours'),
+                        'restaurant_id': emp_data.get('restaurant_id'),
+                    }
+                    if emp_data.get('hire_date'):
+                        from datetime import date
+                        defaults['hire_date'] = date.fromisoformat(emp_data['hire_date'])
+                    if emp_data.get('hourly_rate') is not None:
+                        defaults['hourly_rate'] = Decimal(str(emp_data['hourly_rate']))
+
+                    Employee.objects.update_or_create(
+                        id=emp_data['id'],
+                        defaults={**defaults, 'user_id': emp_data['user_id']}
+                    )
+                except Exception as e:
+                    print(f"[APPLY-SNAPSHOT] Erreur employee: {e} — data={emp_data}")
+            results['employees'] = len(body.get('employees', []))
+
+            # ── 5. kiosk_config (objet unique, keyed by restaurant_id) ──────────
             config_data = body.get('kiosk_config')
             if config_data and isinstance(config_data, dict):
                 _apply_change('kiosk_config', 'create', config_data)
@@ -360,7 +419,7 @@ def apply_snapshot(request):
             else:
                 results['kiosk_config'] = 0
 
-            # ── 3. Insérer dans l'ordre FK ─────────────────────────────────────
+            # ── 6. Insérer catalogue dans l'ordre FK ──────────────────────────
             table_order = ['group_menu', 'menu', 'option', 'step', 'menu_step', 'step_option']
             plurals = {
                 'group_menu': 'group_menus',

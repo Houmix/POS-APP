@@ -109,7 +109,8 @@ export default function SetupWizard({ onSetupComplete }: Props) {
         throw new Error('Échec de l\'application des données en local.');
       }
       const applied = applyRes.data.applied || {};
-      addLog(`✓ Importé : ${applied.group_menu ?? 0} catégories, ${applied.menu ?? 0} menus, ${applied.option ?? 0} options`);
+      addLog(`✓ Menus : ${applied.group_menu ?? 0} catégories, ${applied.menu ?? 0} menus, ${applied.option ?? 0} options`);
+      addLog(`✓ Équipe : ${applied.users ?? 0} utilisateur(s), ${applied.employees ?? 0} employé(s)`);
 
       // ── 5. Synchronisation de la licence en local ──────────────────────────
       addLog('Synchronisation de la licence en local...');
