@@ -300,6 +300,201 @@ def apply_change(request):
 # ─────────────────────────────────────────
 #  APPLY BATCH : Appliquer un snapshot complet
 # ─────────────────────────────────────────
+
+def apply_snapshot_data(body):
+    """
+    Logique pure d'application d'un snapshot (dict).
+    Appelable depuis une vue HTTP ou depuis le thread d'auto-sync.
+    Retourne {'success': True, 'applied': {...}} ou lève une exception.
+    """
+    from decimal import Decimal
+
+    restaurant_data = body.get('restaurant', {})
+    restaurant_id = restaurant_data.get('id')
+    restaurant_name = restaurant_data.get('name', 'Restaurant')
+
+    if restaurant_id:
+        from restaurant.models import Restaurant
+        restaurant_address = restaurant_data.get('address', '-')
+        restaurant_phone = restaurant_data.get('phone', '0000000000')
+        restaurant_immat = restaurant_data.get('immat', '-')
+
+        restaurant, _ = Restaurant.objects.get_or_create(
+            id=restaurant_id,
+            defaults={
+                'name': restaurant_name,
+                'address': restaurant_address,
+                'phone': restaurant_phone,
+                'immat': restaurant_immat,
+            }
+        )
+        update_fields = {}
+        if restaurant_name and restaurant.name != restaurant_name:
+            update_fields['name'] = restaurant_name
+        if restaurant_address and restaurant_address != '-' and restaurant.address != restaurant_address:
+            update_fields['address'] = restaurant_address
+        if restaurant_phone and restaurant_phone != '0000000000' and restaurant.phone != restaurant_phone:
+            update_fields['phone'] = restaurant_phone
+        if restaurant_immat and restaurant_immat != '-' and restaurant.immat != restaurant_immat:
+            update_fields['immat'] = restaurant_immat
+        if update_fields:
+            Restaurant.objects.filter(id=restaurant_id).update(**update_fields)
+
+    from menu.models import GroupMenu, Menu, Step, MenuStep, StepOption, Option
+    from restaurant.models import KioskConfig
+    from user.models import Role, User, Employee
+    from customer.models import LoyaltyReward
+
+    results = {}
+
+    group_menus_in = body.get('group_menus', [])
+    menus_in = body.get('menus', [])
+    users_in = body.get('users', [])
+    if not group_menus_in and not menus_in and not users_in:
+        raise ValueError(
+            'Snapshot vide reçu du cloud (0 catégories, 0 menus, 0 utilisateurs). '
+            'Vérifiez que ce restaurant_id existe sur le cloud et qu\'il a des données.'
+        )
+
+    with transaction.atomic():
+        if restaurant_id:
+            step_ids = list(Step.objects.filter(restaurant_id=restaurant_id).values_list('id', flat=True))
+            menu_ids = list(Menu.objects.filter(group_menu__restaurant_id=restaurant_id).values_list('id', flat=True))
+            option_ids = list(StepOption.objects.filter(step_id__in=step_ids).values_list('option_id', flat=True).distinct())
+            StepOption.objects.filter(step_id__in=step_ids).delete()
+            MenuStep.objects.filter(step_id__in=step_ids).delete()
+            MenuStep.objects.filter(menu_id__in=menu_ids).delete()
+            Step.objects.filter(restaurant_id=restaurant_id).delete()
+            Menu.objects.filter(group_menu__restaurant_id=restaurant_id).delete()
+            GroupMenu.objects.filter(restaurant_id=restaurant_id).delete()
+            if option_ids:
+                Option.objects.filter(id__in=option_ids).delete()
+            if body.get('kiosk_config') and isinstance(body.get('kiosk_config'), dict):
+                KioskConfig.objects.filter(restaurant_id=restaurant_id).delete()
+
+        for role_data in body.get('roles', []):
+            try:
+                Role.objects.update_or_create(
+                    id=role_data['id'],
+                    defaults={'role': role_data['role']}
+                )
+            except Exception as e:
+                print(f"[APPLY-SNAPSHOT] Erreur role: {e} — data={role_data}")
+        results['roles'] = len(body.get('roles', []))
+
+        cloud_id_to_local_pk = {}
+        for user_data in users_in:
+            try:
+                cloud_uid = user_data['id']
+                phone = user_data['phone']
+                email = user_data.get('email') or f"{phone}@born.dz"
+                username = user_data.get('username') or phone
+
+                existing = User.objects.filter(phone=phone).first()
+                if not existing:
+                    existing = User.objects.filter(id=cloud_uid).first()
+
+                if existing:
+                    local_pk = existing.pk
+                else:
+                    existing = User.objects.create(
+                        id=cloud_uid,
+                        phone=phone,
+                        email=email,
+                        username=username,
+                        is_active=user_data.get('is_active', True),
+                        is_staff=user_data.get('is_staff', False),
+                        is_superuser=user_data.get('is_superuser', False),
+                    )
+                    local_pk = existing.pk
+
+                User.objects.filter(pk=local_pk).update(
+                    username=username,
+                    email=email,
+                    password=user_data['password'],
+                    role_id=user_data.get('role_id'),
+                    is_active=user_data.get('is_active', True),
+                    is_staff=user_data.get('is_staff', False),
+                    is_superuser=user_data.get('is_superuser', False),
+                )
+                cloud_id_to_local_pk[cloud_uid] = local_pk
+            except Exception as e:
+                print(f"[APPLY-SNAPSHOT] Erreur user {user_data.get('phone')}: {e}")
+        results['users'] = len(users_in)
+
+        for emp_data in body.get('employees', []):
+            try:
+                cloud_uid = emp_data['user_id']
+                local_user_pk = cloud_id_to_local_pk.get(cloud_uid, cloud_uid)
+
+                defaults = {
+                    'user_id': local_user_pk,
+                    'restaurant_id': emp_data.get('restaurant_id'),
+                    'first_name': emp_data.get('first_name', ''),
+                    'last_name': emp_data.get('last_name', ''),
+                    'contract_type': emp_data.get('contract_type', ''),
+                    'national_id': emp_data.get('national_id', ''),
+                    'address': emp_data.get('address', ''),
+                    'monthly_hours': emp_data.get('monthly_hours'),
+                }
+                if emp_data.get('hire_date'):
+                    from datetime import date
+                    defaults['hire_date'] = date.fromisoformat(emp_data['hire_date'])
+                if emp_data.get('hourly_rate') is not None:
+                    defaults['hourly_rate'] = Decimal(str(emp_data['hourly_rate']))
+
+                Employee.objects.update_or_create(id=emp_data['id'], defaults=defaults)
+            except Exception as e:
+                print(f"[APPLY-SNAPSHOT] Erreur employee {emp_data.get('id')}: {e}")
+        results['employees'] = len(body.get('employees', []))
+
+        config_data = body.get('kiosk_config')
+        if config_data and isinstance(config_data, dict):
+            try:
+                _apply_change('kiosk_config', 'create', config_data)
+                results['kiosk_config'] = 1
+            except Exception as e:
+                print(f"[APPLY-SNAPSHOT] Erreur kiosk_config: {e}")
+                results['kiosk_config'] = 0
+        else:
+            results['kiosk_config'] = 0
+
+        table_order = ['group_menu', 'menu', 'option', 'step', 'menu_step', 'step_option']
+        plurals = {
+            'group_menu': 'group_menus',
+            'menu': 'menus',
+            'option': 'options',
+            'step': 'steps',
+            'menu_step': 'menu_steps',
+            'step_option': 'step_options',
+        }
+
+        for table_name in table_order:
+            json_key = plurals[table_name]
+            items = body.get(json_key, [])
+            count = 0
+            for item_data in items:
+                try:
+                    _apply_change(table_name, 'create', item_data)
+                    count += 1
+                except Exception as row_err:
+                    print(f"[APPLY-SNAPSHOT] Erreur {table_name}: {row_err} — data={item_data}")
+            results[table_name] = count
+
+        if restaurant_id:
+            LoyaltyReward.objects.filter(restaurant_id=restaurant_id).delete()
+        loyalty_rewards_count = 0
+        for reward_data in body.get('loyalty_rewards', []):
+            try:
+                _apply_change('loyalty_reward', 'create', reward_data)
+                loyalty_rewards_count += 1
+            except Exception as e:
+                print(f"[APPLY-SNAPSHOT] Erreur loyalty_reward: {e} — data={reward_data}")
+        results['loyalty_rewards'] = loyalty_rewards_count
+
+    return results
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def apply_snapshot(request):
@@ -312,214 +507,10 @@ def apply_snapshot(request):
     """
     try:
         body = json.loads(request.body)
-
-        # ── 0. S'assurer que le Restaurant existe localement ──────────────────
-        restaurant_data = body.get('restaurant', {})
-        restaurant_id = restaurant_data.get('id')
-        restaurant_name = restaurant_data.get('name', 'Restaurant')
-
-        if restaurant_id:
-            from restaurant.models import Restaurant
-            restaurant_address = restaurant_data.get('address', '-')
-            restaurant_phone = restaurant_data.get('phone', '0000000000')
-            restaurant_immat = restaurant_data.get('immat', '-')
-
-            restaurant, _ = Restaurant.objects.get_or_create(
-                id=restaurant_id,
-                defaults={
-                    'name': restaurant_name,
-                    'address': restaurant_address,
-                    'phone': restaurant_phone,
-                    'immat': restaurant_immat,
-                }
-            )
-            # Mettre à jour tous les champs si différents
-            update_fields = {}
-            if restaurant_name and restaurant.name != restaurant_name:
-                update_fields['name'] = restaurant_name
-            if restaurant_address and restaurant_address != '-' and restaurant.address != restaurant_address:
-                update_fields['address'] = restaurant_address
-            if restaurant_phone and restaurant_phone != '0000000000' and restaurant.phone != restaurant_phone:
-                update_fields['phone'] = restaurant_phone
-            if restaurant_immat and restaurant_immat != '-' and restaurant.immat != restaurant_immat:
-                update_fields['immat'] = restaurant_immat
-            if update_fields:
-                Restaurant.objects.filter(id=restaurant_id).update(**update_fields)
-
-        from menu.models import GroupMenu, Menu, Step, MenuStep, StepOption, Option
-        from restaurant.models import KioskConfig
-        from user.models import Role, User, Employee
-        from customer.models import LoyaltyReward
-
-        results = {}
-
-        # ── Garde : refuser un snapshot vide pour éviter d'effacer les données locales ──
-        group_menus_in = body.get('group_menus', [])
-        menus_in = body.get('menus', [])
-        users_in = body.get('users', [])
-        if not group_menus_in and not menus_in and not users_in:
-            return JsonResponse({
-                'success': False,
-                'error': 'Snapshot vide reçu du cloud (0 catégories, 0 menus, 0 utilisateurs). '
-                         'Vérifiez que ce restaurant_id existe sur le cloud et qu\'il a des données.'
-            }, status=400)
-
-        with transaction.atomic():
-            # ── 1. Purger TOUTES les données locales dans l'ordre inverse des FK ──
-            if restaurant_id:
-                step_ids = list(Step.objects.filter(restaurant_id=restaurant_id).values_list('id', flat=True))
-                menu_ids = list(Menu.objects.filter(group_menu__restaurant_id=restaurant_id).values_list('id', flat=True))
-                # Collecter les option_ids AVANT de supprimer les StepOptions
-                option_ids = list(StepOption.objects.filter(step_id__in=step_ids).values_list('option_id', flat=True).distinct())
-                # Supprimer dans l'ordre (dépendances d'abord)
-                StepOption.objects.filter(step_id__in=step_ids).delete()
-                MenuStep.objects.filter(step_id__in=step_ids).delete()
-                MenuStep.objects.filter(menu_id__in=menu_ids).delete()
-                Step.objects.filter(restaurant_id=restaurant_id).delete()
-                Menu.objects.filter(group_menu__restaurant_id=restaurant_id).delete()
-                GroupMenu.objects.filter(restaurant_id=restaurant_id).delete()
-                # Supprimer les options de ce restaurant (StepOptions déjà supprimées)
-                if option_ids:
-                    Option.objects.filter(id__in=option_ids).delete()
-                # KioskConfig : ne supprimer que si le snapshot en fournit une nouvelle
-                # (sinon on perd les couleurs/logo locaux et get_or_create remet les défauts)
-                if body.get('kiosk_config') and isinstance(body.get('kiosk_config'), dict):
-                    KioskConfig.objects.filter(restaurant_id=restaurant_id).delete()
-
-            # ── 2. Roles (nécessaires avant les Users) ────────────────────────
-            for role_data in body.get('roles', []):
-                try:
-                    Role.objects.update_or_create(
-                        id=role_data['id'],
-                        defaults={'role': role_data['role']}
-                    )
-                except Exception as e:
-                    print(f"[APPLY-SNAPSHOT] Erreur role: {e} — data={role_data}")
-            results['roles'] = len(body.get('roles', []))
-
-            # ── 3. Users (mot de passe déjà haché — bypass du save() custom) ───
-            # Construire un mapping cloud_user_id → local_pk pour les employees
-            cloud_id_to_local_pk = {}
-            for user_data in users_in:
-                try:
-                    cloud_uid = user_data['id']
-                    phone = user_data['phone']
-                    email = user_data.get('email') or f"{phone}@born.dz"
-                    username = user_data.get('username') or phone
-
-                    # Chercher par phone d'abord (clé métier), puis par cloud id
-                    existing = User.objects.filter(phone=phone).first()
-                    if not existing:
-                        existing = User.objects.filter(id=cloud_uid).first()
-
-                    if existing:
-                        local_pk = existing.pk
-                    else:
-                        # Créer avec l'id du cloud pour que les FK Employee soient cohérentes
-                        # On passe par QuerySet.create pour bypasser le save() custom
-                        existing = User.objects.create(
-                            id=cloud_uid,
-                            phone=phone,
-                            email=email,
-                            username=username,
-                            is_active=user_data.get('is_active', True),
-                            is_staff=user_data.get('is_staff', False),
-                            is_superuser=user_data.get('is_superuser', False),
-                        )
-                        local_pk = existing.pk
-
-                    # Mettre à jour via QuerySet.update (bypass le save() pour ne pas re-hacher)
-                    User.objects.filter(pk=local_pk).update(
-                        username=username,
-                        email=email,
-                        password=user_data['password'],  # déjà pbkdf2_sha256$...
-                        role_id=user_data.get('role_id'),
-                        is_active=user_data.get('is_active', True),
-                        is_staff=user_data.get('is_staff', False),
-                        is_superuser=user_data.get('is_superuser', False),
-                    )
-                    cloud_id_to_local_pk[cloud_uid] = local_pk
-                except Exception as e:
-                    print(f"[APPLY-SNAPSHOT] Erreur user {user_data.get('phone')}: {e}")
-            results['users'] = len(users_in)
-
-            # ── 4. Employees ───────────────────────────────────────────────────
-            for emp_data in body.get('employees', []):
-                try:
-                    # Résoudre le user_id local (peut différer du cloud_id)
-                    cloud_uid = emp_data['user_id']
-                    local_user_pk = cloud_id_to_local_pk.get(cloud_uid, cloud_uid)
-
-                    defaults = {
-                        'user_id': local_user_pk,
-                        'restaurant_id': emp_data.get('restaurant_id'),
-                        'first_name': emp_data.get('first_name', ''),
-                        'last_name': emp_data.get('last_name', ''),
-                        'contract_type': emp_data.get('contract_type', ''),
-                        'national_id': emp_data.get('national_id', ''),
-                        'address': emp_data.get('address', ''),
-                        'monthly_hours': emp_data.get('monthly_hours'),
-                    }
-                    if emp_data.get('hire_date'):
-                        from datetime import date
-                        defaults['hire_date'] = date.fromisoformat(emp_data['hire_date'])
-                    if emp_data.get('hourly_rate') is not None:
-                        defaults['hourly_rate'] = Decimal(str(emp_data['hourly_rate']))
-
-                    Employee.objects.update_or_create(id=emp_data['id'], defaults=defaults)
-                except Exception as e:
-                    print(f"[APPLY-SNAPSHOT] Erreur employee {emp_data.get('id')}: {e}")
-            results['employees'] = len(body.get('employees', []))
-
-            # ── 5. kiosk_config (objet unique, keyed by restaurant_id) ──────────
-            config_data = body.get('kiosk_config')
-            if config_data and isinstance(config_data, dict):
-                try:
-                    _apply_change('kiosk_config', 'create', config_data)
-                    results['kiosk_config'] = 1
-                except Exception as e:
-                    print(f"[APPLY-SNAPSHOT] Erreur kiosk_config: {e}")
-                    results['kiosk_config'] = 0
-            else:
-                results['kiosk_config'] = 0
-
-            # ── 6. Insérer catalogue dans l'ordre FK ──────────────────────────
-            table_order = ['group_menu', 'menu', 'option', 'step', 'menu_step', 'step_option']
-            plurals = {
-                'group_menu': 'group_menus',
-                'menu': 'menus',
-                'option': 'options',
-                'step': 'steps',
-                'menu_step': 'menu_steps',
-                'step_option': 'step_options',
-            }
-
-            for table_name in table_order:
-                json_key = plurals[table_name]
-                items = body.get(json_key, [])
-                count = 0
-                for item_data in items:
-                    try:
-                        _apply_change(table_name, 'create', item_data)
-                        count += 1
-                    except Exception as row_err:
-                        print(f"[APPLY-SNAPSHOT] Erreur {table_name}: {row_err} — data={item_data}")
-                results[table_name] = count
-
-            # ── 7. LoyaltyReward (récompenses fidélité configurées par le gérant) ──
-            if restaurant_id:
-                LoyaltyReward.objects.filter(restaurant_id=restaurant_id).delete()
-            loyalty_rewards_count = 0
-            for reward_data in body.get('loyalty_rewards', []):
-                try:
-                    _apply_change('loyalty_reward', 'create', reward_data)
-                    loyalty_rewards_count += 1
-                except Exception as e:
-                    print(f"[APPLY-SNAPSHOT] Erreur loyalty_reward: {e} — data={reward_data}")
-            results['loyalty_rewards'] = loyalty_rewards_count
-
+        results = apply_snapshot_data(body)
         return JsonResponse({'success': True, 'applied': results})
-
+    except ValueError as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
     except Exception as e:
         import traceback
         traceback.print_exc()

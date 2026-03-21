@@ -187,7 +187,12 @@ class CustomerLoyaltyLeaderboard(APIView):
 # ── LoyaltyReward ────────────────────────────────────────────────────────────
 
 class LoyaltyRewardListCreate(APIView):
-    permission_classes = [IsAuthenticated]
+    # GET public : la borne affiche le catalogue sans avoir besoin d'un compte
+    # POST reste réservé aux utilisateurs authentifiés (gérant)
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     def get(self, request, restaurant_id, *args, **kwargs):
         rewards = LoyaltyReward.objects.filter(restaurant_id=restaurant_id, is_active=True).select_related('menu', 'option')

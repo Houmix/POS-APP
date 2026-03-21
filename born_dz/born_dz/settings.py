@@ -42,6 +42,11 @@ SERVER_BASE_URL = config('SERVER_BASE_URL', default='https://borndz-production.u
 # Format attendu : https://github.com/<user>/<repo>/releases/download/<tag>/ClickGo-POS-Setup.exe
 GITHUB_RELEASE_POS_URL = config('GITHUB_RELEASE_POS_URL', default='')
 
+# Sync automatique cloud → local (uniquement sur serveur POS local)
+# Mettre AUTO_SYNC_ENABLED=True dans le .env du POS local pour activer
+AUTO_SYNC_ENABLED = config('AUTO_SYNC_ENABLED', default=False, cast=bool)
+AUTO_SYNC_INTERVAL_SECONDS = config('AUTO_SYNC_INTERVAL_SECONDS', default=300, cast=int)
+
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
