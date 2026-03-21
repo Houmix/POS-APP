@@ -662,6 +662,15 @@ DOWNLOAD_META = {
 }
 
 @require_http_methods(["GET"])
+def downloads_config(request):
+    """Retourne la config des téléchargements (URLs GitHub Releases)."""
+    from django.conf import settings as s
+    return JsonResponse({
+        'pos_windows_url': getattr(s, 'GITHUB_RELEASE_POS_URL', ''),
+    })
+
+
+@require_http_methods(["GET"])
 def list_downloads(request):
     """Liste les fichiers disponibles au téléchargement."""
     files = []

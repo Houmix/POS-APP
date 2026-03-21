@@ -38,6 +38,10 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 # URL publique du serveur en ligne (utilisée pour les URLs de photos dans la sync)
 SERVER_BASE_URL = config('SERVER_BASE_URL', default='https://borndz-production.up.railway.app')
 
+# URL GitHub Release pour le téléchargement du logiciel POS Windows
+# Format attendu : https://github.com/<user>/<repo>/releases/download/<tag>/ClickGo-POS-Setup.exe
+GITHUB_RELEASE_POS_URL = config('GITHUB_RELEASE_POS_URL', default='')
+
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",

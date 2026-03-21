@@ -82,15 +82,9 @@ export default function ConfirmationPage() {
             setStatusMessage(`${t('confirmation.print_failed')} : ${error.message}`);
         } finally {
             setIsPrinting(false);
-            
-            // 4. Redirection automatique vers l'accueil après un délai
-            setTimeout(() => {
-                console.log("🔄 Retour au terminal...");
-                AsyncStorage.removeItem("lastOrderId"); 
-                AsyncStorage.removeItem("orderList"); // Vide les articles
-                AsyncStorage.removeItem("pendingOrder"); // Vide la commande en cours
-                router.push("/tabs/terminal"); 
-            }, 10000);
+            // Redirection immédiate après impression
+            await AsyncStorage.multiRemove(["lastOrderId", "orderList", "pendingOrder"]);
+            router.push("/tabs/terminal");
         }
     };
 

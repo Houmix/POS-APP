@@ -24,7 +24,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useKioskTheme } from "@/contexts/KioskThemeContext";
 import axios from "axios";
 
-const INACTIVITY_LIMIT = 15 * 60 * 1000;
+const INACTIVITY_LIMIT = 20 * 60 * 1000;
 
 const DANGER = "#EF4444";
 const SUCCESS = "#22C55E";
