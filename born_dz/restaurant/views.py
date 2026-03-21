@@ -302,7 +302,7 @@ class KioskConfigView(APIView):
             'selected_category_bg_color': config.selected_category_bg_color,
             'category_text_color':        config.category_text_color,
             'logo_url':             _resolve_media_url(request, config.logo or config.restaurant.logo, config.logo_remote_url),
-            'screensaver_image_url': request.build_absolute_uri(config.screensaver_image.url) if config.screensaver_image else None,
+            'screensaver_image_url': _resolve_media_url(request, config.screensaver_image, config.screensaver_image_remote_url),
             'screensaver_video_url': _resolve_media_url(request, config.screensaver_video, config.screensaver_video_remote_url),
             'card_style':           config.card_style,
             'composition_mode':     config.composition_mode,
