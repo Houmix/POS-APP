@@ -1,7 +1,10 @@
 # --- 1. Bibliothèque Standard Python ---
 import base64
 import io
+import json as _json
+import threading
 import traceback
+import urllib.request
 from datetime import datetime, time, timedelta
 
 # --- 2. Django Core ---
@@ -27,6 +30,89 @@ from restaurant.models import Restaurant
 from user.models import User
 from .models import Order, OrderItem, OrderItemOption
 from .serializers import OrderSerializer
+
+# ─────────────────────────────────────────
+# Push commande vers le cloud (fire-and-forget)
+# ─────────────────────────────────────────
+def _push_order_to_cloud(order):
+    """
+    Pousse une commande locale vers le serveur cloud Railway via /api/sync/push/.
+    Exécuté en background thread pour ne pas bloquer la réponse.
+    """
+    from django.conf import settings
+
+    def do_push():
+        cloud_url = getattr(settings, 'SERVER_BASE_URL', '')
+        if not cloud_url or 'localhost' in cloud_url or '127.0.0.1' in cloud_url:
+            return  # Ne pas boucler sur soi-même
+
+        changes = []
+
+        # Order
+        changes.append({
+            'table': 'order', 'action': 'create',
+            'data': {
+                'id': order.id,
+                'restaurant_id': order.restaurant_id,
+                'user_id': order.user_id,
+                'status': order.status,
+                'cash': order.cash,
+                'paid': order.paid,
+                'refund': order.refund,
+                'cancelled': order.cancelled,
+                'take_away': order.take_away,
+                'kds_status': order.kds_status,
+                'customer_identifier': order.customer_identifier,
+                'delivery_type': order.delivery_type,
+                'created_at': order.created_at.isoformat() if order.created_at else None,
+            }
+        })
+
+        # OrderItems + options
+        for item in order.items.prefetch_related('options').all():
+            changes.append({
+                'table': 'order_item', 'action': 'create',
+                'data': {
+                    'id': item.id,
+                    'order_id': item.order_id,
+                    'menu_id': item.menu_id,
+                    'extra': item.extra,
+                    'solo': item.solo,
+                    'quantity': item.quantity,
+                }
+            })
+            for opt in item.options.all():
+                changes.append({
+                    'table': 'order_item_option', 'action': 'create',
+                    'data': {
+                        'id': opt.id,
+                        'order_item_id': opt.order_item_id,
+                        'option_id': opt.option_id,
+                    }
+                })
+
+        body = _json.dumps({
+            'restaurant_id': order.restaurant_id,
+            'terminal_uuid': 'local-pos',
+            '_forwarded': True,  # évite la re-forward côté cloud
+            'changes': changes,
+        }).encode('utf-8')
+
+        try:
+            req = urllib.request.Request(
+                f"{cloud_url.rstrip('/')}/api/sync/push/",
+                data=body,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = _json.loads(resp.read())
+                print(f"[CLOUD-SYNC] ✅ Commande #{order.id} → {result.get('accepted', 0)} éléments pushés")
+        except Exception as e:
+            print(f"[CLOUD-SYNC] ⚠️ Erreur push commande #{order.id}: {e}")
+
+    threading.Thread(target=do_push, daemon=True).start()
+
 
 # ==========================================
 # 1. ORDER CREATION (CORRECTED)
@@ -232,6 +318,9 @@ class OrderCreate(APIView):
                     )
             except Exception as kds_err:
                 print(f"  [KDS] Erreur notification (non bloquant): {kds_err}")
+
+        # 8. PUSH CLOUD (fire-and-forget)
+        _push_order_to_cloud(order)
 
         return Response({
             "message": "Commande créée avec succès",

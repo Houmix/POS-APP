@@ -140,6 +140,9 @@ def push_changes(request):
         terminal_uuid = body.get('terminal_uuid', '')
         changes = body.get('changes', [])
 
+        # _forwarded=True → émis par un POS local, ne pas re-forwarder
+        is_forwarded = body.get('_forwarded', False)
+
         if not restaurant_id or not changes:
             return JsonResponse({'success': False, 'error': 'restaurant_id et changes requis'}, status=400)
 
@@ -641,3 +644,50 @@ def _apply_change(table_name, action, data, restaurant_id=None):
 
         else:
             raise ValueError(f"Action inconnue: {action}")
+
+
+# ─────────────────────────────────────────
+#  DOWNLOADS : Téléchargement des logiciels
+# ─────────────────────────────────────────
+import os
+from django.http import FileResponse, HttpResponse
+from django.conf import settings as django_settings
+
+DOWNLOADS_DIR = os.path.join(django_settings.BASE_DIR, 'downloads')
+
+DOWNLOAD_META = {
+    'ClickGo-POS-Setup.exe':  {'label': 'ClickGo POS (Windows)',  'platform': 'windows', 'icon': 'monitor'},
+    'ClickGo-POS.dmg':        {'label': 'ClickGo POS (macOS)',    'platform': 'mac',     'icon': 'monitor'},
+    'ClickGo-Borne.apk':      {'label': 'ClickGo Borne (Android)','platform': 'android', 'icon': 'tablet'},
+}
+
+@require_http_methods(["GET"])
+def list_downloads(request):
+    """Liste les fichiers disponibles au téléchargement."""
+    files = []
+    if os.path.exists(DOWNLOADS_DIR):
+        for filename in sorted(os.listdir(DOWNLOADS_DIR)):
+            filepath = os.path.join(DOWNLOADS_DIR, filename)
+            if not os.path.isfile(filepath):
+                continue
+            meta = DOWNLOAD_META.get(filename, {'label': filename, 'platform': 'other', 'icon': 'file'})
+            files.append({
+                'filename': filename,
+                'label': meta['label'],
+                'platform': meta['platform'],
+                'icon': meta['icon'],
+                'size_mb': round(os.path.getsize(filepath) / (1024 * 1024), 1),
+                'url': f'/api/downloads/{filename}/',
+            })
+    return JsonResponse({'files': files})
+
+
+@require_http_methods(["GET"])
+def download_file(request, filename):
+    """Sert un fichier de téléchargement."""
+    # Sécurité : empêcher path traversal
+    safe_name = os.path.basename(filename)
+    filepath = os.path.join(DOWNLOADS_DIR, safe_name)
+    if not os.path.isfile(filepath):
+        return JsonResponse({'error': 'Fichier introuvable'}, status=404)
+    return FileResponse(open(filepath, 'rb'), as_attachment=True, filename=safe_name)

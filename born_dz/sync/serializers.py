@@ -191,6 +191,9 @@ def serialize_order(obj):
         'refund': obj.refund,
         'cancelled': obj.cancelled,
         'take_away': obj.take_away,
+        'kds_status': obj.kds_status,
+        'customer_identifier': obj.customer_identifier,
+        'delivery_type': obj.delivery_type,
         'created_at': obj.created_at.isoformat() if obj.created_at else None,
     }
 
