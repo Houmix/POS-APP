@@ -36,8 +36,9 @@ class KioskConfig(models.Model):
     screensaver_image    = models.ImageField(upload_to='kiosk/screensaver/', blank=True, null=True)
     screensaver_video    = models.FileField(upload_to='kiosk/videos/', blank=True, null=True)
     # URLs distantes (remplies sur les Django locaux lors de la sync depuis le serveur distant)
-    logo_remote_url          = models.URLField(blank=True, null=True)
-    screensaver_video_remote_url = models.URLField(blank=True, null=True)
+    logo_remote_url               = models.URLField(blank=True, null=True)
+    screensaver_image_remote_url  = models.URLField(blank=True, null=True)
+    screensaver_video_remote_url  = models.URLField(blank=True, null=True)
     # Design des cartes
     CARD_STYLE_CHOICES = [
         ('gradient', 'Gradient sombre'),

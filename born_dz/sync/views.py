@@ -615,7 +615,7 @@ def _apply_change(table_name, action, data, restaurant_id=None):
                     clean_data.pop('logo', None)
                     clean_data.pop('screensaver_video', None)
                     clean_data.pop('screensaver_image', None)
-                    # logo_remote_url / screensaver_video_remote_url restent dans clean_data
+                    # logo_remote_url / screensaver_image_remote_url / screensaver_video_remote_url restent dans clean_data
                     Model.objects.update_or_create(restaurant_id=resto_id, defaults=clean_data)
                 return
 
