@@ -113,8 +113,9 @@ def snapshot(request):
 
     except Exception as e:
         import traceback
-        traceback.print_exc()
-        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+        tb = traceback.format_exc()
+        print(f"[SNAPSHOT] ERREUR: {e}\n{tb}")
+        return JsonResponse({'success': False, 'error': str(e), 'traceback': tb.splitlines()[-5:]}, status=500)
 
 
 # ─────────────────────────────────────────
@@ -376,9 +377,9 @@ def apply_snapshot(request):
                 Step.objects.filter(restaurant_id=restaurant_id).delete()
                 Menu.objects.filter(group_menu__restaurant_id=restaurant_id).delete()
                 GroupMenu.objects.filter(restaurant_id=restaurant_id).delete()
-                # Supprimer les options qui n'ont plus aucune liaison step_option
+                # Supprimer les options de ce restaurant (StepOptions déjà supprimées)
                 if option_ids:
-                    Option.objects.filter(id__in=option_ids, option__isnull=True).delete()
+                    Option.objects.filter(id__in=option_ids).delete()
                 # KioskConfig : ne supprimer que si le snapshot en fournit une nouvelle
                 # (sinon on perd les couleurs/logo locaux et get_or_create remet les défauts)
                 if body.get('kiosk_config') and isinstance(body.get('kiosk_config'), dict):
