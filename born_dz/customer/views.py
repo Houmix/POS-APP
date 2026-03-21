@@ -174,13 +174,13 @@ class LoyaltyRewardListCreate(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, restaurant_id, *args, **kwargs):
-        rewards = LoyaltyReward.objects.filter(restaurant_id=restaurant_id, is_active=True)
-        return Response(LoyaltyRewardSerializer(rewards, many=True).data)
+        rewards = LoyaltyReward.objects.filter(restaurant_id=restaurant_id, is_active=True).select_related('menu', 'option')
+        return Response(LoyaltyRewardSerializer(rewards, many=True, context={'request': request}).data)
 
     def post(self, request, restaurant_id, *args, **kwargs):
         restaurant = get_object_or_404(Restaurant, id=restaurant_id)
         data = {**request.data, 'restaurant': restaurant.id}
-        serializer = LoyaltyRewardSerializer(data=data)
+        serializer = LoyaltyRewardSerializer(data=data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -192,7 +192,7 @@ class LoyaltyRewardDetail(APIView):
 
     def put(self, request, pk, *args, **kwargs):
         reward = get_object_or_404(LoyaltyReward, pk=pk)
-        serializer = LoyaltyRewardSerializer(reward, data=request.data, partial=True)
+        serializer = LoyaltyRewardSerializer(reward, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -201,6 +201,46 @@ class LoyaltyRewardDetail(APIView):
     def delete(self, request, pk, *args, **kwargs):
         get_object_or_404(LoyaltyReward, pk=pk).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class RewardCatalog(APIView):
+    """Retourne les menus et options du restaurant pour le formulaire de création de récompense."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, restaurant_id, *args, **kwargs):
+        from menu.models import Menu, Option, GroupMenu
+        menus = Menu.objects.filter(group_menu__restaurant_id=restaurant_id, is_available=True).select_related('group_menu')
+        options = Option.objects.filter(
+            option__step__restaurant_id=restaurant_id
+        ).distinct()
+
+        def menu_photo_url(m):
+            if not m.photo:
+                return None
+            url = m.photo.url if hasattr(m.photo, 'url') else str(m.photo)
+            if url.startswith('http'):
+                return url
+            return request.build_absolute_uri(url)
+
+        menus_data = [
+            {
+                'id': m.id,
+                'name': m.name,
+                'price': float(m.price),
+                'category': m.group_menu.name,
+                'image_url': menu_photo_url(m),
+            }
+            for m in menus
+        ]
+        options_data = [
+            {
+                'id': o.id,
+                'name': o.name,
+                'extra_price': float(o.extra_price) if hasattr(o, 'extra_price') else 0,
+            }
+            for o in options
+        ]
+        return Response({'menus': menus_data, 'options': options_data})
 
 
 # ── Redemption ───────────────────────────────────────────────────────────────

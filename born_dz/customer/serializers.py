@@ -17,10 +17,46 @@ class CustomerLoyaltySerializer(serializers.ModelSerializer):
 
 
 class LoyaltyRewardSerializer(serializers.ModelSerializer):
+    display_name        = serializers.SerializerMethodField()
+    display_image_url   = serializers.SerializerMethodField()
+    display_price       = serializers.SerializerMethodField()
+
+    def _build_url(self, path):
+        request = self.context.get('request')
+        if not path:
+            return None
+        url = path.url if hasattr(path, 'url') else str(path)
+        if url.startswith('http'):
+            return url
+        if request:
+            return request.build_absolute_uri(url)
+        return url
+
+    def get_display_name(self, obj):
+        return obj.display_name()
+
+    def get_display_image_url(self, obj):
+        if obj.reward_type == 'menu' and obj.menu:
+            return self._build_url(obj.menu.photo)
+        return None
+
+    def get_display_price(self, obj):
+        if obj.reward_type == 'menu' and obj.menu:
+            return float(obj.menu.price)
+        if obj.reward_type == 'option' and obj.option:
+            return float(obj.option.extra_price) if hasattr(obj.option, 'extra_price') else None
+        return None
+
     class Meta:
         model = LoyaltyReward
-        fields = ["id", "restaurant", "name", "description", "points_required", "is_active", "created_at"]
-        read_only_fields = ["created_at"]
+        fields = [
+            "id", "restaurant", "reward_type",
+            "menu", "option",
+            "name", "description",
+            "points_required", "is_active", "created_at",
+            "display_name", "display_image_url", "display_price",
+        ]
+        read_only_fields = ["created_at", "display_name", "display_image_url", "display_price"]
 
 
 class LoyaltyRedemptionSerializer(serializers.ModelSerializer):

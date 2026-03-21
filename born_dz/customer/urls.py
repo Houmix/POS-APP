@@ -35,6 +35,7 @@ urlpatterns = [
     # ── Récompenses ──────────────────────────────────────────────────────────
     path("api/loyalty/rewards/<int:restaurant_id>/", LoyaltyRewardListCreate.as_view(), name="loyalty_rewards"),
     path("api/loyalty/rewards/detail/<int:pk>/", LoyaltyRewardDetail.as_view(), name="loyalty_reward_detail"),
+    path("api/loyalty/catalog/<int:restaurant_id>/", RewardCatalog.as_view(), name="loyalty_catalog"),
 
     # ── Échange & historique ─────────────────────────────────────────────────
     path("api/loyalty/redeem/", RedeemReward.as_view(), name="loyalty_redeem"),
