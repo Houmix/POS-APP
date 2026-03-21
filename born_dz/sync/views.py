@@ -93,6 +93,18 @@ def snapshot(request):
         if not restaurant_id:
             return JsonResponse({'success': False, 'error': 'restaurant_id requis'}, status=400)
 
+        from restaurant.models import Restaurant
+        try:
+            int(restaurant_id)
+        except ValueError:
+            return JsonResponse({'success': False, 'error': 'restaurant_id invalide'}, status=400)
+
+        if not Restaurant.objects.filter(id=int(restaurant_id)).exists():
+            return JsonResponse({
+                'success': False,
+                'error': f'Restaurant {restaurant_id} introuvable sur ce serveur. Vérifiez que le restaurant est bien configuré.'
+            }, status=404)
+
         base_url = request.build_absolute_uri('/').rstrip('/')
         data = full_snapshot(int(restaurant_id), base_url=base_url)
         data['success'] = True
@@ -100,6 +112,8 @@ def snapshot(request):
         return JsonResponse(data)
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 

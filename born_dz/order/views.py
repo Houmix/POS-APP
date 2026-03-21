@@ -741,8 +741,8 @@ def format_order_as_ticket(order_id):
     buf.append(CENTER + BOLD_ON + 'Merci de votre visite !' + BOLD_OFF + LF)
     buf.append(LF + LF + LF)
 
-    # ── Coupe papier ───────────────────────────────────────────────────────────
-    buf.append(CUT)
+    # ── Coupe papier gérée par Electron (LINE_FEEDS + CUT_COMMAND) ────────────
+    # Ne pas ajouter CUT ici pour éviter la double coupe
 
     return {
         "content": ''.join(buf),

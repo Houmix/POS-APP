@@ -65,6 +65,7 @@ export default function OrderScreen() {
   // États Historique
   const [historyVisible, setHistoryVisible] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     fetchOrders();
@@ -128,6 +129,49 @@ export default function OrderScreen() {
         return { success: false, error: error.message };
     }
 };
+  // --- SYNC CLOUD ---
+  const handleSyncCloud = async () => {
+    setSyncing(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
+      const CLOUD_URL = 'https://borndz-production.up.railway.app';
+      const snapshotRes = await axios.get(
+        `${CLOUD_URL}/api/sync/snapshot/?restaurant_id=${restaurantId}`,
+        { timeout: 30000 }
+      );
+      if (!snapshotRes.data.success) throw new Error('Snapshot cloud vide ou invalide');
+      const applyRes = await axios.post(
+        `${getPosUrl()}/api/sync/apply-snapshot/`,
+        snapshotRes.data,
+        { timeout: 30000 }
+      );
+      if (!applyRes.data.success) throw new Error(applyRes.data.error || 'Échec de la sync locale');
+      Alert.alert('Sync terminée', 'Les données ont été synchronisées depuis le cloud.');
+      await fetchOrders();
+    } catch (error: any) {
+      Alert.alert('Erreur sync', error.message || 'Impossible de synchroniser avec le cloud.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // --- LIVRER ---
+  const handleDeliver = async (orderId: number) => {
+    try {
+      const accessToken = await AsyncStorage.getItem("token");
+      await axios.put(
+        `${getPosUrl()}/order/api/Updateorder/${orderId}/`,
+        { kds_status: 'delivered', status: 'delivered' },
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      setOrders(prev => prev.filter(o => o.order_id !== orderId));
+    } catch (error: any) {
+      console.error("❌ Erreur livraison:", error);
+      Alert.alert("Erreur", "Impossible de marquer la commande comme livrée.");
+    }
+  };
+
   // --- IMPRESSION ---
   const handleReprint = async (orderId: number) => {
     try {
@@ -563,16 +607,25 @@ export default function OrderScreen() {
             </>
           )}
 
-          {/* Colonne "Prête" : imprimer le ticket */}
+          {/* Colonne "Prête" : imprimer + livrer */}
           {order.kds_status === "done" && (
-            <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: "#28a745", flex: 1 }]}
-              onPress={() => handleReprint(order.order_id)}
-              disabled={printing}
-            >
-              <MaterialCommunityIcons name="printer" size={18} color="#fff" />
-              <Text style={styles.actionButtonText}>Imprimer</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: "#28a745" }]}
+                onPress={() => handleReprint(order.order_id)}
+                disabled={printing}
+              >
+                <MaterialCommunityIcons name="printer" size={18} color="#fff" />
+                <Text style={styles.actionButtonText}>Imprimer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: "#0ea5e9" }]}
+                onPress={() => handleDeliver(order.order_id)}
+              >
+                <MaterialCommunityIcons name="check-all" size={18} color="#fff" />
+                <Text style={styles.actionButtonText}>Livré</Text>
+              </TouchableOpacity>
+            </>
           )}
 
           {/* Rembourser (si payé) */}
@@ -657,11 +710,19 @@ export default function OrderScreen() {
         </View>
 
         <View style={{flexDirection: 'row', gap: 10, alignItems: 'center'}}>
-            <TouchableOpacity 
+            <TouchableOpacity
                 style={[styles.refreshButton, {backgroundColor: '#6366F1'}]}
                 onPress={() => setHistoryVisible(true)}
             >
                 <MaterialCommunityIcons name="history" size={24} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={[styles.refreshButton, {backgroundColor: syncing ? '#94a3b8' : '#0ea5e9'}]}
+                onPress={handleSyncCloud}
+                disabled={syncing}
+            >
+                <MaterialCommunityIcons name={syncing ? "loading" : "cloud-sync"} size={24} color="#fff" />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>

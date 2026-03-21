@@ -143,6 +143,8 @@ def serialize_kiosk_config(obj, base_url=''):
         'screensaver_video_remote_url': abs_url(obj.screensaver_video),
         'card_style':                 obj.card_style,
         'composition_mode':           obj.composition_mode,
+        'loyalty_enabled':            obj.loyalty_enabled,
+        'loyalty_points_rate':        obj.loyalty_points_rate,
     }
 
 

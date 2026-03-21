@@ -37,7 +37,6 @@ interface KDSOrder {
 }
 
 const COLUMNS = [
-  { key: 'pending_validation', label: 'À valider',      color: '#ef4444', bg: '#fef2f2', icon: 'clock'        as const },
   { key: 'new',               label: 'Nouvelles',       color: '#f59e0b', bg: '#fffbeb', icon: 'inbox'        as const },
   { key: 'in_progress',       label: 'En préparation',  color: '#3b82f6', bg: '#eff6ff', icon: 'zap'          as const },
   { key: 'done',              label: 'Prêtes',           color: '#10b981', bg: '#f0fdf4', icon: 'check-circle' as const },
@@ -46,16 +45,17 @@ const COLUMNS = [
 const NEXT_KDS_STATUS: Record<string, string> = {
   new:         'in_progress',
   in_progress: 'done',
+  done:        'delivered',
 };
 const ACTION_LABEL: Record<string, string> = {
-  pending_validation: '✓  Valider',
-  new:                '▶  Commencer',
-  in_progress:        '✓  Marquer prêt',
+  new:         '▶  Commencer',
+  in_progress: '✓  Marquer prêt',
+  done:        '🚀  Livrer',
 };
 const ACTION_COLOR: Record<string, string> = {
-  pending_validation: '#ef4444',
-  new:                '#f59e0b',
-  in_progress:        '#3b82f6',
+  new:         '#f59e0b',
+  in_progress: '#3b82f6',
+  done:        '#10b981',
 };
 
 export default function KDSScreen() {
@@ -67,6 +67,7 @@ export default function KDSScreen() {
   const [wsStatus, setWsStatus]     = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
   const [clock, setClock]           = useState(new Date());
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [printingId, setPrintingId] = useState<number | null>(null);
 
   const wsRef           = useRef<WebSocket | null>(null);
   const restaurantIdRef = useRef<string | null>(null);
@@ -114,11 +115,15 @@ export default function KDSScreen() {
         if (type === 'new_order') {
           fetchOrders();
         } else if (type === 'order_updated') {
-          setOrders(prev =>
-            prev.map(o =>
-              o.order_id === order_id ? { ...o, kds_status: newKdsStatus || o.kds_status } : o
-            )
-          );
+          if (newKdsStatus === 'delivered') {
+            setOrders(prev => prev.filter(o => o.order_id !== order_id));
+          } else {
+            setOrders(prev =>
+              prev.map(o =>
+                o.order_id === order_id ? { ...o, kds_status: newKdsStatus || o.kds_status } : o
+              )
+            );
+          }
         }
       } catch {}
     };
@@ -129,6 +134,26 @@ export default function KDSScreen() {
     };
     ws.onerror = () => setWsStatus('disconnected');
   }, [fetchOrders]);
+
+  const printTicket = async (orderId: number) => {
+    if (printingId !== null) return;
+    setPrintingId(orderId);
+    try {
+      const token = await AsyncStorage.getItem('token');
+      const r = await fetch(`${getPosUrl()}/order/api/generateTicket/${orderId}/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await r.json();
+      const { ticket_content } = data;
+      if (ticket_content && (window as any).electronAPI?.printTicket) {
+        await (window as any).electronAPI.printTicket(ticket_content);
+      }
+    } catch (e) {
+      console.error('[KDS] print error:', e);
+    } finally {
+      setPrintingId(null);
+    }
+  };
 
   const updateStatus = async (order: KDSOrder) => {
     if (updatingId !== null) return;
@@ -156,9 +181,13 @@ export default function KDSScreen() {
           body: JSON.stringify({ kds_status: next }),
         });
         if (r.ok) {
-          setOrders(prev =>
-            prev.map(o => o.order_id === order.order_id ? { ...o, kds_status: next } : o)
-          );
+          if (next === 'delivered') {
+            setOrders(prev => prev.filter(o => o.order_id !== order.order_id));
+          } else {
+            setOrders(prev =>
+              prev.map(o => o.order_id === order.order_id ? { ...o, kds_status: next } : o)
+            );
+          }
         }
       }
     } catch (e) {
@@ -220,6 +249,7 @@ export default function KDSScreen() {
     const isUrgent   = minutes >= 10;
     const col        = COLUMNS.find(c => c.key === order.kds_status);
     const isUpdating = updatingId === order.order_id;
+    const isPrinting = printingId === order.order_id;
     const deliveryLabel = DELIVERY_LABEL[order.delivery_type] || (order.take_away ? 'Emporter' : 'Sur place');
     const deliveryColor = DELIVERY_COLOR[order.delivery_type] || '#64748b';
 
@@ -281,22 +311,36 @@ export default function KDSScreen() {
         <View style={styles.divider} />
         <View style={styles.cardFooter}>
           <Text style={styles.totalText}>{order.total_price.toFixed(0)} DA</Text>
-          {ACTION_LABEL[order.kds_status] && (
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {/* Print button */}
             <TouchableOpacity
-              style={[
-                styles.actionBtn,
-                { backgroundColor: ACTION_COLOR[order.kds_status] },
-                isUpdating && styles.btnDisabled,
-              ]}
-              onPress={() => updateStatus(order)}
-              disabled={updatingId !== null}
+              style={[styles.printBtn, isPrinting && styles.btnDisabled]}
+              onPress={() => printTicket(order.order_id)}
+              disabled={printingId !== null}
             >
-              {isUpdating
+              {isPrinting
                 ? <ActivityIndicator size="small" color="white" />
-                : <Text style={styles.actionBtnText}>{ACTION_LABEL[order.kds_status]}</Text>
+                : <Feather name="printer" size={16} color="white" />
               }
             </TouchableOpacity>
-          )}
+            {/* Action button */}
+            {ACTION_LABEL[order.kds_status] && (
+              <TouchableOpacity
+                style={[
+                  styles.actionBtn,
+                  { backgroundColor: ACTION_COLOR[order.kds_status] },
+                  isUpdating && styles.btnDisabled,
+                ]}
+                onPress={() => updateStatus(order)}
+                disabled={updatingId !== null}
+              >
+                {isUpdating
+                  ? <ActivityIndicator size="small" color="white" />
+                  : <Text style={styles.actionBtnText}>{ACTION_LABEL[order.kds_status]}</Text>
+                }
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
     );
@@ -449,5 +493,6 @@ const styles = StyleSheet.create({
   totalText:   { fontSize: 16, fontWeight: '900', color: '#0f172a' },
   actionBtn:   { paddingVertical: 10, paddingHorizontal: 18, borderRadius: 10, minWidth: 130, alignItems: 'center' },
   actionBtnText:{ color: 'white', fontWeight: '800', fontSize: 13 },
+  printBtn:    { width: 40, height: 40, borderRadius: 10, backgroundColor: '#64748b', justifyContent: 'center', alignItems: 'center' },
   btnDisabled: { opacity: 0.6 },
 });
