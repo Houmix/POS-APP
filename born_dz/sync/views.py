@@ -362,7 +362,10 @@ def apply_snapshot(request):
                 # Supprimer les options qui n'ont plus aucune liaison step_option
                 if option_ids:
                     Option.objects.filter(id__in=option_ids, option__isnull=True).delete()
-                KioskConfig.objects.filter(restaurant_id=restaurant_id).delete()
+                # KioskConfig : ne supprimer que si le snapshot en fournit une nouvelle
+                # (sinon on perd les couleurs/logo locaux et get_or_create remet les défauts)
+                if body.get('kiosk_config') and isinstance(body.get('kiosk_config'), dict):
+                    KioskConfig.objects.filter(restaurant_id=restaurant_id).delete()
 
             # ── 2. Roles (nécessaires avant les Users) ────────────────────────
             for role_data in body.get('roles', []):
@@ -452,8 +455,12 @@ def apply_snapshot(request):
             # ── 5. kiosk_config (objet unique, keyed by restaurant_id) ──────────
             config_data = body.get('kiosk_config')
             if config_data and isinstance(config_data, dict):
-                _apply_change('kiosk_config', 'create', config_data)
-                results['kiosk_config'] = 1
+                try:
+                    _apply_change('kiosk_config', 'create', config_data)
+                    results['kiosk_config'] = 1
+                except Exception as e:
+                    print(f"[APPLY-SNAPSHOT] Erreur kiosk_config: {e}")
+                    results['kiosk_config'] = 0
             else:
                 results['kiosk_config'] = 0
 

@@ -41,7 +41,14 @@ const DEFAULT_THEME: KioskTheme = {
 
 const THEME_CACHE_KEY = 'kiosk_theme_cache';
 
-const KioskThemeContext = createContext<KioskTheme>(DEFAULT_THEME);
+interface KioskThemeContextValue extends KioskTheme {
+    refreshTheme: () => Promise<void>;
+}
+
+const KioskThemeContext = createContext<KioskThemeContextValue>({
+    ...DEFAULT_THEME,
+    refreshTheme: async () => {},
+});
 
 export function KioskThemeProvider({ children }: { children: React.ReactNode }) {
     const [theme, setTheme] = useState<KioskTheme>(DEFAULT_THEME);
@@ -111,12 +118,12 @@ export function KioskThemeProvider({ children }: { children: React.ReactNode }) 
     }, [fetchTheme]);
 
     return (
-        <KioskThemeContext.Provider value={theme}>
+        <KioskThemeContext.Provider value={{ ...theme, refreshTheme: fetchTheme }}>
             {children}
         </KioskThemeContext.Provider>
     );
 }
 
-export function useKioskTheme(): KioskTheme {
+export function useKioskTheme(): KioskThemeContextValue {
     return useContext(KioskThemeContext);
 }

@@ -12,6 +12,7 @@ import {
 import axios from 'axios';
 import { getPosUrl } from '@/utils/serverConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useKioskTheme } from '@/contexts/KioskThemeContext';
 
 const CLOUD_URL = 'https://borndz-production.up.railway.app';
 const LOCAL_URL = 'http://127.0.0.1:8000';
@@ -83,6 +84,7 @@ const toastConfig = {
 };
 
 export default function MenuAdminPage() {
+    const { refreshTheme } = useKioskTheme();
     const [activeTab, setActiveTab] = useState<Tab>('groups');
     const [loading, setLoading] = useState(false);
     const [restaurantInfo, setRestaurantInfo] = useState<any>(null);
@@ -207,9 +209,9 @@ export default function MenuAdminPage() {
                 throw new Error(applyRes.data.error || 'Échec de l\'application des données.');
             }
 
-            // 3. Recharger l'affichage
+            // 3. Recharger l'affichage + thème kiosque
             setSyncMessage('Rechargement des données...');
-            await fetchInitialData();
+            await Promise.all([fetchInitialData(), refreshTheme()]);
             setSyncMessage('');
             const applied = applyRes.data.applied || {};
             showSuccess(
