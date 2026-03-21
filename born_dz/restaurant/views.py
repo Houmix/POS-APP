@@ -306,6 +306,8 @@ class KioskConfigView(APIView):
             'screensaver_video_url': _resolve_media_url(request, config.screensaver_video, config.screensaver_video_remote_url),
             'card_style':           config.card_style,
             'composition_mode':     config.composition_mode,
+            'loyalty_enabled':      config.loyalty_enabled,
+            'loyalty_points_rate':  config.loyalty_points_rate,
         })
 
     def put(self, request):

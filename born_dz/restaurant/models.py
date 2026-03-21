@@ -52,6 +52,9 @@ class KioskConfig(models.Model):
         ('page', 'Page dédiée'),
     ]
     composition_mode     = models.CharField(max_length=10, choices=COMPOSITION_MODE_CHOICES, default='page')
+    # Fidélité
+    loyalty_enabled      = models.BooleanField(default=False)
+    loyalty_points_rate  = models.IntegerField(default=10)  # DA par point (10 = 10 DA = 1 point)
     updated_at           = models.DateTimeField(auto_now=True)
 
     def __str__(self):

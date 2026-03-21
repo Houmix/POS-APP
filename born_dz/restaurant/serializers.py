@@ -52,6 +52,7 @@ class KioskConfigSerializer(serializers.ModelSerializer):
             'background_color', 'card_bg_color', 'text_color',
             'sidebar_color', 'category_bg_color', 'selected_category_bg_color', 'category_text_color',
             'logo', 'screensaver_image', 'screensaver_video', 'card_style', 'composition_mode',
+            'loyalty_enabled', 'loyalty_points_rate',
         ]
 
 

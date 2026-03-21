@@ -282,14 +282,49 @@ class OrderCreate(APIView):
                 total = order.total_price()
                 if total > 0:
                     loyalty, _ = Loyalty.objects.get_or_create(
-                        user=user_instance, 
+                        user=user_instance,
                         restaurant=restaurant
                     )
                     loyalty.point += total
                     loyalty.save()
-                    print(f"  Points fidélité ajoutés: +{total}")
+                    print(f"  Points fidélité employé ajoutés: +{total}")
             except Exception as loyalty_error:
-                print(f"  Erreur fidélité (non bloquant): {loyalty_error}")
+                print(f"  Erreur fidélité employé (non bloquant): {loyalty_error}")
+
+        # 5b. FIDÉLITÉ CLIENT (borne kiosque, identifié par téléphone)
+        if customer_identifier:
+            try:
+                from customer.models import CustomerLoyalty
+                from user.models import Employee
+                from restaurant.models import KioskConfig
+
+                # Vérification : ne pas donner de points aux employés
+                is_employee = Employee.objects.filter(
+                    user__phone=customer_identifier,
+                    restaurant=restaurant
+                ).exists()
+
+                if not is_employee:
+                    kiosk_cfg = KioskConfig.objects.filter(restaurant=restaurant).first()
+                    loyalty_enabled = kiosk_cfg.loyalty_enabled if kiosk_cfg else False
+                    points_rate = kiosk_cfg.loyalty_points_rate if kiosk_cfg else 10
+
+                    if loyalty_enabled and points_rate > 0:
+                        total = order.total_price()
+                        points_earned = int(total // points_rate)
+                        if points_earned > 0:
+                            cl, _ = CustomerLoyalty.objects.get_or_create(
+                                customer_identifier=customer_identifier,
+                                restaurant=restaurant,
+                                defaults={'points': 0, 'total_spent': 0, 'visit_count': 0}
+                            )
+                            cl.points += points_earned
+                            cl.total_spent += total
+                            cl.visit_count += 1
+                            cl.save()
+                            print(f"  Points client '{customer_identifier}': +{points_earned} pts (total={cl.points})")
+            except Exception as loyalty_err:
+                print(f"  Erreur fidélité client (non bloquant): {loyalty_err}")
 
         # 6. GÉNÉRATION TICKET & QR
         qr_code = None
