@@ -209,7 +209,7 @@ class RewardCatalog(APIView):
 
     def get(self, request, restaurant_id, *args, **kwargs):
         from menu.models import Menu, Option, GroupMenu
-        menus = Menu.objects.filter(group_menu__restaurant_id=restaurant_id, is_available=True).select_related('group_menu')
+        menus = Menu.objects.filter(group_menu__restaurant_id=restaurant_id, avalaible=True).select_related('group_menu')
         options = Option.objects.filter(
             option__step__restaurant_id=restaurant_id
         ).distinct()
