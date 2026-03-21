@@ -45,17 +45,14 @@ const COLUMNS = [
 const NEXT_KDS_STATUS: Record<string, string> = {
   new:         'in_progress',
   in_progress: 'done',
-  done:        'delivered',
 };
 const ACTION_LABEL: Record<string, string> = {
   new:         '▶  Commencer',
   in_progress: '✓  Marquer prêt',
-  done:        '🚀  Livrer',
 };
 const ACTION_COLOR: Record<string, string> = {
   new:         '#f59e0b',
   in_progress: '#3b82f6',
-  done:        '#10b981',
 };
 
 export default function KDSScreen() {
@@ -181,13 +178,9 @@ export default function KDSScreen() {
           body: JSON.stringify({ kds_status: next }),
         });
         if (r.ok) {
-          if (next === 'delivered') {
-            setOrders(prev => prev.filter(o => o.order_id !== order.order_id));
-          } else {
-            setOrders(prev =>
-              prev.map(o => o.order_id === order.order_id ? { ...o, kds_status: next } : o)
-            );
-          }
+          setOrders(prev =>
+            prev.map(o => o.order_id === order.order_id ? { ...o, kds_status: next } : o)
+          );
         }
       }
     } catch (e) {

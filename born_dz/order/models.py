@@ -27,6 +27,7 @@ class Order(models.Model):
         ('new', 'Nouvelle'),
         ('in_progress', 'En préparation'),
         ('done', 'Prête'),
+        ('delivered', 'Livrée'),
     ]
     kds_status = models.CharField(max_length=20, choices=KDS_STATUS_CHOICES, default='pending_validation')
     customer_identifier = models.CharField(max_length=100, blank=True, default='')

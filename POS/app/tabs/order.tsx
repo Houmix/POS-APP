@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "expo-router";
 import { 
   View, 
@@ -50,6 +50,9 @@ export default function OrderScreen() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // États Modale Détails
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -67,8 +70,63 @@ export default function OrderScreen() {
   const [printing, setPrinting] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
+  const connectWS = useCallback(() => {
+    const posUrl = getPosUrl();
+    if (!posUrl) return;
+    const wsUrl = posUrl.replace(/^http/, 'ws') + '/ws/kds/';
+
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+    }
+
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type !== 'kds_message') return;
+        const { type, order_id, kds_status: newKdsStatus } = msg.data;
+
+        if (type === 'new_order') {
+          fetchOrders();
+        } else if (type === 'order_updated') {
+          if (newKdsStatus === 'delivered') {
+            setOrders(prev => prev.filter(o => o.order_id !== order_id));
+          } else {
+            setOrders(prev =>
+              prev.map(o =>
+                o.order_id === order_id
+                  ? { ...o, kds_status: newKdsStatus || o.kds_status }
+                  : o
+              )
+            );
+          }
+        }
+      } catch {}
+    };
+
+    ws.onclose = () => {
+      reconnectTimer.current = setTimeout(connectWS, 4000);
+    };
+    ws.onerror = () => ws.close();
+  }, []);
+
   useEffect(() => {
     fetchOrders();
+    connectWS();
+    return () => {
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+      }
+    };
   }, []);
 
   const fetchOrders = async () => {
@@ -133,24 +191,60 @@ export default function OrderScreen() {
   const handleSyncCloud = async () => {
     setSyncing(true);
     try {
-      const token = await AsyncStorage.getItem("token");
       const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
+      if (!restaurantId) {
+        Alert.alert('Erreur sync', 'Aucun restaurant configuré (Employee_restaurant_id manquant).');
+        return;
+      }
       const CLOUD_URL = 'https://borndz-production.up.railway.app';
-      const snapshotRes = await axios.get(
-        `${CLOUD_URL}/api/sync/snapshot/?restaurant_id=${restaurantId}`,
-        { timeout: 30000 }
-      );
-      if (!snapshotRes.data.success) throw new Error('Snapshot cloud vide ou invalide');
-      const applyRes = await axios.post(
-        `${getPosUrl()}/api/sync/apply-snapshot/`,
-        snapshotRes.data,
-        { timeout: 30000 }
-      );
-      if (!applyRes.data.success) throw new Error(applyRes.data.error || 'Échec de la sync locale');
-      Alert.alert('Sync terminée', 'Les données ont été synchronisées depuis le cloud.');
+
+      // Étape 1 : récupérer le snapshot depuis le cloud
+      let snapshotRes: any;
+      try {
+        snapshotRes = await axios.get(
+          `${CLOUD_URL}/api/sync/snapshot/?restaurant_id=${restaurantId}`,
+          { timeout: 45000 }
+        );
+      } catch (cloudErr: any) {
+        const status = cloudErr.response?.status;
+        const serverMsg = cloudErr.response?.data?.error;
+        if (status === 404) {
+          Alert.alert('Erreur sync', `Restaurant #${restaurantId} introuvable sur le cloud.\n\n${serverMsg || ''}`);
+        } else if (cloudErr.code === 'ECONNABORTED') {
+          Alert.alert('Erreur sync', 'Le serveur cloud met trop de temps à répondre (cold start Railway ?). Réessaie dans 30 secondes.');
+        } else {
+          Alert.alert('Erreur sync cloud', `HTTP ${status || '?'} — ${serverMsg || cloudErr.message}`);
+        }
+        return;
+      }
+
+      if (!snapshotRes.data.success) {
+        Alert.alert('Erreur sync', snapshotRes.data.error || 'Snapshot cloud invalide');
+        return;
+      }
+
+      // Étape 2 : appliquer localement
+      let applyRes: any;
+      try {
+        applyRes = await axios.post(
+          `${getPosUrl()}/api/sync/apply-snapshot/`,
+          snapshotRes.data,
+          { timeout: 30000 }
+        );
+      } catch (localErr: any) {
+        const serverMsg = localErr.response?.data?.error;
+        Alert.alert('Erreur sync locale', `Impossible d'appliquer le snapshot.\n${serverMsg || localErr.message}`);
+        return;
+      }
+
+      if (!applyRes.data.success) {
+        Alert.alert('Erreur sync locale', applyRes.data.error || 'Échec de la sync locale');
+        return;
+      }
+
+      const applied = applyRes.data.applied || {};
+      Alert.alert('Sync terminée ✓', `Données synchronisées depuis le cloud.\nMenus: ${applied.menu ?? '?'} • Catégories: ${applied.group_menu ?? '?'}`);
       await fetchOrders();
-    } catch (error: any) {
-      Alert.alert('Erreur sync', error.message || 'Impossible de synchroniser avec le cloud.');
     } finally {
       setSyncing(false);
     }
@@ -162,7 +256,7 @@ export default function OrderScreen() {
       const accessToken = await AsyncStorage.getItem("token");
       await axios.put(
         `${getPosUrl()}/order/api/Updateorder/${orderId}/`,
-        { kds_status: 'delivered', status: 'delivered' },
+        { kds_status: 'delivered' },
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       setOrders(prev => prev.filter(o => o.order_id !== orderId));
