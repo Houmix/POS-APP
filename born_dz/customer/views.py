@@ -154,6 +154,22 @@ class CustomerLoyaltyLookup(APIView):
             cl.visit_count += 1
             cl.save()
 
+        # Synchroniser avec le cloud via SyncLog
+        try:
+            from sync.models import SyncLog
+            from sync.serializers import serialize_customer_loyalty
+            SyncLog.objects.create(
+                restaurant_id=restaurant.id,
+                table_name='customer_loyalty',
+                action='create' if created else 'update',
+                record_id=cl.id,
+                data=serialize_customer_loyalty(cl),
+                source='terminal',
+                terminal_uuid='',
+            )
+        except Exception:
+            pass  # Ne pas bloquer si le sync échoue
+
         return Response(CustomerLoyaltySerializer(cl).data, status=status.HTTP_200_OK)
 
 

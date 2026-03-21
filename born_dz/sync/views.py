@@ -349,6 +349,7 @@ def apply_snapshot(request):
         from menu.models import GroupMenu, Menu, Step, MenuStep, StepOption, Option
         from restaurant.models import KioskConfig
         from user.models import Role, User, Employee
+        from customer.models import LoyaltyReward
 
         results = {}
 
@@ -505,6 +506,18 @@ def apply_snapshot(request):
                         print(f"[APPLY-SNAPSHOT] Erreur {table_name}: {row_err} — data={item_data}")
                 results[table_name] = count
 
+            # ── 7. LoyaltyReward (récompenses fidélité configurées par le gérant) ──
+            if restaurant_id:
+                LoyaltyReward.objects.filter(restaurant_id=restaurant_id).delete()
+            loyalty_rewards_count = 0
+            for reward_data in body.get('loyalty_rewards', []):
+                try:
+                    _apply_change('loyalty_reward', 'create', reward_data)
+                    loyalty_rewards_count += 1
+                except Exception as e:
+                    print(f"[APPLY-SNAPSHOT] Erreur loyalty_reward: {e} — data={reward_data}")
+            results['loyalty_rewards'] = loyalty_rewards_count
+
         return JsonResponse({'success': True, 'applied': results})
 
     except Exception as e:
@@ -615,13 +628,14 @@ def _apply_change(table_name, action, data, restaurant_id=None):
     clean_data = dict(data)
 
     # Convertir les champs prix string → Decimal
-    decimal_fields = {'price', 'solo_price', 'extra_price'}
+    decimal_fields = {'price', 'solo_price', 'extra_price', 'total_spent'}
     for field in decimal_fields:
         if field in clean_data and clean_data[field] is not None:
             clean_data[field] = Decimal(str(clean_data[field]))
 
-    # Convertir 'created_at' string → on l'ignore (auto_now_add)
+    # Ignorer les champs auto (auto_now_add / auto_now)
     clean_data.pop('created_at', None)
+    clean_data.pop('updated_at', None)
 
     with sync_apply_guard():
         if action == 'create':
