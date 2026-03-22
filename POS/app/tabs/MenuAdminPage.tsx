@@ -190,21 +190,49 @@ export default function MenuAdminPage() {
         try {
             // 1. Télécharger le snapshot complet depuis le cloud
             setSyncMessage('Téléchargement depuis le cloud...');
-            const snapshotRes = await axios.get(
-                `${CLOUD_URL}/api/sync/snapshot/?restaurant_id=${restaurantId}`,
-                { timeout: 30000 }
-            );
+            let snapshotRes: any;
+            try {
+                snapshotRes = await axios.get(
+                    `${CLOUD_URL}/api/sync/snapshot/?restaurant_id=${restaurantId}`,
+                    { timeout: 30000 }
+                );
+            } catch (cloudErr: any) {
+                const status = cloudErr.response?.status;
+                const serverMsg = cloudErr.response?.data?.error;
+                if (status === 404) {
+                    throw new Error(`Restaurant #${restaurantId} introuvable sur le cloud. Vérifiez que ce restaurant existe.`);
+                } else if (status === 400) {
+                    throw new Error(serverMsg || `Paramètre invalide (restaurant_id=${restaurantId}).`);
+                } else {
+                    throw new Error(serverMsg || cloudErr.message || 'Impossible de joindre le cloud.');
+                }
+            }
+
             if (!snapshotRes.data.success) {
-                throw new Error('Le cloud n\'a retourné aucune donnée. Vérifiez la connexion.');
+                throw new Error(snapshotRes.data.error || 'Le cloud n\'a retourné aucune donnée.');
+            }
+
+            // Vérification anticipée : snapshot vide ?
+            const snap = snapshotRes.data;
+            const hasData = (snap.group_menus?.length > 0) || (snap.menus?.length > 0) || (snap.users?.length > 0);
+            if (!hasData) {
+                throw new Error(`Le cloud n'a pas de données pour le restaurant #${restaurantId}.\nVérifiez que ce restaurant est bien configuré sur le cloud (menus, utilisateurs).`);
             }
 
             // 2. Appliquer le snapshot en local (clear + import en une transaction atomique)
             setSyncMessage('Application des données en local...');
-            const applyRes = await axios.post(
-                `${LOCAL_URL}/api/sync/apply-snapshot/`,
-                snapshotRes.data,
-                { timeout: 30000 }
-            );
+            let applyRes: any;
+            try {
+                applyRes = await axios.post(
+                    `${LOCAL_URL}/api/sync/apply-snapshot/`,
+                    snap,
+                    { timeout: 30000 }
+                );
+            } catch (localErr: any) {
+                const serverMsg = localErr.response?.data?.error;
+                throw new Error(serverMsg || localErr.message || 'Erreur lors de l\'application locale.');
+            }
+
             if (!applyRes.data.success) {
                 throw new Error(applyRes.data.error || 'Échec de l\'application des données.');
             }
