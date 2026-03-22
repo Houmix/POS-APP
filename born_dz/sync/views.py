@@ -667,6 +667,83 @@ def _apply_change(table_name, action, data, restaurant_id=None):
 
 
 # ─────────────────────────────────────────
+#  EXPORT LOCAL → CLOUD
+# ─────────────────────────────────────────
+@require_http_methods(["GET"])
+def export_for_cloud(request):
+    """
+    Exporte les commandes et points fidélité locaux au format attendu
+    par POST /api/sync/push/ du serveur cloud.
+
+    Query params :
+        - restaurant_id  (obligatoire)
+        - since          (ISO timestamp optionnel, ex: 2025-01-01T00:00:00Z)
+                         Si absent : toutes les données sont exportées.
+    """
+    try:
+        restaurant_id = request.GET.get('restaurant_id')
+        since_raw = request.GET.get('since')
+
+        if not restaurant_id:
+            return JsonResponse({'success': False, 'error': 'restaurant_id requis'}, status=400)
+
+        from order.models import Order, OrderItem, OrderItemOption
+        from customer.models import CustomerLoyalty
+        from .serializers import (
+            serialize_order, serialize_order_item,
+            serialize_order_item_option, serialize_customer_loyalty
+        )
+
+        since_dt = None
+        if since_raw:
+            since_dt = datetime.fromisoformat(since_raw.replace('Z', '+00:00'))
+
+        # ── Commandes ──────────────────────────────────────────────────────
+        orders_qs = Order.objects.filter(
+            restaurant_id=restaurant_id
+        ).prefetch_related('items__options')
+
+        if since_dt:
+            orders_qs = orders_qs.filter(created_at__gte=since_dt)
+
+        changes = []
+        order_count = 0
+
+        for order in orders_qs:
+            changes.append({'table': 'order',      'action': 'create', 'data': serialize_order(order)})
+            for item in order.items.all():
+                changes.append({'table': 'order_item',  'action': 'create', 'data': serialize_order_item(item)})
+                for opt in item.options.all():
+                    changes.append({'table': 'order_item_option', 'action': 'create', 'data': serialize_order_item_option(opt)})
+            order_count += 1
+
+        # ── Fidélité clients ────────────────────────────────────────────────
+        loyalty_qs = CustomerLoyalty.objects.filter(restaurant_id=restaurant_id)
+        loyalty_count = loyalty_qs.count()
+
+        for cl in loyalty_qs:
+            changes.append({'table': 'customer_loyalty', 'action': 'create', 'data': serialize_customer_loyalty(cl)})
+
+        return JsonResponse({
+            'success': True,
+            'restaurant_id': int(restaurant_id),
+            'terminal_uuid': 'pos-local',
+            'changes': changes,
+            'counts': {
+                'orders': order_count,
+                'loyalty_profiles': loyalty_count,
+                'total_changes': len(changes),
+            },
+            'server_timestamp': datetime.now(dt_timezone.utc).isoformat(),
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ─────────────────────────────────────────
 #  DOWNLOADS : Téléchargement des logiciels
 # ─────────────────────────────────────────
 import os
