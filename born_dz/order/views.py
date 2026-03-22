@@ -472,9 +472,36 @@ class OrderUpdate(APIView):
         if new_kds_status == 'done' and 'status' not in data:
             data['status'] = 'ready'
 
+        was_refunded = order.refund
+        was_cancelled = order.cancelled
+
         serializer = OrderSerializer(order, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
+
+            # Restitution des points de fidélité gagnés si remboursement ou annulation
+            becoming_refunded = data.get('refund') and not was_refunded
+            becoming_cancelled = data.get('cancelled') and not was_cancelled
+            if (becoming_refunded or becoming_cancelled) and order.customer_identifier:
+                try:
+                    from customer.models import CustomerLoyalty
+                    from restaurant.models import KioskConfig
+                    kiosk_cfg = KioskConfig.objects.filter(restaurant=order.restaurant).first()
+                    loyalty_enabled = kiosk_cfg.loyalty_enabled if kiosk_cfg else False
+                    points_rate = kiosk_cfg.loyalty_points_rate if kiosk_cfg else 10
+                    if loyalty_enabled and points_rate > 0:
+                        cl = CustomerLoyalty.objects.filter(
+                            customer_identifier=order.customer_identifier,
+                            restaurant=order.restaurant,
+                        ).first()
+                        if cl:
+                            points_earned = int(order.total_price() // points_rate)
+                            cl.points = max(0, cl.points - points_earned)
+                            cl.save(update_fields=['points'])
+                            print(f"[LOYALTY] -{points_earned} pts retirés (remboursement commande #{order.id})")
+                except Exception as loyalty_err:
+                    print(f"[LOYALTY] Erreur restitution points (non bloquant): {loyalty_err}")
+
             # Notification KDS
             try:
                 from channels.layers import get_channel_layer
