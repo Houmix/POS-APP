@@ -9,12 +9,13 @@ import {
   Platform,
   ScrollView,
   Image,
+  Modal,
 } from "react-native";
 import { useEffect, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getPosUrl, SERVER_URL_KEY, RESTAURANT_ID_KEY, loadRestaurantId, getRestaurantId, saveRestaurantId } from "@/utils/serverConfig";
+import { getPosUrl, SERVER_URL_KEY, RESTAURANT_ID_KEY, loadRestaurantId, getRestaurantId, saveRestaurantId, saveServerUrl, loadServerUrl, scanNetwork } from "@/utils/serverConfig";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useKioskTheme } from "@/contexts/KioskThemeContext";
 
@@ -31,6 +32,14 @@ export default function IdentificationScreen() {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [activeField, setActiveField] = useState<"phone" | "password" | null>(null);
 
+  // Configuration serveur
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [serverInput, setServerInput] = useState("");
+  const [currentServerUrl, setCurrentServerUrl] = useState("");
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState({ scanned: 0, total: 0 });
+  const [scanMessage, setScanMessage] = useState("");
+
   useEffect(() => {
     // Réinitialise uniquement les clés de session (garde la config serveur)
     const clearSession = async () => {
@@ -46,6 +55,48 @@ export default function IdentificationScreen() {
     };
     clearSession();
   }, []);
+
+  const openServerModal = async () => {
+    const url = await loadServerUrl();
+    setCurrentServerUrl(url);
+    setServerInput(url);
+    setScanMessage("");
+    setIsScanning(false);
+    setScanProgress({ scanned: 0, total: 0 });
+    setShowServerModal(true);
+  };
+
+  const handleSaveServerUrl = async () => {
+    const trimmed = serverInput.trim();
+    if (!trimmed) return;
+    // Ajouter http:// si absent
+    const url = trimmed.startsWith('http') ? trimmed : `http://${trimmed}:8000`;
+    await saveServerUrl(url);
+    setCurrentServerUrl(url);
+    setShowServerModal(false);
+    setErrorMessage("");
+  };
+
+  const handleScanNetwork = async () => {
+    setIsScanning(true);
+    setScanMessage("Scan en cours…");
+    setScanProgress({ scanned: 0, total: 0 });
+    try {
+      const result = await scanNetwork((scanned, total) => {
+        setScanProgress({ scanned, total });
+      });
+      if (result) {
+        setServerInput(result.url);
+        setScanMessage(`✅ Caisse trouvée : ${result.ip}`);
+      } else {
+        setScanMessage("❌ Aucune caisse trouvée sur le réseau");
+      }
+    } catch {
+      setScanMessage("❌ Erreur lors du scan");
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const handleKeyPress = (val: string) => {
     if (val === "delete") {
@@ -259,6 +310,11 @@ export default function IdentificationScreen() {
             <Text style={styles.infoText}>
               Vous avez des problèmes d'accès ? Contactez l'administrateur.
             </Text>
+
+            <TouchableOpacity style={styles.serverConfigButton} onPress={openServerModal}>
+              <MaterialCommunityIcons name="server-network" size={16} color="#999" />
+              <Text style={styles.serverConfigText}>Configurer le serveur</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.bottomDecoration}>
@@ -267,6 +323,70 @@ export default function IdentificationScreen() {
           </View>
         </View>
       </ScrollView>
+
+    {/* Modal configuration serveur */}
+    <Modal visible={showServerModal} transparent animationType="fade" onRequestClose={() => setShowServerModal(false)}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalBox}>
+          <View style={styles.modalHeader}>
+            <MaterialCommunityIcons name="server-network" size={24} color="#756fbf" />
+            <Text style={styles.modalTitle}>Configuration du serveur</Text>
+          </View>
+
+          <Text style={styles.modalLabel}>URL actuelle :</Text>
+          <Text style={styles.modalCurrentUrl}>{currentServerUrl || '—'}</Text>
+
+          <Text style={styles.modalLabel}>Nouvelle adresse :</Text>
+          <TextInput
+            style={styles.modalInput}
+            value={serverInput}
+            onChangeText={setServerInput}
+            placeholder="ex: 192.168.1.100:8000"
+            placeholderTextColor="#aaa"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+          />
+
+          <TouchableOpacity
+            style={[styles.scanButton, isScanning && styles.buttonDisabled]}
+            onPress={handleScanNetwork}
+            disabled={isScanning}
+          >
+            {isScanning ? (
+              <>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={styles.scanButtonText}>
+                  {scanProgress.total > 0 ? `Scan… ${scanProgress.scanned}/${scanProgress.total}` : 'Scan…'}
+                </Text>
+              </>
+            ) : (
+              <>
+                <MaterialCommunityIcons name="magnify-scan" size={20} color="#fff" />
+                <Text style={styles.scanButtonText}>Scan automatique</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {scanMessage !== "" && (
+            <Text style={[styles.scanMessage, scanMessage.startsWith('✅') ? styles.scanSuccess : styles.scanError]}>
+              {scanMessage}
+            </Text>
+          )}
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowServerModal(false)}>
+              <Text style={styles.modalCancelText}>Annuler</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveServerUrl}>
+              <MaterialCommunityIcons name="content-save" size={18} color="#fff" />
+              <Text style={styles.modalSaveText}>Enregistrer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+
     </KeyboardAvoidingView>
   );
 }
@@ -349,4 +469,54 @@ placeholder: {
     backgroundColor: '#f5f5f5',
 },
 placeholderText: { fontSize: 18, color: '#666' },
+
+  // Bouton config serveur
+  serverConfigButton: {
+    marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  serverConfigText: { fontSize: 12, color: '#bbb' },
+
+  // Modal serveur
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  modalBox: {
+    width: '85%', maxWidth: 420, backgroundColor: '#fff',
+    borderRadius: 16, padding: 24,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25, shadowRadius: 16, elevation: 12,
+  },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#333' },
+  modalLabel: { fontSize: 13, color: '#888', marginBottom: 4 },
+  modalCurrentUrl: {
+    fontSize: 14, color: '#756fbf', fontWeight: '600',
+    backgroundColor: '#f3f2ff', padding: 8, borderRadius: 8, marginBottom: 16,
+  },
+  modalInput: {
+    borderWidth: 2, borderColor: '#e0e0e0', borderRadius: 10,
+    paddingVertical: 12, paddingHorizontal: 14, fontSize: 15, color: '#333',
+    marginBottom: 14,
+  },
+  scanButton: {
+    backgroundColor: '#3a86ff', borderRadius: 10, paddingVertical: 12,
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8,
+    marginBottom: 10,
+  },
+  scanButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  scanMessage: { fontSize: 13, fontWeight: '600', textAlign: 'center', marginBottom: 10 },
+  scanSuccess: { color: '#2e7d32' },
+  scanError: { color: '#c62828' },
+  modalActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  modalCancelBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: 10,
+    borderWidth: 2, borderColor: '#e0e0e0', alignItems: 'center',
+  },
+  modalCancelText: { fontSize: 15, color: '#666', fontWeight: '600' },
+  modalSaveBtn: {
+    flex: 2, backgroundColor: '#756fbf', borderRadius: 10, paddingVertical: 12,
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8,
+  },
+  modalSaveText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });
