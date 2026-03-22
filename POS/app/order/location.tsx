@@ -53,16 +53,18 @@ export default function LocationScreen() {
                 <Text style={styles.title}>{t('location.title')}</Text>
             </View>
 
-            {/* Champ identifiant client */}
+            {/* Numéro de téléphone pour la fidélité */}
             <View style={styles.identifierBox}>
-                <Text style={styles.identifierLabel}>Nom / Immatriculation / Biper</Text>
+                <Text style={styles.identifierLabel}>📱 N° de téléphone (fidélité)</Text>
                 <TextInput
                     style={styles.identifierInput}
-                    placeholder="ex: Chevrolet, Jean, Biper 12…"
+                    placeholder="ex: 0550123456 — optionnel"
                     placeholderTextColor="#94a3b8"
                     value={customerIdentifier}
                     onChangeText={setCustomerIdentifier}
-                    autoCapitalize="characters"
+                    keyboardType="phone-pad"
+                    autoCapitalize="none"
+                    maxLength={14}
                 />
             </View>
 

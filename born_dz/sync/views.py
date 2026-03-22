@@ -711,7 +711,10 @@ def export_for_cloud(request):
 
         since_dt = None
         if since_raw:
-            since_dt = datetime.fromisoformat(since_raw.replace('Z', '+00:00'))
+            from django.conf import settings as _s
+            dt = datetime.fromisoformat(since_raw.replace('Z', '+00:00'))
+            # SQLite avec USE_TZ=False ne supporte pas les datetimes timezone-aware
+            since_dt = dt.replace(tzinfo=None) if not getattr(_s, 'USE_TZ', True) else dt
 
         # ── Commandes ──────────────────────────────────────────────────────
         orders_qs = Order.objects.filter(
