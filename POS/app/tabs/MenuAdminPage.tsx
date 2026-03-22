@@ -84,7 +84,7 @@ const toastConfig = {
 };
 
 export default function MenuAdminPage() {
-    const { refreshTheme } = useKioskTheme();
+    const { refreshTheme, logoUrl } = useKioskTheme();
     const [activeTab, setActiveTab] = useState<Tab>('groups');
     const [loading, setLoading] = useState(false);
     const [restaurantInfo, setRestaurantInfo] = useState<any>(null);
@@ -696,7 +696,7 @@ export default function MenuAdminPage() {
     return (
         <View style={styles.container}>
             <View style={styles.sidebar}>
-                <View style={styles.logoContainer}><Image source={require('@/assets/logo.png')} style={styles.logoImage} resizeMode="contain" /><Text style={styles.adminTitle}>Admin POS</Text></View>
+                <View style={styles.logoContainer}>{logoUrl ? <Image source={{ uri: logoUrl }} style={styles.logoImage} resizeMode="contain" /> : <Image source={require('@/assets/logo.png')} style={styles.logoImage} resizeMode="contain" />}<Text style={styles.adminTitle}>Admin POS</Text></View>
                 <SidebarItem id="restaurant" label="Restaurant" icon={Store} />
                 <SidebarItem id="groups" label="Groupes" icon={LayoutGrid} />
                 <SidebarItem id="menus" label="Articles" icon={Utensils} />

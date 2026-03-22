@@ -642,6 +642,21 @@ def _apply_change(table_name, action, data, restaurant_id=None):
                     Model.objects.update_or_create(restaurant_id=resto_id, defaults=clean_data)
                 return
 
+            # CustomerLoyalty : clé = customer_identifier + restaurant_id (pas id)
+            # Permet de retrouver les points partout via le numéro de téléphone
+            if table_name == 'customer_loyalty':
+                identifier = clean_data.get('customer_identifier')
+                resto_id = clean_data.get('restaurant_id')
+                if identifier and resto_id:
+                    clean_data.pop('id', None)
+                    Model.objects.update_or_create(
+                        customer_identifier=identifier,
+                        restaurant_id=resto_id,
+                        defaults={k: v for k, v in clean_data.items()
+                                  if k not in ('customer_identifier', 'restaurant_id')},
+                    )
+                return
+
             obj_id = clean_data.get('id')
             if obj_id:
                 # update_or_create pour gérer les doublons (idempotent)
@@ -710,7 +725,10 @@ def export_for_cloud(request):
         order_count = 0
 
         for order in orders_qs:
-            changes.append({'table': 'order',      'action': 'create', 'data': serialize_order(order)})
+            order_data = serialize_order(order)
+            # Nullifier user_id : les IDs locaux ne correspondent pas aux IDs cloud
+            order_data['user_id'] = None
+            changes.append({'table': 'order', 'action': 'create', 'data': order_data})
             for item in order.items.all():
                 changes.append({'table': 'order_item',  'action': 'create', 'data': serialize_order_item(item)})
                 for opt in item.options.all():
