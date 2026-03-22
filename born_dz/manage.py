@@ -3,6 +3,12 @@
 import os
 import sys
 
+# Force UTF-8 sur Windows (évite les erreurs charmap avec les caractères Unicode dans les logs)
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 
 def main():
     """Run administrative tasks."""
