@@ -69,6 +69,9 @@ export default function OrderScreen() {
   const [historyVisible, setHistoryVisible] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [pushing, setPushing] = useState(false);
+  const CLOUD_URL = 'https://borndz-production.up.railway.app';
+  const PUSH_TS_KEY = 'last_push_to_cloud_ts';
 
   const connectWS = useCallback(() => {
     const posUrl = getPosUrl();
@@ -120,7 +123,10 @@ export default function OrderScreen() {
   useEffect(() => {
     fetchOrders();
     connectWS();
+    pushLocalToCloud(false); // silencieux au démarrage
+    const pushInterval = setInterval(() => pushLocalToCloud(false), 5 * 60 * 1000);
     return () => {
+      clearInterval(pushInterval);
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (wsRef.current) {
         wsRef.current.onclose = null;
@@ -187,6 +193,55 @@ export default function OrderScreen() {
         return { success: false, error: error.message };
     }
 };
+  // --- PUSH LOCAL → CLOUD (commandes + fidélité) ---
+  const pushLocalToCloud = async (showAlert = true) => {
+    if (pushing) return;
+    setPushing(true);
+    try {
+      const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
+      if (!restaurantId) return;
+
+      // Récupérer le timestamp de la dernière sync réussie (déduplication)
+      const lastPushTs = await AsyncStorage.getItem(PUSH_TS_KEY);
+      const sinceParam = lastPushTs ? `&since=${lastPushTs}` : '';
+
+      // Étape 1 : exporter les données locales nouvelles uniquement
+      const exportRes = await axios.get(
+        `${getPosUrl()}/api/sync/export-for-cloud/?restaurant_id=${restaurantId}${sinceParam}`,
+        { timeout: 15000 }
+      );
+      if (!exportRes.data.success) return;
+
+      const { changes, counts } = exportRes.data;
+      if (!changes || changes.length === 0) return; // rien de nouveau
+
+      // Étape 2 : pousser vers le cloud
+      const pushRes = await axios.post(
+        `${CLOUD_URL}/api/sync/push/`,
+        {
+          restaurant_id: parseInt(restaurantId),
+          terminal_uuid: 'pos-local',
+          changes,
+        },
+        { timeout: 30000 }
+      );
+
+      if (pushRes.data.success) {
+        // Mémoriser le timestamp pour ne pas re-envoyer les mêmes données
+        await AsyncStorage.setItem(PUSH_TS_KEY, new Date().toISOString());
+        if (showAlert) {
+          Alert.alert('Upload ✓', `${counts?.orders ?? 0} commande(s) • ${counts?.loyalty_profiles ?? 0} profil(s) fidélité envoyés au cloud.`);
+        }
+      }
+    } catch (e: any) {
+      if (showAlert) {
+        Alert.alert('Erreur upload', e?.message || 'Impossible d\'envoyer les données au cloud.');
+      }
+    } finally {
+      setPushing(false);
+    }
+  };
+
   // --- SYNC CLOUD ---
   const handleSyncCloud = async () => {
     setSyncing(true);
@@ -809,6 +864,14 @@ export default function OrderScreen() {
                 onPress={() => setHistoryVisible(true)}
             >
                 <MaterialCommunityIcons name="history" size={24} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={[styles.refreshButton, {backgroundColor: pushing ? '#94a3b8' : '#10b981'}]}
+                onPress={() => pushLocalToCloud(true)}
+                disabled={pushing}
+            >
+                <MaterialCommunityIcons name={pushing ? "loading" : "cloud-upload"} size={24} color="#fff" />
             </TouchableOpacity>
 
             <TouchableOpacity

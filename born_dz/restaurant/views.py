@@ -265,7 +265,7 @@ def _resolve_media_url(request, file_field, remote_url_fallback=None):
     """
     Retourne l'URL d'un média :
     - Si le champ contient déjà une URL absolue (sync cloud) → retourner telle quelle
-    - Si le fichier existe localement → URL absolue locale
+    - Si le fichier existe physiquement sur le disque → URL absolue locale
     - Sinon → remote_url_fallback (URL stockée lors de la sync cloud→local)
     """
     if file_field:
@@ -273,7 +273,11 @@ def _resolve_media_url(request, file_field, remote_url_fallback=None):
         if name.startswith('http://') or name.startswith('https://'):
             return name
         try:
-            return request.build_absolute_uri(file_field.url)
+            import os
+            from django.conf import settings as _settings
+            file_path = os.path.join(_settings.MEDIA_ROOT, name)
+            if os.path.exists(file_path):
+                return request.build_absolute_uri(file_field.url)
         except Exception:
             pass
     return remote_url_fallback or None
