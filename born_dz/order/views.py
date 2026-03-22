@@ -199,6 +199,9 @@ class OrderCreate(APIView):
         # ------------------------
 
         try:
+            reward_names = data.get('reward_names', [])
+            loyalty_note = ', '.join(str(n) for n in reward_names) if reward_names else ''
+
             order = Order.objects.create(
                 user=user_instance,
                 restaurant=restaurant,
@@ -208,7 +211,8 @@ class OrderCreate(APIView):
                 customer_identifier=customer_identifier,
                 status=initial_status,
                 kds_status=initial_kds_status,
-                paid=is_paid
+                paid=is_paid,
+                loyalty_note=loyalty_note,
             )
             print(f"  Commande créée: ID={order.id} | Status={initial_status} | Payé={is_paid}")
             
@@ -715,6 +719,17 @@ def format_order_as_ticket(order_id):
     buf.append(CENTER + BOLD_ON + 'ARTICLES' + BOLD_OFF + LF)
     buf.append(BOLD_ON + '-' * WIDTH + BOLD_OFF + LF)
     buf.append(LEFT + LF)
+
+    # ── Récompenses fidélité (articles offerts, pas dans OrderItem) ────────────
+    if order.loyalty_note:
+        for reward_name in order.loyalty_note.split(','):
+            reward_name = reward_name.strip()
+            if not reward_name:
+                continue
+            left_part  = f'1x {reward_name[:28]}'
+            right_part = 'OFFERT'
+            spaces     = WIDTH - len(left_part) - len(right_part)
+            buf.append(BOLD_ON + left_part + ' ' * max(1, spaces) + right_part + BOLD_OFF + LF)
 
     # ── Articles ───────────────────────────────────────────────────────────────
     for item in order.items.all():

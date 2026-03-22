@@ -42,6 +42,9 @@ class LoyaltyRewardSerializer(serializers.ModelSerializer):
 
     def get_display_price(self, obj):
         if obj.reward_type == 'menu' and obj.menu:
+            # Retourne le prix solo ou le prix menu selon is_solo
+            if obj.is_solo:
+                return float(obj.menu.solo_price) if obj.menu.solo_price else float(obj.menu.price)
             return float(obj.menu.price)
         if obj.reward_type == 'option' and obj.option:
             return float(obj.option.extra_price) if hasattr(obj.option, 'extra_price') else None
@@ -53,7 +56,7 @@ class LoyaltyRewardSerializer(serializers.ModelSerializer):
             "id", "restaurant", "reward_type",
             "menu", "option",
             "name", "description",
-            "points_required", "is_active", "created_at",
+            "points_required", "is_active", "is_solo", "created_at",
             "display_name", "display_image_url", "display_price",
         ]
         read_only_fields = ["created_at", "display_name", "display_image_url", "display_price"]

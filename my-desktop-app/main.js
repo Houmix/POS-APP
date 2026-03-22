@@ -536,6 +536,52 @@ log(`Mode: ${isDev ? 'DEV' : 'PROD'}`, 'info');
 log(`Backend: ${backendPath}`, 'info');
 log(`Frontend: ${frontendPath}`, 'info');
 
+// ─────────────────────────────────────────────────────────────────
+//  Libère un port TCP en killant le processus qui l'occupe
+// ─────────────────────────────────────────────────────────────────
+function killPort(port) {
+  return new Promise((resolve) => {
+    if (process.platform === 'win32') {
+      // netstat pour trouver le PID qui utilise le port
+      exec(`netstat -ano | findstr :${port}`, (err, stdout) => {
+        if (!stdout) return resolve();
+        const lines = stdout.trim().split('\n');
+        const pids = new Set();
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          // Format: Proto  Local  Etranger  Etat  PID
+          const localAddr = parts[1] || '';
+          if (localAddr.endsWith(`:${port}`)) {
+            const pid = parts[parts.length - 1];
+            if (pid && pid !== '0') pids.add(pid);
+          }
+        }
+        if (pids.size === 0) return resolve();
+        const kills = [...pids].map(pid =>
+          new Promise(res => exec(`taskkill /f /pid ${pid}`, () => res()))
+        );
+        Promise.all(kills).then(() => {
+          log(`Port ${port} libéré (PID: ${[...pids].join(', ')})`, 'info');
+          setTimeout(resolve, 300);
+        });
+      });
+    } else {
+      // macOS / Linux
+      exec(`lsof -ti tcp:${port}`, (err, stdout) => {
+        if (!stdout) return resolve();
+        const pids = stdout.trim().split('\n').filter(Boolean);
+        const kills = pids.map(pid =>
+          new Promise(res => exec(`kill -9 ${pid}`, () => res()))
+        );
+        Promise.all(kills).then(() => {
+          log(`Port ${port} libéré (PID: ${pids.join(', ')})`, 'info');
+          setTimeout(resolve, 300);
+        });
+      });
+    }
+  });
+}
+
 function checkRequirements() {
   if (!isDev && !djangoExecInfo) {
     log('ERREUR: backend Django introuvable !', 'error');
@@ -562,7 +608,7 @@ function startDjango(callback) {
     return callback();
   }
 
-  log('Vérification et nettoyage du port 8000...', 'info');
+  log('Vérification et nettoyage des ports 8000...', 'info');
 
   const proceedWithStart = () => {
     log('Démarrage Django (ASGI/Daphne)...', 'info');
@@ -617,20 +663,26 @@ function startDjango(callback) {
     });
   };
 
+  // Kill par nom de process (daphne / exe bundlé) + par port (au cas où autre chose l'occupe)
   if (process.platform === 'win32') {
     exec('taskkill /f /im daphne.exe /t 2>nul', () => {
-      exec('taskkill /f /im django_asgi_app.exe /t 2>nul', () => {  // ← Ajouter ceci
-        setTimeout(proceedWithStart, 500);
+      exec('taskkill /f /im django_asgi_app.exe /t 2>nul', () => {
+        killPort(8000).then(proceedWithStart);
       });
     });
   } else {
-    proceedWithStart();
+    killPort(8000).then(proceedWithStart);
   }
 }
 
 function startStaticServer(callback) {
+  log('Vérification et nettoyage du port 8081...', 'info');
+  killPort(8081).then(() => _startStaticServer(callback));
+}
+
+function _startStaticServer(callback) {
   log('Démarrage serveur statique...', 'info');
-  
+
   const app = express();
   
   app.use((req, res, next) => {

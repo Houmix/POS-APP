@@ -30,7 +30,14 @@ class KioskConfig(models.Model):
     sidebar_color              = models.CharField(max_length=7, default='#1e293b')
     category_bg_color          = models.CharField(max_length=7, default='#1e293b')
     selected_category_bg_color = models.CharField(max_length=7, default='#334155')
-    category_text_color        = models.CharField(max_length=7, default='#94a3b8')
+    category_text_color           = models.CharField(max_length=7, default='#94a3b8')
+    selected_category_text_color  = models.CharField(max_length=7, default='#ff69b4')
+    # Mode d'affichage sidebar
+    SIDEBAR_DISPLAY_CHOICES = [
+        ('with_image', 'Avec image de catégorie'),
+        ('without_image', 'Sans image'),
+    ]
+    sidebar_display_mode = models.CharField(max_length=20, choices=SIDEBAR_DISPLAY_CHOICES, default='with_image')
     # Médias (fichiers locaux au serveur)
     logo                 = models.ImageField(upload_to='kiosk/logos/', blank=True, null=True)
     screensaver_image    = models.ImageField(upload_to='kiosk/screensaver/', blank=True, null=True)

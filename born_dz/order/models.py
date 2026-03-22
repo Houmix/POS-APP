@@ -37,6 +37,7 @@ class Order(models.Model):
         ('livraison', 'Livraison'),
     ]
     delivery_type = models.CharField(max_length=20, choices=DELIVERY_TYPE_CHOICES, default='sur_place')
+    loyalty_note  = models.TextField(blank=True, default='')  # Récompenses fidélité offertes (noms séparés par virgule)
     def __str__(self):
         return f"Order {self.id} - {self.total_price()} DA"
     def total_price(self):

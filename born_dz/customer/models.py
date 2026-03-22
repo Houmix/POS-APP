@@ -48,6 +48,7 @@ class LoyaltyReward(models.Model):
     description     = models.TextField(blank=True)
     points_required = models.IntegerField()
     is_active       = models.BooleanField(default=True)
+    is_solo         = models.BooleanField(default=False)  # True = offre le prix solo, False = offre le menu complet
     created_at      = models.DateTimeField(auto_now_add=True)
 
     def display_name(self):
