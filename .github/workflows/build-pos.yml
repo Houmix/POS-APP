@@ -1,0 +1,75 @@
+name: Build ClickGo POS
+
+on:
+  push:
+    tags:
+      - 'v*'        # déclenché sur : git tag v1.2.0 && git push --tags
+  workflow_dispatch:  # ou manuellement depuis l'onglet Actions
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      # ── 1. Récupérer le code ───────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Node.js ────────────────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ── 3. Python + venv + PyInstaller ────────────────────────────────────
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies & PyInstaller
+        working-directory: born_dz
+        run: |
+          python -m venv venv
+          venv\Scripts\pip install --upgrade pip
+          venv\Scripts\pip install -r requirements.txt
+          venv\Scripts\pip install pyinstaller
+        shell: cmd
+
+      # ── 4. Installer les dépendances Node ─────────────────────────────────
+      - name: Install POS frontend (Expo) dependencies
+        working-directory: pos
+        run: npm install
+
+      - name: Install Electron app dependencies
+        working-directory: my-desktop-app
+        run: npm install
+
+      # ── 5. Build Expo frontend (web-build) ────────────────────────────────
+      - name: Build Expo web frontend
+        working-directory: pos
+        run: npx expo export --platform web --output-dir web-build
+        env:
+          EXPO_NO_TELEMETRY: '1'
+
+      # ── 6. Bundle Django avec PyInstaller ─────────────────────────────────
+      - name: Bundle Python backend (PyInstaller)
+        working-directory: my-desktop-app
+        run: node pyinstaller_bundle.js
+        shell: cmd
+
+      # ── 7. Build installeur Electron ──────────────────────────────────────
+      - name: Build Electron installer (.exe)
+        working-directory: my-desktop-app
+        run: npx electron-builder --win --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 8. Créer la Release GitHub + uploader le .exe ─────────────────────
+      - name: Create GitHub Release & upload exe
+        uses: softprops/action-gh-release@v2
+        with:
+          files: my-desktop-app/dist/ClickGo-POS-Setup.exe
+          generate_release_notes: true   # génère les notes de release depuis les commits
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

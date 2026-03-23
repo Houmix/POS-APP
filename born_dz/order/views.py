@@ -358,7 +358,34 @@ class OrderCreate(APIView):
             except Exception as kds_err:
                 print(f"  [KDS] Erreur notification (non bloquant): {kds_err}")
 
-        # 8. PUSH CLOUD (fire-and-forget)
+        # 8. NOTIFICATION ÉCRAN CLIENT (display) via WebSocket
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            from borne_sync.consumers import DISPLAY_GROUP_NAME
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                items_display = [
+                    {'name': item.menu.name, 'qty': item.quantity, 'price': float(item.menu.price)}
+                    for item in order.items.select_related('menu').all()
+                ]
+                if order.loyalty_note:
+                    for reward_name in order.loyalty_note.split(','):
+                        items_display.insert(0, {'name': reward_name.strip(), 'qty': 1, 'price': 0, 'is_reward': True})
+                async_to_sync(channel_layer.group_send)(
+                    DISPLAY_GROUP_NAME,
+                    {'type': 'display.message', 'data': {
+                        'status': 'order_in_progress',
+                        'order_id': order.id,
+                        'total': float(order.total_price()),
+                        'items': items_display,
+                        'customer_identifier': customer_identifier or '',
+                    }}
+                )
+        except Exception as display_err:
+            print(f"  [DISPLAY] Erreur notification (non bloquant): {display_err}")
+
+        # 9. PUSH CLOUD (fire-and-forget)
         _push_order_to_cloud(order)
 
         return Response({

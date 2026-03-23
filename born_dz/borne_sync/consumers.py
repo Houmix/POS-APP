@@ -2,8 +2,9 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-SYNC_GROUP_NAME = 'bornes_sync_channel'
-KDS_GROUP_NAME  = 'kds_channel'
+SYNC_GROUP_NAME    = 'bornes_sync_channel'
+KDS_GROUP_NAME     = 'kds_channel'
+DISPLAY_GROUP_NAME = 'display_channel'
 
 class BorneSyncConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -33,6 +34,26 @@ class BorneSyncConsumer(AsyncWebsocketConsumer):
             'data': event['data']
         }))
         print(f" Message de sync envoyé à la borne")
+
+
+class DisplayConsumer(AsyncWebsocketConsumer):
+    """WebSocket pour l'écran d'affichage client (IPTV)."""
+
+    async def connect(self):
+        await self.channel_layer.group_add(DISPLAY_GROUP_NAME, self.channel_name)
+        await self.accept()
+        print(f"[DISPLAY] Écran client connecté : {self.channel_name}")
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(DISPLAY_GROUP_NAME, self.channel_name)
+        print(f"[DISPLAY] Écran client déconnecté : {self.channel_name}")
+
+    async def display_message(self, event):
+        """Relaie les événements commande vers l'écran client."""
+        await self.send(text_data=json.dumps({
+            'type': 'display_message',
+            'data': event['data'],
+        }))
 
 
 class KDSConsumer(AsyncWebsocketConsumer):
