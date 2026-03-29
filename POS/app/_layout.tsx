@@ -4,11 +4,8 @@ import { KioskThemeProvider } from "@/contexts/KioskThemeContext";
 import { useEffect, useState, useCallback } from "react";
 import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { saveRestaurantId } from "@/utils/serverConfig";
+import { saveRestaurantId, getPosUrl, loadServerUrl } from "@/utils/serverConfig";
 import SetupWizard from "@/components/SetupWizard";
-
-// Django local — toujours sur le même poste
-const LOCAL_URL = 'http://127.0.0.1:8000';
 const LICENSE_EXPIRY_KEY = 'pos_license_expires_at';
 
 type AppState =
@@ -36,12 +33,14 @@ export default function RootLayout() {
   const init = useCallback(async () => {
     setAppState('loading');
 
-    // ── 1. Django local accessible ? ─────────────────────────────────────────
+    // ── 1. Serveur accessible ? ─────────────────────────────────────────
+    await loadServerUrl(); // charge l'URL sauvegardée ou détecte automatiquement
+    const serverUrl = getPosUrl();
     let restaurantId: number | null = null;
     try {
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch(`${LOCAL_URL}/api/sync/discover/`, { signal: controller.signal });
+      const res = await fetch(`${serverUrl}/api/sync/discover/`, { signal: controller.signal });
       clearTimeout(t);
       if (res.ok) {
         const data = await res.json();
@@ -70,7 +69,7 @@ export default function RootLayout() {
     // ── 3. Vérification de la licence en local ────────────────────────────────
     try {
       const res = await fetch(
-        `${LOCAL_URL}/api/license/restaurant-status/?restaurant_id=${restaurantId}`
+        `${serverUrl}/api/license/restaurant-status/?restaurant_id=${restaurantId}`
       );
       const data = await res.json();
       if (data.valid) {
