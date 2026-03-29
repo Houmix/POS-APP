@@ -6,6 +6,9 @@ on:
       - 'v*'        # déclenché sur : git tag v1.2.0 && git push --tags
   workflow_dispatch:  # ou manuellement depuis l'onglet Actions
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
