@@ -39,8 +39,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "clickgo-interactive",
-        "repo": "clickgo-pos-releases"
+        "owner": "Houmix",
+        "repo": "POS-APP"
       }
     ],
     "files": [
