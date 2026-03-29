@@ -51,7 +51,7 @@ jobs:
       # ── 5. Build Expo frontend (web-build) ────────────────────────────────
       - name: Install Expo web dependencies
         working-directory: POS
-        run: npm install --legacy-peer-deps react-dom react-native-web
+        run: npm install --legacy-peer-deps react-dom react-native-web react-native-svg
 
       - name: Build Expo web frontend
         working-directory: POS
