@@ -18,7 +18,7 @@ logger = logging.getLogger('stock')
 def deduct_stock_for_order(order):
     """
     Deduit le stock pour tous les items d'une commande.
-    Appele apres la creation complete de la commande.
+    Retourne une liste d'alertes pour les items dont le stock est bas/critique/epuise.
 
     Pour chaque item de la commande :
       1. Cherche les liens MenuStockLink (ingredients du plat)
@@ -26,10 +26,14 @@ def deduct_stock_for_order(order):
       3. Cherche les liens OptionStockLink (supplements)
       4. Deduit les quantites d'options
       5. Genere des alertes si necessaire
+
+    Returns:
+        list[dict] : alertes stock [{ id, name, quantity, unit, status, auto_disable }]
     """
     from .models import MenuStockLink, OptionStockLink, StockMovement, StockAlert, StockItem
 
     movements = []
+    affected_stock_ids = set()
 
     for item in order.items.prefetch_related('options__option__option', 'menu__stock_links__stock_item').all():
         if not item.menu:
@@ -43,6 +47,7 @@ def deduct_stock_for_order(order):
                 f"Commande #{order.id} - {item.quantity}x {item.menu.name}",
                 movements
             )
+            affected_stock_ids.add(link.stock_item_id)
 
         # 2. Deduire les ingredients des options
         for opt_rel in item.options.select_related('option__option').all():
@@ -55,6 +60,7 @@ def deduct_stock_for_order(order):
                         f"Commande #{order.id} - Option {option_obj.name}",
                         movements
                     )
+                    affected_stock_ids.add(link.stock_item_id)
 
     # Sauvegarder tous les mouvements en batch
     if movements:
@@ -63,6 +69,23 @@ def deduct_stock_for_order(order):
 
     # Verifier les alertes
     _check_alerts_after_deduction(order)
+
+    # Retourner les items en alerte (low, critical, out)
+    stock_alerts = []
+    if affected_stock_ids:
+        for si in StockItem.objects.filter(id__in=affected_stock_ids, is_active=True):
+            s = si.status
+            if s != 'ok':
+                stock_alerts.append({
+                    'id': si.id,
+                    'name': si.name,
+                    'quantity': float(si.quantity),
+                    'unit': si.get_unit_display(),
+                    'status': s,
+                    'auto_disable': si.auto_disable,
+                })
+
+    return stock_alerts
 
 
 def _deduct_and_record(stock_item, qty_to_deduct, order_id, reason, movements_list):

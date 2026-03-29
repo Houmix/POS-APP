@@ -280,10 +280,11 @@ class OrderCreate(APIView):
             order.delete() # On nettoie si ça plante
             return Response({"error": "Erreur ajout items", "details": str(items_error)}, status=status.HTTP_400_BAD_REQUEST)
         # 4b. DEDUCTION DU STOCK (apres creation des items)
+        stock_alerts = []
         try:
             from stock.signals import deduct_stock_for_order
-            deduct_stock_for_order(order)
-            print(f"  Stock deduit pour commande #{order.id}")
+            stock_alerts = deduct_stock_for_order(order) or []
+            print(f"  Stock deduit pour commande #{order.id} – {len(stock_alerts)} alerte(s)")
         except Exception as stock_err:
             print(f"  Erreur deduction stock (non bloquant): {stock_err}")
 
@@ -393,14 +394,19 @@ class OrderCreate(APIView):
         except Exception as display_err:
             print(f"  [DISPLAY] Erreur notification (non bloquant): {display_err}")
 
-        # 9. PUSH CLOUD (fire-and-forget)
-        _push_order_to_cloud(order)
+        # 9. PUSH CLOUD désactivé – le push se fait manuellement via le bouton
+        # ou via l'export planifié (une fois par jour).
+        # _push_order_to_cloud(order)
 
-        return Response({
+        response_data = {
             "message": "Commande créée avec succès",
             "order_id": order.id,
-            "qr_code_base64": qr_code
-        }, status=status.HTTP_201_CREATED)
+            "qr_code_base64": qr_code,
+        }
+        if stock_alerts:
+            response_data["stock_alerts"] = stock_alerts
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 # ==========================================

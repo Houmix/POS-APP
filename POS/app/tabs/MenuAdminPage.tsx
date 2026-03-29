@@ -15,7 +15,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKioskTheme } from '@/contexts/KioskThemeContext';
 
 const CLOUD_URL = 'https://borndz-production.up.railway.app';
-const LOCAL_URL = 'http://127.0.0.1:8000';
 
 // 1. IMPORT MODIFIÉ POUR LE TOAST
 import Toast, { BaseToast, ErrorToast } from 'react-native-toast-message';
@@ -224,7 +223,7 @@ export default function MenuAdminPage() {
             let applyRes: any;
             try {
                 applyRes = await axios.post(
-                    `${LOCAL_URL}/api/sync/apply-snapshot/`,
+                    `${getPosUrl()}/api/sync/apply-snapshot/`,
                     snap,
                     { timeout: 30000 }
                 );

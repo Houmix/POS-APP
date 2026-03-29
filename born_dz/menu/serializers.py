@@ -4,6 +4,19 @@ from rest_framework import serializers
 from .models import GroupMenu, Menu, Option, Step, MenuStep, StepOption
 
 
+def _cache_bust(url, obj):
+    """Ajoute ?v=<timestamp> pour invalider le cache image quand l'objet change."""
+    if not url:
+        return url
+    updated = getattr(obj, 'updated_at', None)
+    if updated and '?v=' not in url:
+        try:
+            return f"{url}?v={int(updated.timestamp())}"
+        except Exception:
+            pass
+    return url
+
+
 class GroupMenuSerializer(serializers.ModelSerializer):
     photo = serializers.FileField(required=False, allow_null=True)
     photo_url = serializers.SerializerMethodField()
@@ -17,11 +30,11 @@ class GroupMenuSerializer(serializers.ModelSerializer):
         if obj.photo:
             photo_name = str(obj.photo)
             if photo_name.startswith('http://') or photo_name.startswith('https://'):
-                return photo_name
+                return _cache_bust(photo_name, obj)
             request = self.context.get('request')
             if request:
-                return request.build_absolute_uri(obj.photo.url)
-            return obj.photo.url
+                return _cache_bust(request.build_absolute_uri(obj.photo.url), obj)
+            return _cache_bust(obj.photo.url, obj)
         return None
 
     def update(self, instance, validated_data):
@@ -38,7 +51,8 @@ class MenuSerializer(serializers.ModelSerializer):
     class Meta:
         model = Menu
         fields = [
-            "id", "name", "description", "price", "promo_price", "group_menu", "group_menu_name",
+            "id", "name", "description", "price", "promo_price", "promo_percentage",
+            "promo_display", "group_menu", "group_menu_name",
             "avalaible", "extra", "solo_price", "photo", "photo_url", "type", "position",
             "show_in_crosssell", "offer_menu_choice"
         ]
@@ -47,11 +61,11 @@ class MenuSerializer(serializers.ModelSerializer):
         if obj.photo:
             photo_name = str(obj.photo)
             if photo_name.startswith('http://') or photo_name.startswith('https://'):
-                return photo_name
+                return _cache_bust(photo_name, obj)
             request = self.context.get('request')
             if request:
-                return request.build_absolute_uri(obj.photo.url)
-            return obj.photo.url
+                return _cache_bust(request.build_absolute_uri(obj.photo.url), obj)
+            return _cache_bust(obj.photo.url, obj)
         return None
 
     def update(self, instance, validated_data):
@@ -72,11 +86,11 @@ class OptionSerializer(serializers.ModelSerializer):
         if obj.photo:
             photo_name = str(obj.photo)
             if photo_name.startswith('http://') or photo_name.startswith('https://'):
-                return photo_name
+                return _cache_bust(photo_name, obj)
             request = self.context.get('request')
             if request:
-                return request.build_absolute_uri(obj.photo.url)
-            return obj.photo.url
+                return _cache_bust(request.build_absolute_uri(obj.photo.url), obj)
+            return _cache_bust(obj.photo.url, obj)
         return None
 
     def update(self, instance, validated_data):

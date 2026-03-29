@@ -676,7 +676,7 @@ def _apply_change(table_name, action, data, restaurant_id=None):
     clean_data = dict(data)
 
     # Convertir les champs prix string → Decimal
-    decimal_fields = {'price', 'solo_price', 'extra_price', 'total_spent'}
+    decimal_fields = {'price', 'solo_price', 'extra_price', 'total_spent', 'promo_price', 'tva_rate', 'loyalty_points_rate'}
     for field in decimal_fields:
         if field in clean_data and clean_data[field] is not None:
             clean_data[field] = Decimal(str(clean_data[field]))

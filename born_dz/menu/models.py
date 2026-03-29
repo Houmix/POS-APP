@@ -23,7 +23,16 @@ class Menu(models.Model):
     description = models.CharField(max_length=256)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     solo_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    promo_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Prix promotionnel (l'ancien prix sera barré)")
+    promo_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Prix promotionnel fixe (prioritaire sur le pourcentage)")
+    promo_percentage = models.IntegerField(null=True, blank=True, help_text="Réduction en pourcentage (ex: 20 pour -20%). Ignoré si promo_price est défini.")
+    PROMO_DISPLAY_CHOICES = [
+        ('strikethrough', 'Prix barré + nouveau prix'),
+        ('badge', 'Badge -X% sur la carte'),
+        ('banner', 'Bandeau PROMO sur l\'image'),
+        ('duo', 'Ancien / Nouveau côte à côte'),
+        ('minimal', 'Prix promo seul (discret)'),
+    ]
+    promo_display = models.CharField(max_length=20, choices=PROMO_DISPLAY_CHOICES, default='strikethrough', blank=True, help_text="Type d'affichage de la promotion")
     photo = models.FileField(upload_to="restaurant/menu/", null=True, blank=True)
     group_menu = models.ForeignKey("GroupMenu", on_delete=models.SET_NULL, null=True, blank=True, related_name="menus")
     avalaible = models.BooleanField(default=True)

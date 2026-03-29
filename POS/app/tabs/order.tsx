@@ -123,12 +123,13 @@ export default function OrderScreen() {
   useEffect(() => {
     fetchOrders();
     connectWS();
-    pushLocalToCloud(false); // silencieux au démarrage
-    const pushInterval = setInterval(() => pushLocalToCloud(false), 5 * 60 * 1000);
+    // Push automatique désactivé – utiliser le bouton cloud-upload manuellement
+    // pushLocalToCloud(false);
+    // const pushInterval = setInterval(() => pushLocalToCloud(false), 5 * 60 * 1000);
     // Rafraîchissement automatique toutes les 2 secondes (fallback si WS indisponible)
     const autoRefreshInterval = setInterval(() => fetchOrders(), 2000);
     return () => {
-      clearInterval(pushInterval);
+      // clearInterval(pushInterval);  // push auto désactivé
       clearInterval(autoRefreshInterval);
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (wsRef.current) {
@@ -329,6 +330,26 @@ export default function OrderScreen() {
     } catch (error: any) {
       console.error("❌ Erreur livraison:", error);
       Alert.alert("Erreur", "Impossible de marquer la commande comme livrée.");
+    }
+  };
+
+  // --- RESTAURER UNE COMMANDE ANNULÉE ---
+  const handleRestore = async (orderId: number) => {
+    try {
+      const accessToken = await AsyncStorage.getItem("token");
+      await axios.put(
+        `${getPosUrl()}/order/api/Updateorder/${orderId}/`,
+        { cancelled: false, status: 'pending', kds_status: 'pending_validation' },
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      setOrders(prev =>
+        prev.map(o => o.order_id === orderId
+          ? { ...o, cancelled: false, order_status: 'pending', kds_status: 'pending_validation' }
+          : o
+        )
+      );
+    } catch {
+      Alert.alert("Erreur", "Impossible de restaurer la commande.");
     }
   };
 
@@ -629,25 +650,37 @@ export default function OrderScreen() {
 
                       {/* Actions */}
                       <View style={styles.historyActions}>
-                          <TouchableOpacity 
-                              style={styles.iconBtnInfo} 
+                          <TouchableOpacity
+                              style={styles.iconBtnInfo}
                               onPress={() => handleReprint(order.order_id)}
                               disabled={printing}
                           >
                               <MaterialCommunityIcons name="printer" size={20} color="#3B82F6" />
                           </TouchableOpacity>
 
+                          {order.cancelled && (
+                              <TouchableOpacity
+                                  style={styles.iconBtnSuccess}
+                                  onPress={() => {
+                                      handleRestore(order.order_id);
+                                      setHistoryVisible(false);
+                                  }}
+                              >
+                                  <MaterialCommunityIcons name="restore" size={20} color="#22c55e" />
+                              </TouchableOpacity>
+                          )}
+
                           {!order.refund && !order.cancelled && (
-                               <TouchableOpacity 
-                                  style={styles.iconBtnDanger} 
+                               <TouchableOpacity
+                                  style={styles.iconBtnDanger}
                                   onPress={() => confirmRefund(order.order_id)}
                                >
                                   <MaterialCommunityIcons name="undo" size={20} color="#EF4444" />
                                </TouchableOpacity>
                           )}
-                          
-                          <TouchableOpacity 
-                              style={styles.iconBtnDefault} 
+
+                          <TouchableOpacity
+                              style={styles.iconBtnDefault}
                               onPress={() => {
                                   setHistoryVisible(false);
                                   setTimeout(() => openOrderDetails(order), 300);
@@ -810,7 +843,7 @@ export default function OrderScreen() {
     const filteredOrders = orders.filter((order) => {
       const matchesStatus = statusList.includes(order.kds_status);
       const matchesSearch = order.order_id.toString().includes(searchQuery);
-      return matchesStatus && matchesSearch;
+      return matchesStatus && matchesSearch && !order.cancelled;
     });
 
     filteredOrders.sort((a, b) => {
@@ -1611,9 +1644,13 @@ const styles = StyleSheet.create({
     width: 36, height: 36, borderRadius: 10, 
     backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center' 
   },
-  iconBtnDanger: { 
-    width: 36, height: 36, borderRadius: 10, 
-    backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center' 
+  iconBtnDanger: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center'
+  },
+  iconBtnSuccess: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: '#F0FDF4', justifyContent: 'center', alignItems: 'center'
   },
   iconBtnDefault: { 
     width: 36, height: 36, borderRadius: 10, 

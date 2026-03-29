@@ -17,30 +17,45 @@ from stock.models import StockCategory, StockItem, MenuStockLink, OptionStockLin
 #  HELPER : URL de photo (local ou distant)
 # ──────────────────────────────────────────
 
-def _photo_url(photo_field, base_url=''):
+def _photo_url(photo_field, base_url='', updated_at=None):
     """
     Renvoie l'URL de la photo, en gérant deux cas :
     - Serveur distant (base_url fourni) → URL absolue avec le domaine du serveur
     - Django local (après sync) → la valeur stockée est déjà une URL absolue distante,
       on la renvoie telle quelle pour que la borne puisse charger l'image depuis le cloud.
+
+    updated_at : timestamp de derniere modification de l'objet parent.
+    Ajoute ?v=<timestamp> pour invalider le cache image quand le fichier change.
     """
     if not photo_field:
         return None
     name = str(photo_field)
     if not name:
         return None
+
+    # Suffixe cache-buster base sur updated_at
+    cache_suffix = ''
+    if updated_at:
+        try:
+            cache_suffix = f"?v={int(updated_at.timestamp())}"
+        except Exception:
+            pass
+
     # Déjà une URL absolue (stockée depuis un sync distant)
     if name.startswith('http://') or name.startswith('https://'):
+        # Ajouter le cache-buster seulement si pas deja present
+        if cache_suffix and '?v=' not in name:
+            return name + cache_suffix
         return name
     # Fichier local → construire l'URL absolue
     if base_url:
         try:
             relative = photo_field.url  # ex: /media/restaurant/menu/burger.jpg
-            return f"{base_url.rstrip('/')}{relative}"
+            return f"{base_url.rstrip('/')}{relative}{cache_suffix}"
         except Exception:
-            return f"{base_url.rstrip('/')}/media/{name.lstrip('/')}"
+            return f"{base_url.rstrip('/')}/media/{name.lstrip('/')}{cache_suffix}"
     try:
-        return photo_field.url
+        return f"{photo_field.url}{cache_suffix}"
     except Exception:
         return None
 
@@ -50,11 +65,12 @@ def _photo_url(photo_field, base_url=''):
 # ──────────────────────────────────────────
 
 def serialize_group_menu(obj, base_url=''):
+    updated = getattr(obj, 'updated_at', None)
     return {
         'id': obj.id,
         'name': obj.name,
         'description': obj.description,
-        'photo': _photo_url(obj.photo, base_url),
+        'photo': _photo_url(obj.photo, base_url, updated),
         'avalaible': obj.avalaible,
         'extra': obj.extra,
         'position': obj.position,
@@ -62,25 +78,30 @@ def serialize_group_menu(obj, base_url=''):
     }
 
 def serialize_menu(obj, base_url=''):
+    updated = getattr(obj, 'updated_at', None)
     return {
         'id': obj.id,
         'name': obj.name,
         'description': obj.description,
         'price': str(obj.price),
         'solo_price': str(obj.solo_price),
-        'photo': _photo_url(obj.photo, base_url),
+        'photo': _photo_url(obj.photo, base_url, updated),
         'group_menu_id': obj.group_menu_id,
         'avalaible': obj.avalaible,
         'extra': obj.extra,
         'position': obj.position,
         'type': obj.type,
+        'promo_price': str(obj.promo_price) if obj.promo_price is not None else None,
+        'show_in_crosssell': obj.show_in_crosssell,
+        'offer_menu_choice': obj.offer_menu_choice,
     }
 
 def serialize_option(obj, base_url=''):
+    updated = getattr(obj, 'updated_at', None)
     return {
         'id': obj.id,
         'name': obj.name,
-        'photo': _photo_url(obj.photo, base_url),
+        'photo': _photo_url(obj.photo, base_url, updated),
         'type': obj.type,
         'avalaible': obj.avalaible,
         'extra_price': str(obj.extra_price),
@@ -147,6 +168,15 @@ def serialize_kiosk_config(obj, base_url=''):
         'composition_mode':           obj.composition_mode,
         'loyalty_enabled':            obj.loyalty_enabled,
         'loyalty_points_rate':        obj.loyalty_points_rate,
+        'category_display_mode':      obj.category_display_mode,
+        'delivery_modes':             obj.delivery_modes,
+        'tva_rate':                   str(obj.tva_rate),
+        'ticket_header':              obj.ticket_header,
+        'ticket_footer':              obj.ticket_footer,
+        'ticket_show_tva':            obj.ticket_show_tva,
+        'kitchen_printer_ip':         obj.kitchen_printer_ip,
+        'kitchen_printer_port':       obj.kitchen_printer_port,
+        'kitchen_printer_enabled':    obj.kitchen_printer_enabled,
     }
 
 
