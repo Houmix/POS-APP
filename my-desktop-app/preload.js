@@ -2,7 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // ── Impression ──
 contextBridge.exposeInMainWorld('electronAPI', {
-    printTicket: (text) => ipcRenderer.invoke('print-ticket', text)
+    printTicket:           (text, qrContent) => ipcRenderer.invoke('print-ticket', text, qrContent),
+    printToNetworkPrinter: (ip, port, data)  => ipcRenderer.invoke('printToNetworkPrinter', ip, port, data),
+    testNetworkPrinter:    (ip, port)        => ipcRenderer.invoke('testNetworkPrinter', ip, port),
 });
 
 // ── Sync BDD ──

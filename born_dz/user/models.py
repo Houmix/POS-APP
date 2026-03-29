@@ -82,7 +82,10 @@ class Employee(models.Model):
     address = models.TextField(blank=True)
 
     def __str__(self):
-        return self.user.phone + " " + self.user.role.role + " " + self.restaurant.name
+        phone = self.user.phone if self.user else "N/A"
+        role = self.user.role.role if self.user and self.user.role else "N/A"
+        restaurant_name = self.restaurant.name if self.restaurant else "N/A"
+        return f"{phone} {role} {restaurant_name}"
 
 
 class TimeEntry(models.Model):

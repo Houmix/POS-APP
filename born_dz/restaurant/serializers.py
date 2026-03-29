@@ -54,6 +54,10 @@ class KioskConfigSerializer(serializers.ModelSerializer):
             'selected_category_text_color', 'sidebar_display_mode',
             'logo', 'screensaver_image', 'screensaver_video', 'card_style', 'composition_mode',
             'loyalty_enabled', 'loyalty_points_rate',
+            'category_display_mode',
+            'tva_rate', 'ticket_header', 'ticket_footer', 'ticket_show_tva',
+            'delivery_modes',
+            'kitchen_printer_ip', 'kitchen_printer_port', 'kitchen_printer_enabled',
         ]
 
 

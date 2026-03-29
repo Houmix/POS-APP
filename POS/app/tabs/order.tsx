@@ -125,8 +125,11 @@ export default function OrderScreen() {
     connectWS();
     pushLocalToCloud(false); // silencieux au démarrage
     const pushInterval = setInterval(() => pushLocalToCloud(false), 5 * 60 * 1000);
+    // Rafraîchissement automatique toutes les 2 secondes (fallback si WS indisponible)
+    const autoRefreshInterval = setInterval(() => fetchOrders(), 2000);
     return () => {
       clearInterval(pushInterval);
+      clearInterval(autoRefreshInterval);
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (wsRef.current) {
         wsRef.current.onclose = null;
@@ -134,6 +137,18 @@ export default function OrderScreen() {
       }
     };
   }, []);
+
+  // Auto-ouvrir la commande quand le scan QR correspond exactement à un order_id
+  useEffect(() => {
+    if (!searchQuery) return;
+    const id = parseInt(searchQuery.trim(), 10);
+    if (isNaN(id)) return;
+    const match = orders.find(o => o.order_id === id);
+    if (match) {
+      openOrderDetails(match);
+      setSearchQuery('');
+    }
+  }, [searchQuery, orders]);
 
   const fetchOrders = async () => {
     try {
@@ -176,23 +191,19 @@ export default function OrderScreen() {
         setOrderToRefund(null);
     }
   };
-  const handlePrinting = async (ticketContent) => {
-    // Vérification de l'API exposée par preload.js
+  const handlePrinting = async (ticketContent, qrContent = '') => {
     if (!window.electronAPI?.printTicket) {
         console.error("❌ API Electron non disponible.");
         return { success: false, error: "Lien avec le matériel manquant" };
     }
-
     try {
-        console.log("🖨️ Envoi du ticket au port COM via Electron...");
-        // On envoie le contenu brut (le main.js s'occupera de la découpe)
-        const result = await window.electronAPI.printTicket(ticketContent);
+        const result = await window.electronAPI.printTicket(ticketContent, qrContent);
         return result;
     } catch (error) {
         console.error("❌ Erreur de communication imprimante:", error);
         return { success: false, error: error.message };
     }
-};
+  };
   // --- PUSH LOCAL → CLOUD (commandes + fidélité) ---
   const pushLocalToCloud = async (showAlert = true) => {
     if (pushing) return;
@@ -330,9 +341,8 @@ export default function OrderScreen() {
         `${getPosUrl()}/order/api/generateTicket/${orderId}/`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      // On s'attend à recevoir ticket_content et qr_content (texte brut)
       const { ticket_content, qr_content } = response.data;
-      const printResult = await handlePrinting(ticket_content);
+      const printResult = await handlePrinting(ticket_content, qr_content || '');
 
       Alert.alert("Succès", "Ticket envoyé à l'imprimante");
       
@@ -706,18 +716,21 @@ export default function OrderScreen() {
             <Text style={styles.infoText}>{order.items.length} article(s)</Text>
           </View>
           <View style={styles.infoRow}>
-            <MaterialCommunityIcons
-              name={
-                order.delivery_type === "emporter" ? "bag-personal" :
-                order.delivery_type === "livraison" ? "moped" : "silverware-fork-knife"
-              }
-              size={16}
-              color="#666"
-            />
-            <Text style={styles.infoText}>
-              {order.delivery_type === "emporter" ? "À emporter" :
-               order.delivery_type === "livraison" ? "Livraison" : "Sur place"}
-            </Text>
+            {(() => {
+              const dtype = order.delivery_type || (order.takeaway ? 'emporter' : 'sur_place');
+              return (
+                <>
+                  <MaterialCommunityIcons
+                    name={dtype === "emporter" ? "bag-personal" : dtype === "livraison" ? "moped" : "silverware-fork-knife"}
+                    size={16}
+                    color="#666"
+                  />
+                  <Text style={styles.infoText}>
+                    {dtype === "emporter" ? "À emporter" : dtype === "livraison" ? "Livraison" : "Sur place"}
+                  </Text>
+                </>
+              );
+            })()}
           </View>
           {order.customer_identifier ? (
             <View style={styles.infoRow}>

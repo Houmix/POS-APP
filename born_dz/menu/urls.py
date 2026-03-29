@@ -13,7 +13,7 @@ urlpatterns = [
     # ============= MENU =============
     path("api/createMenu/", MenuCreate.as_view(), name="api_create_menu"),
     path("api/getAllMenu/<int:id_restaurant>/", MenuList.as_view(), name="api_get_menu_list"),
-    path("api/getMenu/<int:id_menu>&<int:id_restaurant>/", MenuDetail.as_view(), name="api_get_menu_detail"),
+    path("api/getMenu/<int:id_menu>/<int:id_restaurant>/", MenuDetail.as_view(), name="api_get_menu_detail"),
     path("api/updateMenu/", MenuUpdate.as_view(), name="api_update_menu"),
     path("api/deleteMenu/<int:pk>/", MenuDelete.as_view(), name="api_delete_menu"),
 

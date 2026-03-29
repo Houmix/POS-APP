@@ -22,6 +22,7 @@
   "dependencies": {
     "assert-plus": "^1.0.0",
     "electron-squirrel-startup": "^1.0.1",
+    "electron-updater": "^6.3.9",
     "express": "^4.18.2",
     "serialport": "^12.0.0"
   },
@@ -35,6 +36,13 @@
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "clickgo-interactive",
+        "repo": "clickgo-pos-releases"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",

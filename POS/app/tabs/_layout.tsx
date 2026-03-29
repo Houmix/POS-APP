@@ -116,6 +116,18 @@ export default function TabLayout() {
         }}
       />
 
+      {/* Écran serveur (distribution) : visible pour tout le staff */}
+      <Tabs.Screen
+        name="server"
+        options={{
+          title: 'Service',
+          href: isStaff ? undefined : null,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "bicycle" : "bicycle-outline"} size={24} color={color} />
+          ),
+        }}
+      />
+
       {/* Seuls Owner et Manager accèdent à l'admin du Menu */}
       <Tabs.Screen
         name="MenuAdminPage"
@@ -136,6 +148,30 @@ export default function TabLayout() {
           href: isManager ? undefined : null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "bar-chart" : "bar-chart-outline"} size={24} color={color} />
+          ),
+        }}
+      />
+
+      {/* Gestion des bornes — Manager/Owner uniquement */}
+      <Tabs.Screen
+        name="BornesPage"
+        options={{
+          title: 'Bornes',
+          href: isManager ? undefined : null,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "tablet-landscape" : "tablet-landscape-outline"} size={24} color={color} />
+          ),
+        }}
+      />
+
+      {/* Paramètres (imprimante cuisine, ticket, TVA, livraison) — Manager/Owner */}
+      <Tabs.Screen
+        name="SettingsPage"
+        options={{
+          title: 'Paramètres',
+          href: isManager ? undefined : null,
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "settings" : "settings-outline"} size={24} color={color} />
           ),
         }}
       />

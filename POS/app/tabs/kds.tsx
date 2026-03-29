@@ -141,9 +141,9 @@ export default function KDSScreen() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await r.json();
-      const { ticket_content } = data;
+      const { ticket_content, qr_content } = data;
       if (ticket_content && (window as any).electronAPI?.printTicket) {
-        await (window as any).electronAPI.printTicket(ticket_content);
+        await (window as any).electronAPI.printTicket(ticket_content, qr_content || '');
       }
     } catch (e) {
       console.error('[KDS] print error:', e);

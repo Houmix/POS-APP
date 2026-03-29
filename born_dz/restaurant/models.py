@@ -62,6 +62,33 @@ class KioskConfig(models.Model):
     # Fidélité
     loyalty_enabled      = models.BooleanField(default=False)
     loyalty_points_rate  = models.IntegerField(default=10)  # DA par point (10 = 10 DA = 1 point)
+
+    # Mode d'affichage des catégories
+    CATEGORY_DISPLAY_CHOICES = [
+        ('sidebar', 'Barre latérale (défaut)'),
+        ('grid_macdo', 'Grille plein écran (style McDonald\'s)'),
+    ]
+    category_display_mode = models.CharField(max_length=20, choices=CATEGORY_DISPLAY_CHOICES, default='sidebar')
+
+    # TVA & ticket de caisse
+    tva_rate             = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    ticket_header        = models.CharField(max_length=256, blank=True, default='')
+    ticket_footer        = models.CharField(max_length=256, blank=True, default='')
+    ticket_show_tva      = models.BooleanField(default=False)
+
+    # Mode de livraison autorisé sur la borne
+    DELIVERY_MODE_CHOICES = [
+        ('both', 'Sur place et emporter'),
+        ('sur_place_only', 'Sur place uniquement'),
+        ('emporter_only', 'Emporter uniquement'),
+    ]
+    delivery_modes       = models.CharField(max_length=20, choices=DELIVERY_MODE_CHOICES, default='both')
+
+    # Imprimante cuisine réseau (ESC/POS over TCP)
+    kitchen_printer_ip      = models.CharField(max_length=15, blank=True, default='')
+    kitchen_printer_port    = models.IntegerField(default=9100)
+    kitchen_printer_enabled = models.BooleanField(default=False)
+
     updated_at           = models.DateTimeField(auto_now=True)
 
     def __str__(self):

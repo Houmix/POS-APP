@@ -1,8 +1,10 @@
 //  OK TOUS les imports au début
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const { spawn, exec, execSync } = require('child_process'); // ← Tous ensemble
 const path = require('path');
 const http = require('http');
+const net  = require('net');   // imprimante réseau TCP/ESC-POS
 const fs = require('fs');
 const express = require('express');
 const os = require('os');
@@ -22,15 +24,18 @@ let splashWindow;
 
 const isDev = !app.isPackaged;
 
+// URL serveur cloud (configurable via variable d'environnement ou fichier .env)
+const CLOUD_SERVER_URL = process.env.CLICKGO_SERVER_URL || 'https://clickgo-interactive.com';
+
 // 🔑 Licence
 const licenseManager = new LicenseManager({
-  serverUrl: 'https://borndz-production.up.railway.app',
+  serverUrl: CLOUD_SERVER_URL,
   gracePeriodDays: 7,
 });
 
 // 🔄 Sync
 const syncManager = new SyncManager({
-  serverUrl: 'https://borndz-production.up.railway.app',
+  serverUrl: CLOUD_SERVER_URL,
   localApiUrl: 'http://127.0.0.1:8000',
   syncInterval: 30000,
   connectivityCheckInterval: 10000,
@@ -332,6 +337,51 @@ async function printToComPorts(dataBuffer) {
 
     return results;
 }
+
+// ── Imprimante réseau (TCP/ESC/POS) ─────────────────────────────────────────
+function printToNetworkPrinter(ip, port, data) {
+    return new Promise((resolve, reject) => {
+        const client = new net.Socket();
+        const timeout = setTimeout(() => {
+            client.destroy();
+            reject(new Error('Timeout connexion imprimante réseau'));
+        }, 5000);
+
+        client.connect(port, ip, () => {
+            clearTimeout(timeout);
+            client.write(data, () => {
+                client.destroy();
+                resolve({ success: true });
+            });
+        });
+        client.on('error', (err) => {
+            clearTimeout(timeout);
+            reject(err);
+        });
+    });
+}
+
+ipcMain.handle('printToNetworkPrinter', async (event, ip, port, rawBase64) => {
+    try {
+        const data = Buffer.from(rawBase64, 'base64');
+        await printToNetworkPrinter(ip, port, data);
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('testNetworkPrinter', async (event, ip, port) => {
+    try {
+        const ESC_INIT = Buffer.from([0x1B, 0x40]);
+        const FEED_CUT = Buffer.from([0x1B, 0x64, 0x03, 0x1D, 0x56, 0x41, 0x10]);
+        const testData = Buffer.concat([ESC_INIT, Buffer.from('TEST IMPRIMANTE\n'), FEED_CUT]);
+        await printToNetworkPrinter(ip, port || 9100, testData);
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+});
 
 ipcMain.handle("print-ticket", async (event, ticketText) => {
     const tempFilePath = path.join(os.tmpdir(), `ticket-${Date.now()}.bin`);
@@ -880,6 +930,93 @@ function cleanup() {
   licenseManager.stop();
 }
 
+// ==========================================
+// 🔄 MISE À JOUR AUTOMATIQUE
+// ==========================================
+function setupAutoUpdater() {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('checking-for-update', () => {
+        console.log('[Updater] Vérification des mises à jour...');
+    });
+
+    autoUpdater.on('update-available', (info) => {
+        console.log(`[Updater] Nouvelle version disponible : ${info.version}`);
+        if (mainWindow) mainWindow.webContents.send('update-available', info.version);
+    });
+
+    autoUpdater.on('update-not-available', (info) => {
+        console.log(`[Updater] Pas de mise à jour (version actuelle: ${info.version})`);
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+        console.log(`[Updater] Téléchargement: ${Math.round(progress.percent)}%`);
+        if (mainWindow) mainWindow.webContents.send('update-progress', Math.round(progress.percent));
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+        console.log(`[Updater] Version ${info.version} téléchargée.`);
+        dialog.showMessageBox(mainWindow, {
+            type: 'info',
+            title: 'Mise à jour ClickGo POS',
+            message: `La version ${info.version} est prête.\nCliquez sur OK pour installer et redémarrer.`,
+            buttons: ['Installer maintenant', 'Plus tard'],
+            defaultId: 0,
+        }).then(({ response }) => {
+            if (response === 0) {
+                autoUpdater.quitAndInstall();
+            } else {
+                // Rappeler dans 1h si l'utilisateur repousse
+                setTimeout(() => {
+                    if (mainWindow) {
+                        dialog.showMessageBox(mainWindow, {
+                            type: 'info',
+                            title: 'Rappel mise à jour',
+                            message: `La version ${info.version} est toujours en attente d'installation.`,
+                            buttons: ['Installer maintenant', 'Plus tard'],
+                            defaultId: 0,
+                        }).then(({ response: r }) => {
+                            if (r === 0) autoUpdater.quitAndInstall();
+                        });
+                    }
+                }, 60 * 60 * 1000);
+            }
+        });
+    });
+
+    autoUpdater.on('error', (err) => {
+        console.error('[Updater] Erreur:', err.message);
+        // Ne pas spammer les logs si pas de release configuré
+        if (err.message && err.message.includes('VOTRE_COMPTE_GITHUB')) {
+            console.warn('[Updater] Configuration GitHub non définie — mises à jour désactivées.');
+            return;
+        }
+    });
+
+    // Première vérification après 15 secondes
+    setTimeout(() => {
+        if (app.isPackaged) {
+            try {
+                autoUpdater.checkForUpdates();
+            } catch (e) {
+                console.error('[Updater] Impossible de vérifier les mises à jour:', e.message);
+            }
+        }
+    }, 15000);
+
+    // Vérifications périodiques toutes les 4h
+    setInterval(() => {
+        if (app.isPackaged) {
+            try {
+                autoUpdater.checkForUpdates();
+            } catch (e) {
+                console.error('[Updater] Erreur check périodique:', e.message);
+            }
+        }
+    }, 4 * 60 * 60 * 1000);
+}
+
 app.whenReady().then(async () => {
   if (!checkRequirements()) return;
 
@@ -893,7 +1030,10 @@ app.whenReady().then(async () => {
       syncManager.authToken = licenseManager.license.key;
       syncManager.start();
   }
-  // 3. Démarrer l'interface
+  // 3. Initialiser les mises à jour automatiques
+  setupAutoUpdater();
+
+  // 4. Démarrer l'interface
   createSplashWindow(() => {
     startDjango(() => {
       if (fs.existsSync(webBuildPath)) {

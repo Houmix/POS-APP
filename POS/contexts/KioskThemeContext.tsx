@@ -21,6 +21,14 @@ export interface KioskTheme {
     screensaverVideoUrl: string | null;
     cardStyle: 'gradient' | 'macdo' | 'magazine';
     compositionMode: 'modal' | 'page';
+    tvaRate: number;
+    ticketHeader: string;
+    ticketFooter: string;
+    ticketShowTva: boolean;
+    deliveryModes: 'both' | 'sur_place_only' | 'emporter_only';
+    kitchenPrinterIp: string;
+    kitchenPrinterPort: number;
+    kitchenPrinterEnabled: boolean;
 }
 
 const DEFAULT_THEME: KioskTheme = {
@@ -37,6 +45,14 @@ const DEFAULT_THEME: KioskTheme = {
     screensaverVideoUrl: null,
     cardStyle: 'gradient',
     compositionMode: 'page',
+    tvaRate: 0,
+    ticketHeader: '',
+    ticketFooter: '',
+    ticketShowTva: false,
+    deliveryModes: 'both',
+    kitchenPrinterIp: '',
+    kitchenPrinterPort: 9100,
+    kitchenPrinterEnabled: false,
 };
 
 const THEME_CACHE_KEY = 'kiosk_theme_cache';
@@ -84,6 +100,14 @@ export function KioskThemeProvider({ children }: { children: React.ReactNode }) 
                 screensaverVideoUrl:data.screensaver_video_url || null,
                 cardStyle:          (data.card_style as 'gradient' | 'macdo' | 'magazine') || 'gradient',
                 compositionMode:    (data.composition_mode as 'modal' | 'page') || 'page',
+                tvaRate:            parseFloat(data.tva_rate) || 0,
+                ticketHeader:       data.ticket_header || '',
+                ticketFooter:       data.ticket_footer || '',
+                ticketShowTva:      data.ticket_show_tva ?? false,
+                deliveryModes:      (data.delivery_modes as 'both' | 'sur_place_only' | 'emporter_only') || 'both',
+                kitchenPrinterIp:   data.kitchen_printer_ip || '',
+                kitchenPrinterPort: data.kitchen_printer_port || 9100,
+                kitchenPrinterEnabled: data.kitchen_printer_enabled ?? false,
             };
             setTheme(newTheme);
             await AsyncStorage.setItem(cacheKey, JSON.stringify(newTheme));

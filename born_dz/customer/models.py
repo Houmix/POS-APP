@@ -70,4 +70,4 @@ class LoyaltyRedemption(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f'{self.customer_loyalty.customer_identifier} → {self.reward.name}'
+        return f'{self.customer_loyalty.customer_identifier} → {self.reward.display_name()}'
