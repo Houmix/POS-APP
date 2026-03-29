@@ -69,7 +69,9 @@ jobs:
       - name: Create GitHub Release & upload exe
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: ClickGo POS v1.0.${{ github.run_number }}
           files: my-desktop-app/dist/ClickGo-POS-Setup.exe
-          generate_release_notes: true   # génère les notes de release depuis les commits
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
