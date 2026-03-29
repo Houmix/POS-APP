@@ -10,6 +10,9 @@ class GroupMenu(models.Model):
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name="groupmenus")
     extra = models.BooleanField(default=False)
     position = models.IntegerField(default=0)
+    # Versioning pour la resolution de conflits de synchronisation
+    version = models.IntegerField(default=1, help_text="Incremente a chaque modification pour detecter les conflits")
+    updated_at = models.DateTimeField(auto_now=True, help_text="Derniere modification")
 
     def __str__(self):
         return self.name + " " + self.restaurant.name
@@ -20,6 +23,7 @@ class Menu(models.Model):
     description = models.CharField(max_length=256)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     solo_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    promo_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Prix promotionnel (l'ancien prix sera barré)")
     photo = models.FileField(upload_to="restaurant/menu/", null=True, blank=True)
     group_menu = models.ForeignKey("GroupMenu", on_delete=models.SET_NULL, null=True, blank=True, related_name="menus")
     avalaible = models.BooleanField(default=True)
@@ -38,9 +42,14 @@ class Menu(models.Model):
     type = models.CharField(choices=TYPE, max_length=20)
     show_in_crosssell = models.BooleanField(default=False)
     offer_menu_choice = models.BooleanField(default=True)
+    # Versioning pour la resolution de conflits de synchronisation
+    version = models.IntegerField(default=1, help_text="Incremente a chaque modification pour detecter les conflits")
+    updated_at = models.DateTimeField(auto_now=True, help_text="Derniere modification")
 
     def __str__(self):
-        return self.name + " " + self.group_menu.restaurant.name if self.group_menu else self.name
+        if self.group_menu:
+            return self.name + " " + self.group_menu.restaurant.name
+        return self.name
 
 
 class Option(models.Model):
@@ -50,6 +59,9 @@ class Option(models.Model):
     type = models.CharField(max_length=50, blank=True, default='')
     avalaible = models.BooleanField(default=True)
     extra_price = models.DecimalField(max_digits=6, decimal_places=2, default=0.00)
+    # Versioning
+    version = models.IntegerField(default=1)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name

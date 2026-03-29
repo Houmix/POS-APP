@@ -10,6 +10,7 @@ from order.models import Order, OrderItem, OrderItemOption
 from restaurant.models import Restaurant, KioskConfig
 from user.models import Role, User, Employee
 from customer.models import LoyaltyReward, CustomerLoyalty
+from stock.models import StockCategory, StockItem, MenuStockLink, OptionStockLink
 
 
 # ──────────────────────────────────────────
@@ -242,6 +243,57 @@ def serialize_order_item_option(obj):
 
 
 # ──────────────────────────────────────────
+#  STOCK SERIALIZERS
+# ──────────────────────────────────────────
+
+def serialize_stock_category(obj):
+    return {
+        'id': obj.id,
+        'restaurant_id': obj.restaurant_id,
+        'name': obj.name,
+        'description': obj.description,
+        'position': obj.position,
+    }
+
+def serialize_stock_item(obj):
+    return {
+        'id': obj.id,
+        'restaurant_id': obj.restaurant_id,
+        'category_id': obj.category_id,
+        'name': obj.name,
+        'sku': obj.sku,
+        'quantity': str(obj.quantity),
+        'unit': obj.unit,
+        'weight_per_unit': str(obj.weight_per_unit),
+        'min_threshold': str(obj.min_threshold),
+        'critical_threshold': str(obj.critical_threshold),
+        'auto_disable': obj.auto_disable,
+        'cost_price': str(obj.cost_price),
+        'supplier': obj.supplier,
+        'supplier_ref': obj.supplier_ref,
+        'is_active': obj.is_active,
+        'version': obj.version,
+        'updated_at': obj.updated_at.isoformat() if obj.updated_at else None,
+    }
+
+def serialize_menu_stock_link(obj):
+    return {
+        'id': obj.id,
+        'menu_id': obj.menu_id,
+        'stock_item_id': obj.stock_item_id,
+        'quantity_used': str(obj.quantity_used),
+    }
+
+def serialize_option_stock_link(obj):
+    return {
+        'id': obj.id,
+        'option_id': obj.option_id,
+        'stock_item_id': obj.stock_item_id,
+        'quantity_used': str(obj.quantity_used),
+    }
+
+
+# ──────────────────────────────────────────
 #  FULL SNAPSHOT  (export complet d'un restaurant)
 # ──────────────────────────────────────────
 
@@ -280,6 +332,13 @@ def full_snapshot(restaurant_id, base_url=''):
     role_ids = users.values_list('role_id', flat=True).distinct()
     roles = Role.objects.filter(id__in=role_ids)
 
+    # Stock
+    stock_categories = StockCategory.objects.filter(restaurant=restaurant)
+    stock_items = StockItem.objects.filter(restaurant=restaurant, is_active=True)
+    stock_item_ids = stock_items.values_list('id', flat=True)
+    menu_stock_links = MenuStockLink.objects.filter(stock_item_id__in=stock_item_ids)
+    option_stock_links = OptionStockLink.objects.filter(stock_item_id__in=stock_item_ids)
+
     return {
         'restaurant': {
             'id': restaurant.id,
@@ -300,6 +359,10 @@ def full_snapshot(restaurant_id, base_url=''):
         'users': [serialize_user(u) for u in users],
         'employees': [serialize_employee(e) for e in employees],
         'loyalty_rewards': [serialize_loyalty_reward(r) for r in loyalty_rewards],
+        'stock_categories': [serialize_stock_category(c) for c in stock_categories],
+        'stock_items': [serialize_stock_item(s) for s in stock_items],
+        'menu_stock_links': [serialize_menu_stock_link(l) for l in menu_stock_links],
+        'option_stock_links': [serialize_option_stock_link(l) for l in option_stock_links],
     }
 
 
@@ -323,6 +386,10 @@ TABLE_REGISTRY = {
     'kiosk_config':     ('restaurant.KioskConfig',   serialize_kiosk_config),
     'loyalty_reward':   ('customer.LoyaltyReward',   serialize_loyalty_reward),
     'customer_loyalty': ('customer.CustomerLoyalty', serialize_customer_loyalty),
+    'stock_category':    ('stock.StockCategory',     serialize_stock_category),
+    'stock_item':        ('stock.StockItem',          serialize_stock_item),
+    'menu_stock_link':   ('stock.MenuStockLink',      serialize_menu_stock_link),
+    'option_stock_link': ('stock.OptionStockLink',    serialize_option_stock_link),
 }
 
 def get_model_for_table(table_name):

@@ -47,17 +47,11 @@ GITHUB_RELEASE_POS_URL = config('GITHUB_RELEASE_POS_URL', default='')
 AUTO_SYNC_ENABLED = config('AUTO_SYNC_ENABLED', default=False, cast=bool)
 AUTO_SYNC_INTERVAL_SECONDS = config('AUTO_SYNC_INTERVAL_SECONDS', default=300, cast=int)
 
-ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
-    "192.168.1.50",
-    "192.168.1.123",
-    "menugo-dz.com",
-    "www.menugo-dz.com",
-    "borndz-production.up.railway.app",
-    "clickgo-interactive.com",
-    "www.clickgo-interactive.com",
-] + config('ALLOWED_HOSTS', default='', cast=Csv())
+ALLOWED_HOSTS = ['*']  # réseau local — toutes les IPs autorisées
+
+# Railway / reverse proxy : Django recoit du HTTP mais le client utilise HTTPS.
+# Ce header permet a build_absolute_uri() de generer des URLs en https://.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -87,6 +81,8 @@ INSTALLED_APPS = [ #Add created app here like customer, kds...
     "channels", #pour les websockets,
     "borne_sync",
     'sync',
+    'audit.apps.AuditConfig',
+    'stock.apps.StockConfig',
 ]
 # Configuration Channels — Redis en prod, InMemory en local
 _REDIS_URL = config('REDIS_URL', default='')
@@ -111,6 +107,21 @@ REST_FRAMEWORK = {
     # 'DEFAULT_PERMISSION_CLASSES': [
     #     'rest_framework.permissions.IsAuthenticated',  # Seul un utilisateur authentifié peut accéder aux API
     # ],
+
+    # ─── Rate Limiting (Throttling) ───
+    # Protege l'API contre les abus, attaques DDoS et surcharge serveur.
+    # Limites par defaut : ajustables par endpoint via @throttle_classes
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',    # Utilisateurs non authentifies
+        'rest_framework.throttling.UserRateThrottle',    # Utilisateurs authentifies (par user ID)
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '30/minute',       # 30 req/min pour les anonymes (login, health, discover)
+        'user': '120/minute',      # 120 req/min pour les utilisateurs authentifies
+        'sync': '20/minute',       # 20 req/min pour les endpoints de synchronisation
+        'login': '5/minute',       # 5 tentatives de login/min (anti brute-force)
+        'orders': '60/minute',     # 60 req/min pour les commandes (bornes actives)
+    },
 }
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": datetime.timedelta(days=1),  # Change ici la durée du token access
@@ -127,6 +138,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     'django.middleware.common.BrokenLinkEmailsMiddleware',  # Ligne à ajouter pour recevoir un mail lorsque la page error servor s'affiche à un utilisateur
+    'audit.middleware.AuditMiddleware',  # Audit Trail - capture user/IP pour chaque requete
 ]
 
 ROOT_URLCONF = "born_dz.urls"

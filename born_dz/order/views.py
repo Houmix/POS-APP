@@ -268,17 +268,25 @@ class OrderCreate(APIView):
                             )
                         else:
                             print(f"  Erreur: Option {opt_id} introuvable en base de données")
-                    except Exception as option_error:
-                        print(f"  Erreur boucle option: {option_error}")
-                        continue
                     except StepOption.DoesNotExist:
                         print(f"  Erreur: Option {opt.get('option')} introuvable pour l'étape {opt.get('step')}")
+                        continue
+                    except Exception as option_error:
+                        print(f"  Erreur boucle option: {option_error}")
                         continue
 
         except Exception as items_error:
             print(f"  ERREUR ajout items: {items_error}")
             order.delete() # On nettoie si ça plante
             return Response({"error": "Erreur ajout items", "details": str(items_error)}, status=status.HTTP_400_BAD_REQUEST)
+        # 4b. DEDUCTION DU STOCK (apres creation des items)
+        try:
+            from stock.signals import deduct_stock_for_order
+            deduct_stock_for_order(order)
+            print(f"  Stock deduit pour commande #{order.id}")
+        except Exception as stock_err:
+            print(f"  Erreur deduction stock (non bloquant): {stock_err}")
+
         # 5. FIDÉLITÉ (APRES LES ITEMS)
         # On calcule les points maintenant que le prix total est connu
         if user_instance:
@@ -928,13 +936,24 @@ class KpiView(APIView):
         cancelled_orders_count = len([o for o in orders_list if o.cancelled])
         take_away_count = len([o for o in orders_list if o.take_away])
 
+        # Breakdown journalier pour le graphique
+        from collections import defaultdict
+        daily = defaultdict(lambda: {"revenue": 0, "orders": 0})
+        for o in orders_list:
+            day = o.created_at.strftime('%Y-%m-%d') if o.created_at else 'N/A'
+            daily[day]["orders"] += 1
+            if o.paid and not o.cancelled and not o.refund:
+                daily[day]["revenue"] += float(o.total_price())
+        daily_breakdown = [{"date": d, **v} for d, v in sorted(daily.items())]
+
         context = {
             "total_revenue": total_revenue,
             "total_orders": total_orders_count,
             "average_cart": average_cart,
-            "completed_orders": valid_sales_in_selection, 
-            "cancelled_orders": cancelled_orders_count, 
+            "completed_orders": valid_sales_in_selection,
+            "cancelled_orders": cancelled_orders_count,
             "take_away_count": take_away_count,
+            "daily_breakdown": daily_breakdown,
         }
 
         return Response(context)
@@ -974,9 +993,18 @@ def export_orders_csv(request, restaurant_id):
         orders = orders.filter(created_at__range=[start_date, end_date])
     
     if types:
-        # On filtre selon le statut (payé, annulé, etc.)
-        # Note: Adaptez selon votre logique de filtrage (ex: paid=True)
-        pass 
+        from django.db.models import Q
+        type_filter = Q()
+        if 'paid' in types:
+            type_filter |= Q(paid=True, refund=False, cancelled=False)
+        if 'unpaid' in types:
+            type_filter |= Q(paid=False, refund=False, cancelled=False)
+        if 'cancelled' in types:
+            type_filter |= Q(cancelled=True)
+        if 'refunded' in types:
+            type_filter |= Q(refund=True)
+        if type_filter:
+            orders = orders.filter(type_filter)
 
     # 2. Préparation de la réponse CSV
     response = HttpResponse(content_type='text/csv')

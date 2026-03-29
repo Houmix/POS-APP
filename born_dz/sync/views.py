@@ -10,6 +10,7 @@
 #   POST /api/sync/apply/        → endpoint LOCAL pour appliquer les changements reçus
 
 import json
+import time
 from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
 
@@ -25,6 +26,25 @@ from .serializers import (
     get_serializer_for_table,
     TABLE_REGISTRY,
 )
+
+
+def _log_sync_metric(sync_type, restaurant_id, records_count=0, errors_count=0,
+                     duration_ms=0, success=True, error_details='', terminal_uuid=''):
+    """Enregistre une metrique de synchronisation dans l'audit."""
+    try:
+        from audit.models import SyncMetrics
+        SyncMetrics.objects.create(
+            restaurant_id=restaurant_id or 0,
+            sync_type=sync_type,
+            terminal_uuid=terminal_uuid,
+            records_count=records_count,
+            errors_count=errors_count,
+            duration_ms=duration_ms,
+            success=success,
+            error_details=error_details,
+        )
+    except Exception:
+        pass  # Ne jamais bloquer la sync a cause du monitoring
 
 
 # ─────────────────────────────────────────
@@ -106,6 +126,13 @@ def snapshot(request):
             }, status=404)
 
         base_url = request.build_absolute_uri('/').rstrip('/')
+        # Forcer HTTPS si SERVER_BASE_URL est defini (Railway derriere proxy)
+        from django.conf import settings as dj_settings
+        server_base = getattr(dj_settings, 'SERVER_BASE_URL', '')
+        if server_base:
+            base_url = server_base.rstrip('/')
+        elif base_url.startswith('http://') and request.META.get('HTTP_X_FORWARDED_PROTO') == 'https':
+            base_url = base_url.replace('http://', 'https://', 1)
         data = full_snapshot(int(restaurant_id), base_url=base_url)
         data['success'] = True
         data['server_timestamp'] = datetime.now(dt_timezone.utc).isoformat()
@@ -149,6 +176,7 @@ def push_changes(request):
         ]
     }
     """
+    t_start = time.time()
     try:
         body = json.loads(request.body)
         restaurant_id = body.get('restaurant_id')
@@ -161,6 +189,12 @@ def push_changes(request):
         if not restaurant_id or not changes:
             return JsonResponse({'success': False, 'error': 'restaurant_id et changes requis'}, status=400)
 
+        # Validation : seules certaines tables sont autorisées en push depuis les bornes
+        ALLOWED_PUSH_TABLES = {
+            'order', 'order_item', 'order_item_option', 'customer_loyalty',
+        }
+        ALLOWED_ACTIONS = {'create', 'update', 'delete'}
+
         accepted = 0
         errors = []
 
@@ -170,6 +204,20 @@ def push_changes(request):
                     table = change['table']
                     action = change['action']
                     data = change['data']
+
+                    # Validation des tables et actions autorisées
+                    if table not in ALLOWED_PUSH_TABLES:
+                        errors.append({
+                            'table': table,
+                            'error': f"Table '{table}' non autorisée en push"
+                        })
+                        continue
+                    if action not in ALLOWED_ACTIONS:
+                        errors.append({
+                            'table': table,
+                            'error': f"Action '{action}' non autorisée"
+                        })
+                        continue
 
                     # Appliquer le changement
                     _apply_change(table, action, data, restaurant_id)
@@ -193,6 +241,11 @@ def push_changes(request):
                         'error': str(e)
                     })
 
+        # Enregistrer la metrique de sync
+        duration_ms = int((time.time() - t_start) * 1000)
+        _log_sync_metric('push', restaurant_id, accepted, len(errors),
+                         duration_ms, success=True, terminal_uuid=terminal_uuid)
+
         return JsonResponse({
             'success': True,
             'accepted': accepted,
@@ -201,8 +254,12 @@ def push_changes(request):
         })
 
     except json.JSONDecodeError:
+        duration_ms = int((time.time() - t_start) * 1000)
+        _log_sync_metric('push', 0, 0, 1, duration_ms, success=False, error_details='JSON invalide')
         return JsonResponse({'success': False, 'error': 'JSON invalide'}, status=400)
     except Exception as e:
+        duration_ms = int((time.time() - t_start) * 1000)
+        _log_sync_metric('push', 0, 0, 1, duration_ms, success=False, error_details=str(e))
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 

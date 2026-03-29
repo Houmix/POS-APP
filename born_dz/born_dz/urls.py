@@ -21,6 +21,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.static import serve
 from restaurant.views import KioskConfigView
+from borne_sync.views import list_bornes, send_borne_command
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -41,6 +42,17 @@ urlpatterns = [
 
     # Kiosk config
     path('api/kiosk/config/', KioskConfigView.as_view(), name='kiosk_config'),
+
+    # Gestion des bornes
+    path('api/bornes/', list_bornes, name='list_bornes'),
+    path('api/bornes/command/', send_borne_command, name='send_borne_command_all'),
+    path('api/bornes/command/<str:borne_id>/', send_borne_command, name='send_borne_command'),
+
+    # Audit Trail & Monitoring
+    path('api/audit/', include('audit.urls')),
+
+    # Gestion de Stock
+    path('api/stock/', include('stock.urls')),
 ]
 urlpatterns += [
     re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),

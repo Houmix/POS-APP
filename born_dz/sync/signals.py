@@ -13,12 +13,15 @@ from django.dispatch import receiver
 
 from menu.models import GroupMenu, Menu, Option, Step, StepOption
 from order.models import Order, OrderItem, OrderItemOption
+from stock.models import StockCategory, StockItem, MenuStockLink, OptionStockLink
 
 from .models import SyncLog
 from .serializers import (
     serialize_group_menu, serialize_menu, serialize_option,
     serialize_step, serialize_step_option, serialize_order,
     serialize_order_item, serialize_order_item_option,
+    serialize_stock_category, serialize_stock_item,
+    serialize_menu_stock_link, serialize_option_stock_link,
 )
 
 # ──────────────────────────────────────────
@@ -59,6 +62,18 @@ def _get_restaurant_from_order_item(obj):
 def _get_restaurant_from_order_item_option(obj):
     return obj.order_item.order.restaurant_id
 
+def _get_restaurant_from_stock_category(obj):
+    return obj.restaurant_id
+
+def _get_restaurant_from_stock_item(obj):
+    return obj.restaurant_id
+
+def _get_restaurant_from_menu_stock_link(obj):
+    return obj.stock_item.restaurant_id
+
+def _get_restaurant_from_option_stock_link(obj):
+    return obj.stock_item.restaurant_id
+
 
 SIGNAL_CONFIG = {
     GroupMenu:        ('group_menu',        serialize_group_menu,        _get_restaurant_from_group_menu),
@@ -69,6 +84,10 @@ SIGNAL_CONFIG = {
     Order:            ('order',             serialize_order,             _get_restaurant_from_order),
     OrderItem:        ('order_item',        serialize_order_item,        _get_restaurant_from_order_item),
     OrderItemOption:  ('order_item_option', serialize_order_item_option, _get_restaurant_from_order_item_option),
+    StockCategory:    ('stock_category',    serialize_stock_category,    _get_restaurant_from_stock_category),
+    StockItem:        ('stock_item',        serialize_stock_item,        _get_restaurant_from_stock_item),
+    MenuStockLink:    ('menu_stock_link',   serialize_menu_stock_link,   _get_restaurant_from_menu_stock_link),
+    OptionStockLink:  ('option_stock_link', serialize_option_stock_link, _get_restaurant_from_option_stock_link),
 }
 
 

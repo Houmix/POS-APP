@@ -15,8 +15,26 @@ const SCAN_TIMEOUT_MS = 1500;
 
 // URL et restaurant_id courants (mutables, chargés depuis AsyncStorage au démarrage)
 // EXPO_PUBLIC_DEFAULT_SERVER_URL peut être défini au build time pour la démo web
-const DEFAULT_SERVER_URL =
-    (process.env.EXPO_PUBLIC_DEFAULT_SERVER_URL as string) || 'http://127.0.0.1:8000';
+// Fallback : si on tourne sur un domaine Vercel (demo), pointer vers le cloud Railway
+const CLOUD_URL = 'https://borndz-production.up.railway.app';
+
+function _detectDefaultUrl(): string {
+    // 1. Variable d'environnement au build time (prioritaire)
+    if (process.env.EXPO_PUBLIC_DEFAULT_SERVER_URL) {
+        return process.env.EXPO_PUBLIC_DEFAULT_SERVER_URL as string;
+    }
+    // 2. Detection automatique : si on est sur un domaine Vercel (demo web)
+    if (typeof window !== 'undefined' && window.location) {
+        const host = window.location.hostname;
+        if (host.includes('vercel.app') || host.includes('clickgo-interactive.com')) {
+            return CLOUD_URL;
+        }
+    }
+    // 3. Mode local (Electron / dev)
+    return 'http://127.0.0.1:8000';
+}
+
+const DEFAULT_SERVER_URL = _detectDefaultUrl();
 
 let _currentUrl = DEFAULT_SERVER_URL;
 let _currentRestaurantId: string | null = null;
