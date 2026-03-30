@@ -59,7 +59,15 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: '1'
 
-      # ── 6. Bundle Django avec PyInstaller ─────────────────────────────────
+      # ── 6. Créer une base de données SQLite vierge ───────────────────────
+      - name: Create fresh empty database
+        working-directory: born_dz
+        run: |
+          if exist db.sqlite3 del db.sqlite3
+          venv\Scripts\python manage.py migrate --run-syncdb
+        shell: cmd
+
+      # ── 7. Bundle Django avec PyInstaller ─────────────────────────────────
       - name: Bundle Python backend (PyInstaller)
         working-directory: my-desktop-app
         run: node pyinstaller_bundle.js
