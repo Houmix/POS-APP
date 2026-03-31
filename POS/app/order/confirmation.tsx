@@ -9,7 +9,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 // ==========================================
 // 🖨️ FONCTION D'IMPRESSION SÉRIE (RS232)
 // ==========================================
-const handlePrinting = async (ticketContent) => {
+const handlePrinting = async (ticketContent, qrContent = '') => {
     // Vérification de l'API exposée par preload.js
     if (!window.electronAPI?.printTicket) {
         console.error("❌ API Electron non disponible.");
@@ -17,9 +17,8 @@ const handlePrinting = async (ticketContent) => {
     }
 
     try {
-        console.log("🖨️ Envoi du ticket au port COM via Electron...");
-        // On envoie le contenu brut (le main.js s'occupera de la découpe)
-        const result = await window.electronAPI.printTicket(ticketContent);
+        console.log("🖨️ Envoi du ticket + QR code via Electron...");
+        const result = await window.electronAPI.printTicket(ticketContent, qrContent);
         return result;
     } catch (error) {
         console.error("❌ Erreur de communication imprimante:", error);
@@ -65,10 +64,8 @@ export default function ConfirmationPage() {
                 throw new Error("Contenu du ticket vide.");
             }
 
-            // 3. Construction du flux final
-            // On peut ajouter le contenu du QR à la fin du texte si le main.js ne le gère pas encore
-            // Mais ici on envoie le bloc principal
-            const printResult = await handlePrinting(ticket_content);
+            // 3. Impression ticket + QR code
+            const printResult = await handlePrinting(ticket_content, qr_content || '');
 
             if (printResult.success) {
                 console.log("✅ Impression et découpe terminées");

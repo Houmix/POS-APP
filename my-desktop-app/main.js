@@ -383,7 +383,31 @@ ipcMain.handle('testNetworkPrinter', async (event, ip, port) => {
     }
 });
 
-ipcMain.handle("print-ticket", async (event, ticketText) => {
+/**
+ * Génère les commandes ESC/POS pour imprimer un QR code (modèle 2)
+ */
+function buildQRCodeCommands(data) {
+    if (!data || data.trim().length === 0) return Buffer.alloc(0);
+    const dataBytes = Buffer.from(data.trim(), 'utf8');
+    const storeLen = dataBytes.length + 3;
+    const pL = storeLen & 0xFF;
+    const pH = (storeLen >> 8) & 0xFF;
+
+    return Buffer.concat([
+        Buffer.from('\n'),                                                          // ligne vide avant
+        Buffer.from([0x1B, 0x61, 0x01]),                                           // alignement centré
+        Buffer.from([0x1D, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00]),     // modèle 2
+        Buffer.from([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, 0x06]),           // taille module 6
+        Buffer.from([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31]),           // correction M
+        Buffer.from([0x1D, 0x28, 0x6B, pL,   pH,   0x31, 0x50, 0x30]),           // stocker données
+        dataBytes,
+        Buffer.from([0x1D, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30]),           // imprimer QR
+        Buffer.from([0x1B, 0x61, 0x00]),                                           // retour alignement gauche
+        Buffer.from('\n'),                                                          // ligne vide après
+    ]);
+}
+
+ipcMain.handle("print-ticket", async (event, ticketText, qrContent) => {
     const tempFilePath = path.join(os.tmpdir(), `ticket-${Date.now()}.bin`);
 
     try {
@@ -404,16 +428,18 @@ ipcMain.handle("print-ticket", async (event, ticketText) => {
         const LINE_FEEDS      = '\n\n\n\n\n';                // Espace avant coupe
         const CUT_COMMAND     = GS + 'V' + '\x42' + '\x00'; // Coupe complète
 
-        const fullContent = INIT
-            + MARGIN_LEFT_0
-            + ALIGN_LEFT
-            + FONT_NORMAL
-            + LINE_SPACING
-            + ticketText
-            + LINE_FEEDS
-            + CUT_COMMAND;
+        // ── 2. Assemblage (ticket + QR code optionnel) en Buffer ──
+        const headerBuf = Buffer.from(INIT + MARGIN_LEFT_0 + ALIGN_LEFT + FONT_NORMAL + LINE_SPACING, 'latin1');
+        const ticketBuf = Buffer.from(ticketText, 'latin1');
+        const qrBuf     = buildQRCodeCommands(qrContent || '');
+        const footerBuf = Buffer.from(LINE_FEEDS + CUT_COMMAND, 'latin1');
 
-        // ── 2. Écriture fichier binaire ──
+        const fullContentBuf = Buffer.concat([headerBuf, ticketBuf, qrBuf, footerBuf]);
+
+        // Rétro-compat : la suite du code utilise encore fullContent comme string latin1
+        const fullContent = fullContentBuf.toString('latin1');
+
+        // ── 3. Écriture fichier binaire (latin1 préserve les octets ESC/POS) ──
         fs.writeFileSync(tempFilePath, fullContent, { encoding: 'latin1' });
 
         // ── 3. Récupérer les imprimantes physiques ──

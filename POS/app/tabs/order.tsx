@@ -16,6 +16,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getPosUrl } from "@/utils/serverConfig";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import QRScanner from "@/components/QRScanner";
 
 
 export default function OrderScreen() {
@@ -64,6 +65,7 @@ export default function OrderScreen() {
 
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [scannerVisible, setScannerVisible] = useState(false);
 
   // États Historique
   const [historyVisible, setHistoryVisible] = useState(false);
@@ -901,6 +903,12 @@ export default function OrderScreen() {
                 <MaterialCommunityIcons name="close-circle" size={18} color="#999" />
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+              onPress={() => setScannerVisible(true)}
+              style={{ marginLeft: 8, padding: 4 }}
+            >
+              <MaterialCommunityIcons name="qrcode-scan" size={22} color="#6366F1" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -1074,6 +1082,16 @@ export default function OrderScreen() {
       </Modal>
       {/* Modale Confirmation Remboursement (NOUVEAU) */}
       {renderRefundConfirmationModal()}
+
+      {/* Scanner QR Code */}
+      <QRScanner
+        visible={scannerVisible}
+        onScanned={(data) => {
+          setScannerVisible(false);
+          setSearchQuery(data);
+        }}
+        onClose={() => setScannerVisible(false)}
+      />
     </View>
   );
 }

@@ -700,6 +700,7 @@ def generate_ticket_content(request, order_id):
             "order_id": order.id,
             "created_at": datetime.now().isoformat(),
             "ticket_content": ticket_data['content'],
+            "qr_content": f"ORDER-{order.id}",
             "total": float(order.total_price()),
             "format": ticket_data['format']
         }, status=status.HTTP_200_OK)

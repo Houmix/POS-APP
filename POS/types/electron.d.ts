@@ -70,7 +70,7 @@ interface LicenseAPI {
 }
 
 interface PrinterAPI {
-    printTicket: (ticketText: string) => Promise<PrintResult>;
+    printTicket: (ticketText: string, qrContent?: string) => Promise<PrintResult>;
 }
 
 // Étendre l'objet Window global
