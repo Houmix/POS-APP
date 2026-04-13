@@ -67,6 +67,10 @@ export default function OrderScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [scannerVisible, setScannerVisible] = useState(false);
 
+  // ─── Scanner USB/Bluetooth : capture globale clavier ─────────────────────
+  const scanBufferRef = useRef("");
+  const scanTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // États Historique
   const [historyVisible, setHistoryVisible] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -141,16 +145,96 @@ export default function OrderScreen() {
     };
   }, []);
 
-  // Auto-ouvrir la commande quand le scan QR correspond exactement à un order_id
+  // ─── Écoute globale clavier pour scanner USB/Bluetooth ──────────────────
+  // Les scanners USB envoient les caractères très vite (~50ms total) suivi d'Enter.
+  // On accumule les caractères et on traite à la réception d'Enter ou après un timeout.
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignorer si un input/textarea est focus (l'utilisateur tape manuellement)
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea') return;
+
+      if (e.key === 'Enter') {
+        // Fin du scan : traiter le buffer
+        const raw = scanBufferRef.current.trim();
+        scanBufferRef.current = "";
+        if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+
+        if (raw.length > 0) {
+          e.preventDefault();
+          // Extraire l'ID depuis ORDER-{id} ou juste un nombre
+          const match = raw.match(/ORDER-(\d+)/i);
+          const orderId = match ? parseInt(match[1], 10) : parseInt(raw, 10);
+          if (!isNaN(orderId)) {
+            handleScannedOrderId(orderId);
+          }
+        }
+        return;
+      }
+
+      // Accumuler le caractère (ignorer les touches spéciales)
+      if (e.key.length === 1) {
+        scanBufferRef.current += e.key;
+
+        // Reset le timer (si le scanner s'arrête sans Enter, on traite quand même)
+        if (scanTimerRef.current) clearTimeout(scanTimerRef.current);
+        scanTimerRef.current = setTimeout(() => {
+          const raw = scanBufferRef.current.trim();
+          scanBufferRef.current = "";
+          if (raw.length >= 3) {
+            const match = raw.match(/ORDER-(\d+)/i);
+            const orderId = match ? parseInt(match[1], 10) : parseInt(raw, 10);
+            if (!isNaN(orderId)) {
+              handleScannedOrderId(orderId);
+            }
+          }
+        }, 200); // 200ms sans nouveau caractère = fin de saisie scanner
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [orders]);
+
+  // Quand un ID est scanné : ouvrir la commande (locale ou via API)
+  const handleScannedOrderId = async (orderId: number) => {
+    // 1. Chercher dans les commandes déjà chargées
+    const local = orders.find(o => o.order_id === orderId);
+    if (local) {
+      openOrderDetails(local);
+      return;
+    }
+
+    // 2. Pas trouvée localement → fetch depuis l'API
+    try {
+      const accessToken = await AsyncStorage.getItem("token");
+      const restaurantId = await AsyncStorage.getItem("Employee_restaurant_id");
+      const response = await axios.get(
+        `${getPosUrl()}/order/api/getPOSorder/${restaurantId}/`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const allOrders: Order[] = response.data.orders || [];
+      const found = allOrders.find((o: Order) => o.order_id === orderId);
+      if (found) {
+        openOrderDetails(found);
+      } else {
+        Alert.alert("Commande introuvable", `Aucune commande #${orderId} trouvée.`);
+      }
+    } catch (error) {
+      console.error("❌ Erreur fetch commande scannée:", error);
+      Alert.alert("Erreur", "Impossible de récupérer la commande.");
+    }
+  };
+
+  // Auto-ouvrir la commande quand le scan QR (caméra) correspond exactement à un order_id
   useEffect(() => {
     if (!searchQuery) return;
     const id = parseInt(searchQuery.trim(), 10);
     if (isNaN(id)) return;
-    const match = orders.find(o => o.order_id === id);
-    if (match) {
-      openOrderDetails(match);
-      setSearchQuery('');
-    }
+    handleScannedOrderId(id);
+    setSearchQuery('');
   }, [searchQuery, orders]);
 
   const fetchOrders = async () => {
