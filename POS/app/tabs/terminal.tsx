@@ -469,6 +469,7 @@ export default function MenuScreen() {
         >
           {categories.map((category) => {
             const isSelected = selectedCategory?.id === category.id;
+            const showImage = theme.sidebarDisplayMode === 'with_image' && category.photo_url;
             return (
               <TouchableOpacity
                 key={category.id}
@@ -479,7 +480,14 @@ export default function MenuScreen() {
                 ]}
                 onPress={() => { handleUserActivity(); setSelectedCategory(category); }}
               >
-                <Text style={[styles.catText, { color: isSelected ? theme.secondaryColor : theme.categoryTextColor }]} numberOfLines={3}>
+                {showImage && (
+                  <Image
+                    source={{ uri: category.photo_url }}
+                    style={styles.catImage}
+                    resizeMode="cover"
+                  />
+                )}
+                <Text style={[styles.catText, { color: isSelected ? theme.selectedCategoryTextColor : theme.categoryTextColor }]} numberOfLines={3}>
                   {category.name}
                 </Text>
               </TouchableOpacity>
@@ -805,6 +813,7 @@ const styles = StyleSheet.create({
     borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
     minHeight: 48, justifyContent: "center",
   },
+  catImage: { width: 44, height: 44, borderRadius: 8, marginBottom: 4 },
   catText: { fontSize: 10, fontWeight: "600", textAlign: "center" },
 
   // Menu grid

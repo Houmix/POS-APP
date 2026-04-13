@@ -17,6 +17,7 @@ export interface KioskTheme {
     categoryBgColor: string;
     selectedCategoryBgColor: string;
     categoryTextColor: string;
+    selectedCategoryTextColor: string;
     logoUrl: string | null;
     screensaverVideoUrl: string | null;
     cardStyle: 'gradient' | 'macdo' | 'magazine';
@@ -29,6 +30,7 @@ export interface KioskTheme {
     kitchenPrinterIp: string;
     kitchenPrinterPort: number;
     kitchenPrinterEnabled: boolean;
+    sidebarDisplayMode: 'with_image' | 'without_image';
 }
 
 const DEFAULT_THEME: KioskTheme = {
@@ -41,6 +43,7 @@ const DEFAULT_THEME: KioskTheme = {
     categoryBgColor: '#1e293b',
     selectedCategoryBgColor: '#334155',
     categoryTextColor: '#94a3b8',
+    selectedCategoryTextColor: '#ff69b4',
     logoUrl: null,
     screensaverVideoUrl: null,
     cardStyle: 'gradient',
@@ -53,6 +56,7 @@ const DEFAULT_THEME: KioskTheme = {
     kitchenPrinterIp: '',
     kitchenPrinterPort: 9100,
     kitchenPrinterEnabled: false,
+    sidebarDisplayMode: 'with_image',
 };
 
 const THEME_CACHE_KEY = 'kiosk_theme_cache';
@@ -96,6 +100,7 @@ export function KioskThemeProvider({ children }: { children: React.ReactNode }) 
                 categoryBgColor:           data.category_bg_color           || DEFAULT_THEME.categoryBgColor,
                 selectedCategoryBgColor:   data.selected_category_bg_color  || DEFAULT_THEME.selectedCategoryBgColor,
                 categoryTextColor:         data.category_text_color         || DEFAULT_THEME.categoryTextColor,
+                selectedCategoryTextColor: data.selected_category_text_color || DEFAULT_THEME.selectedCategoryTextColor,
                 logoUrl:            data.logo_url            || null,
                 screensaverVideoUrl:data.screensaver_video_url || null,
                 cardStyle:          (data.card_style as 'gradient' | 'macdo' | 'magazine') || 'gradient',
@@ -108,6 +113,7 @@ export function KioskThemeProvider({ children }: { children: React.ReactNode }) 
                 kitchenPrinterIp:   data.kitchen_printer_ip || '',
                 kitchenPrinterPort: data.kitchen_printer_port || 9100,
                 kitchenPrinterEnabled: data.kitchen_printer_enabled ?? false,
+                sidebarDisplayMode: (data.sidebar_display_mode as 'with_image' | 'without_image') || 'with_image',
             };
             setTheme(newTheme);
             await AsyncStorage.setItem(cacheKey, JSON.stringify(newTheme));
