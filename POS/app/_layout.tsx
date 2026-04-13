@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 import { KioskThemeProvider } from "@/contexts/KioskThemeContext";
+import { CashierSessionProvider } from "@/contexts/CashierSessionContext";
 import { useEffect, useState, useCallback } from "react";
 import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -151,12 +152,14 @@ export default function RootLayout() {
   return (
     <KioskThemeProvider>
       <LanguageProvider>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="(order)" />
-          <Stack.Screen name="+not-found" />
-        </Stack>
+        <CashierSessionProvider>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="(order)" />
+            <Stack.Screen name="+not-found" />
+          </Stack>
+        </CashierSessionProvider>
       </LanguageProvider>
     </KioskThemeProvider>
   );

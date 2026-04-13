@@ -1,9 +1,10 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Platform, StyleSheet, ActivityIndicator, View } from 'react-native';
-import { useEffect, useState } from 'react';
+import { Platform, StyleSheet, ActivityIndicator, View, Text, TouchableOpacity, Pressable } from 'react-native';
+import { useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKioskTheme } from '@/contexts/KioskThemeContext';
+import { useCashierSession } from '@/contexts/CashierSessionContext';
 
 const COLORS = {
   inactive: "#94A3B8",
@@ -13,6 +14,7 @@ const COLORS = {
 
 export default function TabLayout() {
   const theme = useKioskTheme();
+  const { showTimeoutWarning, remainingSeconds, registerActivity } = useCashierSession();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -24,8 +26,7 @@ export default function TabLayout() {
 
         if (userData) {
           const user = JSON.parse(userData);
-          // Sécurité : on vérifie si role_name existe, sinon on regarde role
-          const role = user.role_name || user.role?.role || ''; 
+          const role = user.role_name || user.role?.role || '';
           console.log("🔍 _layout: Rôle détecté:", role);
           setUserRole(role);
         }
@@ -58,7 +59,26 @@ export default function TabLayout() {
   // Concerne : Manager, Owner et Cashier. (Le Customer est exclu ici)
   const isStaff = roleLower === 'manager' || roleLower === 'owner' || roleLower === 'cashier';
 
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
   return (
+    <Pressable style={{ flex: 1 }} onPress={registerActivity} onTouchStart={registerActivity}>
+      {/* Bannière d'alerte inactivité */}
+      {showTimeoutWarning && (
+        <View style={styles.timeoutBanner}>
+          <Ionicons name="time-outline" size={20} color="#fff" />
+          <Text style={styles.timeoutText}>
+            Déconnexion dans {formatTime(remainingSeconds)} — Touchez l'écran pour rester connecté
+          </Text>
+          <TouchableOpacity onPress={registerActivity} style={styles.timeoutBtn}>
+            <Text style={styles.timeoutBtnText}>Je suis là</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -176,6 +196,7 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </Pressable>
   );
 }
 
@@ -197,5 +218,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
+  },
+  // Bannière timeout
+  timeoutBanner: {
+    backgroundColor: '#e74c3c',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  timeoutText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  timeoutBtn: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+  },
+  timeoutBtnText: {
+    color: '#e74c3c',
+    fontWeight: '700',
+    fontSize: 13,
   },
 });

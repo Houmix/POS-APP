@@ -39,4 +39,11 @@ urlpatterns = [
     # ─── Documents ───────────────────────────────────────────────────────────
     path('api/employees/<int:pk>/documents/', DocumentList.as_view(), name='document-list'),
     path('api/documents/<int:pk>/', DocumentDelete.as_view(), name='document-delete'),
+
+    # ─── Suivi activité caissier ─────────────────────────────────────────────
+    path('api/cashier-session/start/', CashierSessionStart.as_view(), name='cashier-session-start'),
+    path('api/cashier-session/heartbeat/', CashierSessionHeartbeat.as_view(), name='cashier-session-heartbeat'),
+    path('api/cashier-session/end/', CashierSessionEnd.as_view(), name='cashier-session-end'),
+    path('api/employees/<int:pk>/activity/', EmployeeActivity.as_view(), name='employee-activity'),
+    path('api/restaurant/<int:restaurant_id>/activity/', RestaurantActivity.as_view(), name='restaurant-activity'),
 ]

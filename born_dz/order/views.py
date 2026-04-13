@@ -548,16 +548,19 @@ class OrderUpdate(APIView):
                     print(f"[LOYALTY] Erreur restitution points (non bloquant): {loyalty_err}")
 
             # Notification KDS
+            # Si kds_status passe à 'new' (validation commande cash), envoyer 'new_order'
+            # pour que le KDS refetch la liste (la commande n'était pas dans sa liste avant)
             try:
                 from channels.layers import get_channel_layer
                 from asgiref.sync import async_to_sync
                 from borne_sync.consumers import KDS_GROUP_NAME
                 channel_layer = get_channel_layer()
                 if channel_layer:
+                    ws_type = 'new_order' if new_kds_status == 'new' else 'order_updated'
                     async_to_sync(channel_layer.group_send)(
                         KDS_GROUP_NAME,
                         {'type': 'kds.message', 'data': {
-                            'type': 'order_updated',
+                            'type': ws_type,
                             'order_id': order_id,
                             'kds_status': new_kds_status or order.kds_status,
                             'status': data.get('status', order.status),
@@ -626,6 +629,8 @@ class KDSOrderGet(APIView):
             restaurant=restaurant_id,
             kds_status__in=active_kds_statuses,
             created_at__date=today,
+            cancelled=False,
+            refund=False,
         ).prefetch_related(
             'items__menu',
             'items__options__option__step'

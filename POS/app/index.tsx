@@ -18,10 +18,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getPosUrl, SERVER_URL_KEY, RESTAURANT_ID_KEY, loadRestaurantId, getRestaurantId, saveRestaurantId, saveServerUrl, loadServerUrl, scanNetwork } from "@/utils/serverConfig";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useKioskTheme } from "@/contexts/KioskThemeContext";
+import { useCashierSession } from "@/contexts/CashierSessionContext";
 
 export default function IdentificationScreen() {
   const navigation = useNavigation();
   const theme = useKioskTheme();
+  const { startSession } = useCashierSession();
   const [errorMessage, setErrorMessage] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -149,8 +151,11 @@ export default function IdentificationScreen() {
          await AsyncStorage.setItem("Employee_restaurant_id", restaurantId);
          await saveRestaurantId(restaurantId);
 
+         // Démarrer le suivi de session caissier
+         await startSession();
+
          navigation.navigate("tabs" as never);
-      } 
+      }
       // Cas 2 : Backend NON mis à jour (Ancien format) -> contient juste 'access' et 'refresh'
       else if (data.access) {
          // Si vous tombez ici, c'est que le fichier views.py n'a pas été modifié correctement.
@@ -170,8 +175,11 @@ export default function IdentificationScreen() {
              // Important : stocker le user pour que _layout.tsx le lise
              navigation.navigate("tabs" as never);
          } catch(e) {
+             // Pas de tracking si on ne peut pas récupérer l'user
              navigation.navigate("tabs" as never);
          }
+         // Démarrer le suivi de session caissier
+         await startSession();
       } else {
         setErrorMessage("Format de réponse serveur inconnu");
       }

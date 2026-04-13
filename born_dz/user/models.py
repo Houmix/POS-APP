@@ -88,6 +88,35 @@ class Employee(models.Model):
         return f"{phone} {role} {restaurant_name}"
 
 
+class CashierSession(models.Model):
+    """Suivi automatique de l'activité des caissiers sur le POS."""
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='cashier_sessions')
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, null=True)
+    login_at = models.DateTimeField(auto_now_add=True)
+    last_activity = models.DateTimeField(auto_now_add=True)
+    logout_at = models.DateTimeField(null=True, blank=True)
+    logout_reason = models.CharField(max_length=20, choices=[
+        ('manual', 'Déconnexion manuelle'),
+        ('timeout', 'Inactivité (timeout)'),
+        ('forced', 'Déconnexion forcée'),
+    ], default='manual')
+
+    @property
+    def active_duration_minutes(self):
+        end = self.logout_at or self.last_activity
+        return int((end - self.login_at).total_seconds() / 60)
+
+    class Meta:
+        ordering = ['-login_at']
+        indexes = [
+            models.Index(fields=['employee', 'login_at']),
+            models.Index(fields=['restaurant', 'login_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.employee} - {self.login_at.strftime('%d/%m %H:%M')}"
+
+
 class TimeEntry(models.Model):
     employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='time_entries')
     check_in = models.DateTimeField()

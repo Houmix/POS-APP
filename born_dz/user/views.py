@@ -5,7 +5,7 @@ from django.shortcuts import render # type: ignore
 from rest_framework.views import APIView # type: ignore
 from rest_framework.response import Response # type: ignore
 from rest_framework import status # type: ignore
-from user.models import User, Employee, TimeEntry, WorkSchedule, Payslip, EmployeeDocument
+from user.models import User, Employee, TimeEntry, WorkSchedule, Payslip, EmployeeDocument, CashierSession
 from user.serializers import (
     UserSerializer, EmployeeSerializer,
     TimeEntrySerializer, WorkScheduleSerializer, PayslipSerializer, EmployeeDocumentSerializer,
@@ -18,6 +18,8 @@ from rest_framework_simplejwt.tokens import RefreshToken # type: ignore
 from django.contrib.auth.hashers import check_password
 from customer.models import Loyalty
 from customer.serializers import LoyaltySerializer
+from django.utils import timezone
+from datetime import datetime, timedelta
 
 
 class EmployeeTokenView(APIView):
@@ -518,3 +520,162 @@ class DocumentDelete(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except EmployeeDocument.DoesNotExist:
             return Response({"error": "Document non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+
+# ─── Suivi activité caissier ────────────────────────────────────────────────
+
+class CashierSessionStart(APIView):
+    """Démarre une session caissier (appelé au login POS)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        try:
+            employee = Employee.objects.get(user=user)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Fermer toute session encore ouverte pour cet employé
+        open_sessions = CashierSession.objects.filter(employee=employee, logout_at__isnull=True)
+        now = datetime.now()
+        for s in open_sessions:
+            s.logout_at = now
+            s.logout_reason = 'forced'
+            s.save()
+
+        # Créer une nouvelle session
+        session = CashierSession.objects.create(
+            employee=employee,
+            restaurant=employee.restaurant,
+        )
+        return Response({
+            "session_id": session.id,
+            "login_at": session.login_at.isoformat(),
+        }, status=status.HTTP_201_CREATED)
+
+
+class CashierSessionHeartbeat(APIView):
+    """Met à jour last_activity (appelé périodiquement depuis le POS)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        session_id = request.data.get('session_id')
+        if not session_id:
+            return Response({"error": "session_id requis"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            session = CashierSession.objects.get(pk=session_id, logout_at__isnull=True)
+        except CashierSession.DoesNotExist:
+            return Response({"error": "Session introuvable ou déjà fermée"}, status=status.HTTP_404_NOT_FOUND)
+
+        session.last_activity = datetime.now()
+        session.save(update_fields=['last_activity'])
+        return Response({"ok": True})
+
+
+class CashierSessionEnd(APIView):
+    """Termine une session caissier (déconnexion manuelle ou timeout)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        session_id = request.data.get('session_id')
+        reason = request.data.get('reason', 'manual')  # manual | timeout | forced
+
+        if not session_id:
+            return Response({"error": "session_id requis"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            session = CashierSession.objects.get(pk=session_id, logout_at__isnull=True)
+        except CashierSession.DoesNotExist:
+            return Response({"error": "Session introuvable ou déjà fermée"}, status=status.HTTP_404_NOT_FOUND)
+
+        session.logout_at = datetime.now()
+        session.logout_reason = reason
+        session.save(update_fields=['logout_at', 'logout_reason'])
+        return Response({
+            "session_id": session.id,
+            "duration_minutes": session.active_duration_minutes,
+        })
+
+
+class EmployeeActivity(APIView):
+    """Retourne les sessions d'activité pour un employé (pour le graphe admin)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        try:
+            employee = Employee.objects.get(pk=pk)
+        except Employee.DoesNotExist:
+            return Response({"error": "Employé non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+        qs = CashierSession.objects.filter(employee=employee)
+
+        if date_from:
+            try:
+                d_from = datetime.strptime(date_from, '%Y-%m-%d')
+                qs = qs.filter(login_at__gte=d_from)
+            except ValueError:
+                pass
+        if date_to:
+            try:
+                d_to = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+                qs = qs.filter(login_at__lt=d_to)
+            except ValueError:
+                pass
+
+        sessions = qs.order_by('-login_at')[:100]
+
+        data = []
+        for s in sessions:
+            data.append({
+                'id': s.id,
+                'login_at': s.login_at.isoformat() if s.login_at else None,
+                'last_activity': s.last_activity.isoformat() if s.last_activity else None,
+                'logout_at': s.logout_at.isoformat() if s.logout_at else None,
+                'logout_reason': s.logout_reason,
+                'duration_minutes': s.active_duration_minutes,
+            })
+
+        return Response(data)
+
+
+class RestaurantActivity(APIView):
+    """Retourne les sessions d'activité pour tout le restaurant (vue globale admin)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, restaurant_id):
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        qs = CashierSession.objects.filter(restaurant_id=restaurant_id)
+
+        if date_from:
+            try:
+                d_from = datetime.strptime(date_from, '%Y-%m-%d')
+                qs = qs.filter(login_at__gte=d_from)
+            except ValueError:
+                pass
+        if date_to:
+            try:
+                d_to = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+                qs = qs.filter(login_at__lt=d_to)
+            except ValueError:
+                pass
+
+        sessions = qs.order_by('-login_at')[:200]
+
+        data = []
+        for s in sessions:
+            data.append({
+                'id': s.id,
+                'employee_id': s.employee_id,
+                'employee_name': f"{s.employee.first_name} {s.employee.last_name}".strip() or (s.employee.user.phone if s.employee.user else "N/A"),
+                'login_at': s.login_at.isoformat() if s.login_at else None,
+                'last_activity': s.last_activity.isoformat() if s.last_activity else None,
+                'logout_at': s.logout_at.isoformat() if s.logout_at else None,
+                'logout_reason': s.logout_reason,
+                'duration_minutes': s.active_duration_minutes,
+            })
+
+        return Response(data)
