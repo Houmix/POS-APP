@@ -437,7 +437,7 @@ class GroupMenuDetail(APIView):
         except GroupMenu.DoesNotExist:
             return Response({"error": "GroupMenu non trouvé"}, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = GroupMenuSerializer(group_menu)
+        serializer = GroupMenuSerializer(group_menu, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 class GroupMenuList(APIView):
@@ -446,7 +446,7 @@ class GroupMenuList(APIView):
     
     def get(self, request, id_restaurant, *args, **kwargs):
         group_menus = GroupMenu.objects.filter(restaurant=id_restaurant)
-        serializer = GroupMenuSerializer(group_menus, many=True)
+        serializer = GroupMenuSerializer(group_menus, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -482,7 +482,7 @@ class MenuList(APIView):
     
     def get(self, request, id_restaurant, *args, **kwargs):
         menus = Menu.objects.filter(group_menu__restaurant__id=id_restaurant)
-        serializer = MenuSerializer(menus, many=True)
+        serializer = MenuSerializer(menus, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
