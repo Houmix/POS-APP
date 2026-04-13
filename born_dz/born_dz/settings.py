@@ -116,11 +116,11 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',    # Utilisateurs authentifies (par user ID)
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '30/minute',       # 30 req/min pour les anonymes (login, health, discover)
-        'user': '120/minute',      # 120 req/min pour les utilisateurs authentifies
-        'sync': '20/minute',       # 20 req/min pour les endpoints de synchronisation
-        'login': '5/minute',       # 5 tentatives de login/min (anti brute-force)
-        'orders': '60/minute',     # 60 req/min pour les commandes (bornes actives)
+        'anon': '200/minute',      # 200 req/min pour les anonymes (bornes, KDS, display)
+        'user': '500/minute',      # 500 req/min pour les utilisateurs authentifies (POS, admin)
+        'sync': '60/minute',       # 60 req/min pour les endpoints de synchronisation
+        'login': '10/minute',      # 10 tentatives de login/min (anti brute-force)
+        'orders': '200/minute',    # 200 req/min pour les commandes (bornes actives)
     },
 }
 SIMPLE_JWT = {
