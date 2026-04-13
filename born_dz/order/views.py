@@ -659,7 +659,7 @@ class KDSOrderGet(APIView):
                 "cash":                order.cash,
                 "paid":                order.paid,
                 "take_away":           order.take_away,
-                "created_at":          order.created_at.isoformat(),
+                "created_at":          order.created_at.isoformat() + "+01:00",
                 "total_price":         float(order.total_price()),
                 "items":               order_items,
                 "cancelled":           order.cancelled,

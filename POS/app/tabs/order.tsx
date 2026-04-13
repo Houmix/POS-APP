@@ -435,10 +435,10 @@ export default function OrderScreen() {
       console.log(`🚀 Exécution Action: ${action} sur #${orderId}`);
 
       let updateData: any = {};
-      if (action === "Valider") updateData = { paid: true, status: "in_progress" };
+      if (action === "Valider") updateData = { paid: true, status: "in_progress", kds_status: "new" };
       else if (action === "Annuler") updateData = { cancelled: true, status: "cancelled" };
       else if (action === "Rembourser") updateData = { refund: true, status: "refund" };
-      else if (action === "Prête") updateData = { status: "ready" };
+      else if (action === "Prête") updateData = { status: "ready", kds_status: "done" };
 
       const accessToken = await AsyncStorage.getItem("token");
 
@@ -453,26 +453,28 @@ export default function OrderScreen() {
 
         setOrders((prevOrders) =>
           prevOrders.map((order) =>
-            order.order_id === orderId 
-              ? { 
-                  ...order, 
-                  ...updateData, 
+            order.order_id === orderId
+              ? {
+                  ...order,
+                  ...updateData,
                   order_status: updateData.status || order.order_status,
-                  last_updated: nowIso 
-                } 
+                  kds_status: updateData.kds_status || order.kds_status,
+                  last_updated: nowIso
+                }
               : order
           )
         );
-        
+
         if (modalVisible && selectedOrder?.order_id === orderId) {
             if(action === "Rembourser" || action === "Annuler") {
                 setModalVisible(false);
                 setSelectedOrder(null);
             } else {
-                setSelectedOrder(prev => prev ? ({ 
-                    ...prev, 
-                    ...updateData, 
-                    order_status: updateData.status || prev.order_status 
+                setSelectedOrder(prev => prev ? ({
+                    ...prev,
+                    ...updateData,
+                    order_status: updateData.status || prev.order_status,
+                    kds_status: updateData.kds_status || prev.kds_status
                 }) : null);
             }
         }
