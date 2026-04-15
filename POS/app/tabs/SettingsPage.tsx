@@ -44,6 +44,8 @@ export default function SettingsPage() {
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'downloading' | 'downloaded' | 'not-available' | 'error'>('idle');
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const [updateErrorMsg, setUpdateErrorMsg] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string>('…');
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   const fetchConfig = useCallback(async () => {
@@ -73,6 +75,10 @@ export default function SettingsPage() {
   useEffect(() => {
     const api = (window as any).updaterAPI;
     if (!api) return;
+    // Récupérer la version de l'app
+    api.getVersion?.().then((v: string) => {
+      if (v) setAppVersion(`V${v}`);
+    }).catch(() => {});
     // Récupérer l'état actuel au montage
     api.getStatus?.().then((s: any) => {
       if (s) {
@@ -88,6 +94,7 @@ export default function SettingsPage() {
       setUpdateStatus('downloading');
       setUpdateVersion(version);
       setUpdateProgress(0);
+      setUpdateErrorMsg(null);
     });
     api.onUpdateProgress?.((pct: number) => {
       setUpdateStatus('downloading');
@@ -102,9 +109,11 @@ export default function SettingsPage() {
     });
     api.onUpdateNotAvailable?.(() => {
       setUpdateStatus('not-available');
+      setUpdateErrorMsg(null);
     });
-    api.onUpdateError?.(() => {
+    api.onUpdateError?.((msg: string) => {
       setUpdateStatus('error');
+      setUpdateErrorMsg(msg || 'Erreur inconnue');
     });
   }, []);
 
@@ -113,11 +122,19 @@ export default function SettingsPage() {
     if (!api) { Alert.alert('Info', 'Disponible uniquement depuis l\'app desktop'); return; }
     setUpdateStatus('checking');
     setUpdateProgress(0);
+    setUpdateErrorMsg(null);
     progressAnim.setValue(0);
-    const result = await api.checkForUpdate();
-    if (result?.status === 'error') {
+    try {
+      const result = await api.checkForUpdate();
+      if (result?.status === 'error') {
+        setUpdateStatus('error');
+        setUpdateErrorMsg(result.message || 'Impossible de vérifier');
+      } else if (result?.status === 'noRelease') {
+        setUpdateStatus('not-available');
+      }
+    } catch (e: any) {
       setUpdateStatus('error');
-      Alert.alert('Erreur', result.message || 'Impossible de vérifier');
+      setUpdateErrorMsg(e?.message || 'Impossible de vérifier les mises à jour');
     }
     // Les listeners gèreront la suite (available/not-available/progress/downloaded)
   };
@@ -287,7 +304,7 @@ export default function SettingsPage() {
 
           <View style={s.row}>
             <Text style={[s.label, { flex: 1 }]}>Version actuelle</Text>
-            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.textColor }}>V2.0.0</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.textColor }}>{appVersion}</Text>
           </View>
 
           {/* Barre de progression */}
@@ -337,7 +354,7 @@ export default function SettingsPage() {
           {updateStatus === 'error' && (
             <View style={[s.row, { gap: 8 }]}>
               <Ionicons name="warning" size={18} color="#ef4444" />
-              <Text style={[s.label, { color: '#ef4444' }]}>Erreur de vérification</Text>
+              <Text style={[s.label, { color: '#ef4444', flex: 1 }]}>{updateErrorMsg || 'Erreur de vérification'}</Text>
             </View>
           )}
 

@@ -965,14 +965,28 @@ let updateState = { status: 'idle', version: null, progress: 0 };
 // status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
 
 // ── IPC handlers pour le renderer ──
+ipcMain.handle('app-version', () => app.getVersion());
+
 ipcMain.handle('updater-check', async () => {
-    if (!app.isPackaged) return { status: 'error', message: 'Disponible uniquement en production' };
+    if (!app.isPackaged) return { status: 'error', message: 'Mode développement — les mises à jour ne sont disponibles que sur l\'application installée.' };
     try {
         updateState = { ...updateState, status: 'checking', progress: 0 };
         await autoUpdater.checkForUpdates();
         return { status: 'ok' };
     } catch (e) {
-        return { status: 'error', message: e.message };
+        const msg = e.message || '';
+        // Message clair selon le type d'erreur
+        if (msg.includes('404') || msg.includes('Not Found') || msg.includes('no published')) {
+            updateState = { status: 'not-available', version: null, progress: 0 };
+            return { status: 'ok', noRelease: true };
+        }
+        if (msg.includes('401') || msg.includes('403') || msg.includes('private')) {
+            return { status: 'error', message: 'Le dépôt GitHub est privé. Rendez-le public pour activer les mises à jour automatiques.' };
+        }
+        if (msg.includes('ENOTFOUND') || msg.includes('ECONNREFUSED') || msg.includes('network')) {
+            return { status: 'error', message: 'Pas de connexion internet.' };
+        }
+        return { status: 'error', message: msg };
     }
 });
 

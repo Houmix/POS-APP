@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('updaterAPI', {
     checkForUpdate:     () => ipcRenderer.invoke('updater-check'),
     installUpdate:      () => ipcRenderer.invoke('updater-install'),
     getStatus:          () => ipcRenderer.invoke('updater-status'),
+    getVersion:         () => ipcRenderer.invoke('app-version'),
     onUpdateAvailable:  (cb) => ipcRenderer.on('update-available', (_, version) => cb(version)),
     onUpdateProgress:   (cb) => ipcRenderer.on('update-progress', (_, percent) => cb(percent)),
     onUpdateDownloaded: (cb) => ipcRenderer.on('update-downloaded', (_, version) => cb(version)),
