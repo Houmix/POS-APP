@@ -48,6 +48,10 @@ export default function SettingsPage() {
   const [appVersion, setAppVersion] = useState<string>('…');
   const progressAnim = useRef(new Animated.Value(0)).current;
 
+  // ── État sync cloud ──
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle');
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
   const fetchConfig = useCallback(async () => {
     try {
       const resId = getRestaurantId();
@@ -166,6 +170,38 @@ export default function SettingsPage() {
       else Alert.alert('Erreur', 'Impossible de sauvegarder');
     } catch { Alert.alert('Erreur', 'Connexion impossible'); }
     setSaving(false);
+  };
+
+  // ── Resync complète depuis le cloud ──
+  const forceResyncFromCloud = async () => {
+    const syncApi = (window as any).syncAPI;
+    if (!syncApi) { Alert.alert('Info', 'Disponible uniquement depuis l\'app desktop'); return; }
+    Alert.alert(
+      'Resynchronisation complète',
+      'Cela va supprimer toutes les données locales et les retélécharger depuis le cloud. Continuer ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Resynchroniser', style: 'destructive', onPress: async () => {
+            setSyncStatus('syncing');
+            setSyncMessage('Suppression des données locales…');
+            try {
+              const result = await syncApi.forceReset();
+              if (result === true || result?.bootstrapped) {
+                setSyncStatus('done');
+                setSyncMessage('Synchronisation terminée ! Redémarrage recommandé.');
+              } else {
+                setSyncStatus('error');
+                setSyncMessage('Échec de la synchronisation. Vérifiez la connexion au cloud.');
+              }
+            } catch (e: any) {
+              setSyncStatus('error');
+              setSyncMessage(e?.message || 'Erreur lors de la synchronisation');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const testPrinter = async () => {
@@ -293,6 +329,45 @@ export default function SettingsPage() {
               <Text style={[s.optionLabel, { color: theme.textColor }]}>{opt.label}</Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        {/* ── Synchronisation cloud ───────────────────── */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <Ionicons name="cloud-sync" size={22} color={theme.primaryColor} />
+            <Text style={[s.cardTitle, { color: theme.textColor }]}>Synchronisation cloud</Text>
+          </View>
+          <Text style={[s.label, { lineHeight: 18 }]}>
+            Resynchronise le menu, les catégories, les options et les employés depuis le serveur cloud. Utile si des éléments supprimés en ligne apparaissent encore.
+          </Text>
+
+          {syncStatus === 'syncing' && (
+            <View style={[s.row, { gap: 8 }]}>
+              <ActivityIndicator size="small" color={theme.primaryColor} />
+              <Text style={[s.label, { color: theme.primaryColor }]}>{syncMessage || 'Synchronisation…'}</Text>
+            </View>
+          )}
+          {syncStatus === 'done' && (
+            <View style={[s.row, { gap: 8 }]}>
+              <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+              <Text style={[s.label, { color: '#10b981', flex: 1 }]}>{syncMessage}</Text>
+            </View>
+          )}
+          {syncStatus === 'error' && (
+            <View style={[s.row, { gap: 8 }]}>
+              <Ionicons name="warning" size={18} color="#ef4444" />
+              <Text style={[s.label, { color: '#ef4444', flex: 1 }]}>{syncMessage}</Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[s.updateBtn, { backgroundColor: theme.primaryColor, opacity: syncStatus === 'syncing' ? 0.5 : 1 }]}
+            onPress={forceResyncFromCloud}
+            disabled={syncStatus === 'syncing'}
+          >
+            <Ionicons name="sync" size={18} color="white" />
+            <Text style={s.updateBtnText}>Resynchroniser depuis le cloud</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Mise à jour du logiciel ────────────────── */}

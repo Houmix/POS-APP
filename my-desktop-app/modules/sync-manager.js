@@ -133,6 +133,16 @@ class SyncManager {
                 message: 'Catalogue synchronisé'
             });
 
+            // Notifier les bornes connectées de rafraîchir leurs données
+            try {
+                await this._httpRequestRaw(
+                    `${this.localApiUrl}/api/sync/force-refresh/`, 'POST', {}
+                );
+                this._log('Bornes notifiées après bootstrap', 'info');
+            } catch (refreshErr) {
+                this._log(`Avertissement notification bornes: ${refreshErr.message}`, 'warning');
+            }
+
             return true;
 
         } catch (err) {
@@ -245,6 +255,18 @@ class SyncManager {
 
             if (results.pushed > 0 || results.pulled > 0) {
                 this._log(`Sync OK : ${results.pushed}↑ ${results.pulled}↓`, 'success');
+            }
+
+            // ── NOTIFIER les bornes et le frontend POS après application des changements ──
+            if (results.pulled > 0) {
+                try {
+                    await this._httpRequestRaw(
+                        `${this.localApiUrl}/api/sync/force-refresh/`, 'POST', {}
+                    );
+                    this._log('Bornes notifiées des changements reçus du cloud', 'info');
+                } catch (refreshErr) {
+                    this._log(`Avertissement notification bornes: ${refreshErr.message}`, 'warning');
+                }
             }
 
         } finally {

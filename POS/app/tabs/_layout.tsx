@@ -116,8 +116,6 @@ export default function TabLayout() {
         name="manageTerminal"
         options={{
           title: 'Stocks',
-          // Masqué en V2 — géré via ClickGo Manager
-          href: null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "cube" : "cube-outline"} size={24} color={color} />
           ),
