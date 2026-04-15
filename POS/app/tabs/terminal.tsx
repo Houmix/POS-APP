@@ -388,7 +388,7 @@ export default function MenuScreen() {
       return (
         <TouchableOpacity
           key={item.id}
-          style={[styles.card, { width: cardW }]}
+          style={[styles.card, { width: cardW, backgroundColor: '#ffffff' }]}
           onPress={() => handleAddToCart(item)}
           activeOpacity={0.85}
         >
@@ -412,7 +412,7 @@ export default function MenuScreen() {
     return (
       <TouchableOpacity
         key={item.id}
-        style={[styles.card, { width: cardW }]}
+        style={[styles.card, { width: cardW, backgroundColor: '#ffffff' }]}
         onPress={() => handleAddToCart(item)}
         activeOpacity={0.85}
       >
@@ -813,13 +813,13 @@ const styles = StyleSheet.create({
     borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
     minHeight: 48, justifyContent: "center",
   },
-  catImage: { width: 44, height: 44, borderRadius: 8, marginBottom: 4 },
+  catImage: { width: 44, height: 44, borderRadius: 8, marginBottom: 4, backgroundColor: '#f8fafc' },
   catText: { fontSize: 10, fontWeight: "600", textAlign: "center" },
 
   // Menu grid
   menuArea: { flex: 1 },
   card: {
-    aspectRatio: 0.85, borderRadius: 14, overflow: "hidden", backgroundColor: "#1e293b",
+    aspectRatio: 0.85, borderRadius: 14, overflow: "hidden", backgroundColor: "#ffffff",
     elevation: 6, shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
   },
