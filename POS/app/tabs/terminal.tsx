@@ -368,15 +368,30 @@ export default function MenuScreen() {
           key={item.id}
           style={[styles.card, { width: cardW, backgroundColor: theme.cardBgColor }]}
           onPress={() => handleAddToCart(item)}
-          activeOpacity={0.85}
+          activeOpacity={0.88}
         >
-          <View style={{ flex: 6, overflow: "hidden", padding: 10, backgroundColor: '#f8fafc' }}>
-            <Image source={imageSource} style={{ width: "100%", height: "100%", borderRadius: 10 }} resizeMode="contain" />
+          {/* Zone image — fond subtil + ombre portée produit */}
+          <View style={{
+            flex: 6, overflow: "hidden", alignItems: "center", justifyContent: "center",
+            backgroundColor: "#f1f5f9",
+            paddingHorizontal: 12, paddingVertical: 10,
+          }}>
+            <View style={{
+              width: "85%", height: "85%",
+              shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 10, elevation: 6,
+            }}>
+              <Image source={imageSource} style={{ width: "100%", height: "100%", borderRadius: 10 }} resizeMode="contain" />
+            </View>
           </View>
-          <View style={{ flex: 4, padding: 10, justifyContent: "space-between", backgroundColor: theme.cardBgColor }}>
-            <Text style={{ color: theme.textColor, fontWeight: "700", fontSize: 13, lineHeight: 18 }} numberOfLines={2}>{item.name}</Text>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 15 }}>{price} DA</Text>
+          {/* Zone texte */}
+          <View style={{
+            flex: 4, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 10,
+            justifyContent: "space-between", backgroundColor: theme.cardBgColor,
+            borderTopWidth: 1, borderTopColor: "rgba(0,0,0,0.04)",
+          }}>
+            <Text style={{ color: theme.textColor, fontWeight: "800", fontSize: 12, lineHeight: 16 }} numberOfLines={2}>{item.name}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
+              <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 14 }}>{price} DA</Text>
               <View style={[styles.addBtn, { backgroundColor: theme.secondaryColor }]}><Feather name="plus" size={16} color="white" /></View>
             </View>
           </View>
