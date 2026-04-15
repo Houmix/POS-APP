@@ -13,7 +13,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(SPEC))
 DJANGO_APPS = [
     'user', 'chain', 'customer', 'KDS', 'manager',
     'menu', 'order', 'POS', 'restaurant', 'terminal',
-    'website', 'sync', 'borne_sync',
+    'website', 'sync', 'borne_sync', 'audit', 'stock',
 ]
 
 # ── Données à embarquer ───────────────────────────────────────────────────────

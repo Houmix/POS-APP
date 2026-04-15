@@ -171,10 +171,13 @@ export default function ServerScreen() {
   }, [fetchOrders]);
 
   const getElapsed = (createdAt: string) => {
-    const diff = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000));
+    if (!createdAt) return { text: '—', minutes: 0 };
+    const ts = new Date(createdAt).getTime();
+    if (isNaN(ts)) return { text: '—', minutes: 0 };
+    const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
     const m = Math.floor(diff / 60);
     const s = diff % 60;
-    return { text: `${m}m ${String(s).padStart(2, '0')}s`, minutes: m };
+    return { text: `${m}m${String(s).padStart(2, '0')}`, minutes: m };
   };
 
   const renderCard = (order: ServerOrder) => {
