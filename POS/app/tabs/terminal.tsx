@@ -370,8 +370,8 @@ export default function MenuScreen() {
           onPress={() => handleAddToCart(item)}
           activeOpacity={0.85}
         >
-          <View style={{ flex: 6, overflow: "hidden" }}>
-            <Image source={imageSource} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+          <View style={{ flex: 6, overflow: "hidden", padding: 10, backgroundColor: '#f8fafc' }}>
+            <Image source={imageSource} style={{ width: "100%", height: "100%", borderRadius: 10 }} resizeMode="contain" />
           </View>
           <View style={{ flex: 4, padding: 10, justifyContent: "space-between", backgroundColor: theme.cardBgColor }}>
             <Text style={{ color: theme.textColor, fontWeight: "700", fontSize: 13, lineHeight: 18 }} numberOfLines={2}>{item.name}</Text>

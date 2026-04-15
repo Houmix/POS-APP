@@ -30,6 +30,7 @@ interface KDSOrder {
   paid: boolean;
   take_away: boolean;
   created_at: string;
+  created_at_ts?: number;
   total_price: number;
   items: OrderItem[];
   cancelled: boolean;
@@ -66,6 +67,7 @@ export default function KDSScreen() {
   const [updatingId, setUpdatingId] = useState<number | null>(null);
   const [printingId, setPrintingId] = useState<number | null>(null);
 
+  const clockOffsetRef  = useRef(0);
   const wsRef           = useRef<WebSocket | null>(null);
   const restaurantIdRef = useRef<string | null>(null);
   const reconnectTimer  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,6 +80,9 @@ export default function KDSScreen() {
       if (r.ok) {
         const data = await r.json();
         setOrders(data.orders || []);
+        if (data.server_now) {
+          clockOffsetRef.current = Date.now() / 1000 - data.server_now;
+        }
       }
     } catch (e) {
       console.error('[KDS] fetch error:', e);
@@ -219,13 +224,23 @@ export default function KDSScreen() {
     setRefreshing(false);
   }, [fetchOrders]);
 
-  const getElapsed = (createdAt: string) => {
-    if (!createdAt) return { text: '—', minutes: 0 };
-    const ts = new Date(createdAt).getTime();
-    if (isNaN(ts)) return { text: '—', minutes: 0 };
-    const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-    const m = Math.floor(diff / 60);
-    const s = diff % 60;
+  const getElapsed = (order: KDSOrder) => {
+    let elapsedSec = 0;
+    if (order.created_at_ts && order.created_at_ts > 0) {
+      const serverNow = Date.now() / 1000 - clockOffsetRef.current;
+      elapsedSec = Math.max(0, Math.floor(serverNow - order.created_at_ts));
+    } else if (order.created_at) {
+      const ts = new Date(order.created_at).getTime();
+      if (!isNaN(ts)) {
+        elapsedSec = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+      } else {
+        return { text: '—', minutes: 0 };
+      }
+    } else {
+      return { text: '—', minutes: 0 };
+    }
+    const m = Math.floor(elapsedSec / 60);
+    const s = elapsedSec % 60;
     return { text: `${m}m${String(s).padStart(2, '0')}`, minutes: m };
   };
 
@@ -241,7 +256,7 @@ export default function KDSScreen() {
   };
 
   const renderCard = (order: KDSOrder) => {
-    const { text: elapsed, minutes } = getElapsed(order.created_at);
+    const { text: elapsed, minutes } = getElapsed(order);
     const isUrgent   = minutes >= 10;
     const col        = COLUMNS.find(c => c.key === order.kds_status);
     const isUpdating = updatingId === order.order_id;

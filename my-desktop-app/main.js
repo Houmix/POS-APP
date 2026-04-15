@@ -959,30 +959,67 @@ function cleanup() {
 // ==========================================
 // 🔄 MISE À JOUR AUTOMATIQUE
 // ==========================================
+
+// État global de la mise à jour (accessible depuis le renderer via IPC)
+let updateState = { status: 'idle', version: null, progress: 0 };
+// status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'not-available' | 'error'
+
+// ── IPC handlers pour le renderer ──
+ipcMain.handle('updater-check', async () => {
+    if (!app.isPackaged) return { status: 'error', message: 'Disponible uniquement en production' };
+    try {
+        updateState = { ...updateState, status: 'checking', progress: 0 };
+        await autoUpdater.checkForUpdates();
+        return { status: 'ok' };
+    } catch (e) {
+        return { status: 'error', message: e.message };
+    }
+});
+
+ipcMain.handle('updater-install', async () => {
+    if (updateState.status === 'downloaded') {
+        autoUpdater.quitAndInstall();
+    }
+    return { status: updateState.status };
+});
+
+ipcMain.handle('updater-status', async () => {
+    return updateState;
+});
+
 function setupAutoUpdater() {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
 
     autoUpdater.on('checking-for-update', () => {
         console.log('[Updater] Vérification des mises à jour...');
+        updateState = { ...updateState, status: 'checking', progress: 0 };
     });
 
     autoUpdater.on('update-available', (info) => {
         console.log(`[Updater] Nouvelle version disponible : ${info.version}`);
+        updateState = { status: 'downloading', version: info.version, progress: 0 };
         if (mainWindow) mainWindow.webContents.send('update-available', info.version);
     });
 
     autoUpdater.on('update-not-available', (info) => {
         console.log(`[Updater] Pas de mise à jour (version actuelle: ${info.version})`);
+        updateState = { status: 'not-available', version: info.version, progress: 0 };
+        if (mainWindow) mainWindow.webContents.send('update-not-available');
     });
 
     autoUpdater.on('download-progress', (progress) => {
-        console.log(`[Updater] Téléchargement: ${Math.round(progress.percent)}%`);
-        if (mainWindow) mainWindow.webContents.send('update-progress', Math.round(progress.percent));
+        const pct = Math.round(progress.percent);
+        console.log(`[Updater] Téléchargement: ${pct}%`);
+        updateState = { ...updateState, status: 'downloading', progress: pct };
+        if (mainWindow) mainWindow.webContents.send('update-progress', pct);
     });
 
     autoUpdater.on('update-downloaded', (info) => {
         console.log(`[Updater] Version ${info.version} téléchargée.`);
+        updateState = { status: 'downloaded', version: info.version, progress: 100 };
+        if (mainWindow) mainWindow.webContents.send('update-downloaded', info.version);
+
         dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'Mise à jour ClickGo POS',
@@ -1013,6 +1050,8 @@ function setupAutoUpdater() {
 
     autoUpdater.on('error', (err) => {
         console.error('[Updater] Erreur:', err.message);
+        updateState = { status: 'error', version: null, progress: 0 };
+        if (mainWindow) mainWindow.webContents.send('update-error', err.message);
         // Ne pas spammer les logs si pas de release configuré
         if (err.message && err.message.includes('VOTRE_COMPTE_GITHUB')) {
             console.warn('[Updater] Configuration GitHub non définie — mises à jour désactivées.');

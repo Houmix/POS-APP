@@ -444,6 +444,7 @@ class OrderDelete(APIView):
 class POSOrderGet(APIView):
     permission_classes = []
     authentication_classes = []
+    throttle_classes = []  # Endpoint local — pas de rate limiting
 
     def get(self, request, restaurant_id):
         try:
@@ -503,6 +504,7 @@ class POSOrderGet(APIView):
 class OrderUpdate(APIView):
     permission_classes = []
     authentication_classes = []
+    throttle_classes = []  # Pas de rate limiting — utilisé par KDS/Server pour changer les statuts
 
     def put(self, request, order_id, *args, **kwargs):
         print(request.data)
@@ -576,6 +578,7 @@ class ValidateCashOrder(APIView):
     """Le caissier valide une commande espèces → envoie sur KDS."""
     permission_classes = []
     authentication_classes = []
+    throttle_classes = []
 
     def put(self, request, order_id):
         try:
@@ -615,6 +618,7 @@ class KDSOrderGet(APIView):
     """Commandes actives du jour pour l'écran KDS (new, in_progress, done)."""
     permission_classes = []
     authentication_classes = []
+    throttle_classes = []  # Pas de rate limiting — endpoint local pollé toutes les 3-5s par KDS/Display/Server
 
     def get(self, request, restaurant_id):
         from django.utils.timezone import now
@@ -655,6 +659,9 @@ class KDSOrderGet(APIView):
                     "extra":       item.extra,
                     "composition": options,
                 })
+            # Timestamp UNIX en secondes (infaillible, pas d'ambiguïté de parsing)
+            created_ts = order.created_at.timestamp() if order.created_at else 0
+
             response_data.append({
                 "order_id":            order.id,
                 "order_status":        order.status,
@@ -664,13 +671,20 @@ class KDSOrderGet(APIView):
                 "cash":                order.cash,
                 "paid":                order.paid,
                 "take_away":           order.take_away,
-                "created_at":          order.created_at.isoformat(),
+                "created_at":          order.created_at.isoformat() if order.created_at else None,
+                "created_at_ts":       created_ts,
                 "total_price":         float(order.total_price()),
                 "items":               order_items,
                 "cancelled":           order.cancelled,
                 "refund":              order.refund,
             })
-        return Response({"orders": response_data}, status=status.HTTP_200_OK)
+
+        # server_now = timestamp serveur actuel (pour compenser décalage horloge client)
+        import time as _time
+        return Response({
+            "orders": response_data,
+            "server_now": _time.time(),
+        }, status=status.HTTP_200_OK)
 
 
 # ==========================================

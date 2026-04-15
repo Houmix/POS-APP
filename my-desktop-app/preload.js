@@ -17,6 +17,18 @@ contextBridge.exposeInMainWorld('syncAPI', {
     onStatusChange: (cb) => ipcRenderer.on('sync-status', (_, data) => cb(data)),
 });
 
+// ── Mise à jour ──
+contextBridge.exposeInMainWorld('updaterAPI', {
+    checkForUpdate:     () => ipcRenderer.invoke('updater-check'),
+    installUpdate:      () => ipcRenderer.invoke('updater-install'),
+    getStatus:          () => ipcRenderer.invoke('updater-status'),
+    onUpdateAvailable:  (cb) => ipcRenderer.on('update-available', (_, version) => cb(version)),
+    onUpdateProgress:   (cb) => ipcRenderer.on('update-progress', (_, percent) => cb(percent)),
+    onUpdateDownloaded: (cb) => ipcRenderer.on('update-downloaded', (_, version) => cb(version)),
+    onUpdateError:      (cb) => ipcRenderer.on('update-error', (_, msg) => cb(msg)),
+    onUpdateNotAvailable: (cb) => ipcRenderer.on('update-not-available', () => cb()),
+});
+
 // ── Licence ──
 contextBridge.exposeInMainWorld('licenseAPI', {
     activate:   (licenseKey) => ipcRenderer.invoke('license-activate', { licenseKey }),

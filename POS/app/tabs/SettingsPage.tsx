@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput,
   TouchableOpacity, Switch, Alert, ActivityIndicator, StatusBar,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getPosUrl, getRestaurantId } from '@/utils/serverConfig';
@@ -39,6 +40,12 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // ── État mise à jour logiciel ──
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'downloading' | 'downloaded' | 'not-available' | 'error'>('idle');
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
   const fetchConfig = useCallback(async () => {
     try {
       const resId = getRestaurantId();
@@ -61,6 +68,64 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
+
+  // ── Listeners mise à jour ──
+  useEffect(() => {
+    const api = (window as any).updaterAPI;
+    if (!api) return;
+    // Récupérer l'état actuel au montage
+    api.getStatus?.().then((s: any) => {
+      if (s) {
+        setUpdateStatus(s.status || 'idle');
+        setUpdateProgress(s.progress || 0);
+        setUpdateVersion(s.version || null);
+        if (s.progress > 0) {
+          Animated.timing(progressAnim, { toValue: s.progress, duration: 200, useNativeDriver: false }).start();
+        }
+      }
+    });
+    api.onUpdateAvailable?.((version: string) => {
+      setUpdateStatus('downloading');
+      setUpdateVersion(version);
+      setUpdateProgress(0);
+    });
+    api.onUpdateProgress?.((pct: number) => {
+      setUpdateStatus('downloading');
+      setUpdateProgress(pct);
+      Animated.timing(progressAnim, { toValue: pct, duration: 300, useNativeDriver: false }).start();
+    });
+    api.onUpdateDownloaded?.((version: string) => {
+      setUpdateStatus('downloaded');
+      setUpdateVersion(version);
+      setUpdateProgress(100);
+      Animated.timing(progressAnim, { toValue: 100, duration: 300, useNativeDriver: false }).start();
+    });
+    api.onUpdateNotAvailable?.(() => {
+      setUpdateStatus('not-available');
+    });
+    api.onUpdateError?.(() => {
+      setUpdateStatus('error');
+    });
+  }, []);
+
+  const checkForUpdate = async () => {
+    const api = (window as any).updaterAPI;
+    if (!api) { Alert.alert('Info', 'Disponible uniquement depuis l\'app desktop'); return; }
+    setUpdateStatus('checking');
+    setUpdateProgress(0);
+    progressAnim.setValue(0);
+    const result = await api.checkForUpdate();
+    if (result?.status === 'error') {
+      setUpdateStatus('error');
+      Alert.alert('Erreur', result.message || 'Impossible de vérifier');
+    }
+    // Les listeners gèreront la suite (available/not-available/progress/downloaded)
+  };
+
+  const installUpdate = async () => {
+    const api = (window as any).updaterAPI;
+    if (api) api.installUpdate();
+  };
 
   const save = async () => {
     setSaving(true);
@@ -213,6 +278,90 @@ export default function SettingsPage() {
           ))}
         </View>
 
+        {/* ── Mise à jour du logiciel ────────────────── */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <Ionicons name="cloud-download" size={22} color={theme.primaryColor} />
+            <Text style={[s.cardTitle, { color: theme.textColor }]}>Mise à jour du logiciel</Text>
+          </View>
+
+          <View style={s.row}>
+            <Text style={[s.label, { flex: 1 }]}>Version actuelle</Text>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: theme.textColor }}>V2.0.0</Text>
+          </View>
+
+          {/* Barre de progression */}
+          {(updateStatus === 'downloading' || updateStatus === 'downloaded') && (
+            <View style={{ gap: 6 }}>
+              <View style={s.row}>
+                <Text style={s.label}>
+                  {updateStatus === 'downloaded'
+                    ? `Version ${updateVersion || ''} prête à installer`
+                    : `Téléchargement${updateVersion ? ` v${updateVersion}` : ''}…`
+                  }
+                </Text>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: theme.primaryColor }}>
+                  {updateProgress}%
+                </Text>
+              </View>
+              <View style={s.progressTrack}>
+                <Animated.View
+                  style={[
+                    s.progressFill,
+                    {
+                      backgroundColor: updateStatus === 'downloaded' ? '#10b981' : theme.primaryColor,
+                      width: progressAnim.interpolate({
+                        inputRange: [0, 100],
+                        outputRange: ['0%', '100%'],
+                      }),
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          )}
+
+          {/* Statut */}
+          {updateStatus === 'checking' && (
+            <View style={[s.row, { gap: 8 }]}>
+              <ActivityIndicator size="small" color={theme.primaryColor} />
+              <Text style={s.label}>Vérification en cours…</Text>
+            </View>
+          )}
+          {updateStatus === 'not-available' && (
+            <View style={[s.row, { gap: 8 }]}>
+              <Ionicons name="checkmark-circle" size={18} color="#10b981" />
+              <Text style={[s.label, { color: '#10b981' }]}>Le logiciel est à jour</Text>
+            </View>
+          )}
+          {updateStatus === 'error' && (
+            <View style={[s.row, { gap: 8 }]}>
+              <Ionicons name="warning" size={18} color="#ef4444" />
+              <Text style={[s.label, { color: '#ef4444' }]}>Erreur de vérification</Text>
+            </View>
+          )}
+
+          {/* Boutons */}
+          {updateStatus === 'downloaded' ? (
+            <TouchableOpacity
+              style={[s.updateBtn, { backgroundColor: '#10b981' }]}
+              onPress={installUpdate}
+            >
+              <Ionicons name="download" size={18} color="white" />
+              <Text style={s.updateBtnText}>Installer et redémarrer</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[s.updateBtn, { backgroundColor: theme.primaryColor, opacity: updateStatus === 'checking' || updateStatus === 'downloading' ? 0.5 : 1 }]}
+              onPress={checkForUpdate}
+              disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+            >
+              <Ionicons name="refresh" size={18} color="white" />
+              <Text style={s.updateBtnText}>Mettre à jour le logiciel</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
       </ScrollView>
     </View>
   );
@@ -237,4 +386,8 @@ const s = StyleSheet.create({
   optionLabel: { fontSize: 15, fontWeight: '600' },
   radio:       { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#94a3b8', justifyContent: 'center', alignItems: 'center' },
   radioInner:  { width: 12, height: 12, borderRadius: 6 },
+  progressTrack: { height: 8, backgroundColor: '#e2e8f0', borderRadius: 4, overflow: 'hidden' },
+  progressFill:  { height: '100%', borderRadius: 4 },
+  updateBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 10, marginTop: 4 },
+  updateBtnText: { color: 'white', fontWeight: '700', fontSize: 15 },
 });
