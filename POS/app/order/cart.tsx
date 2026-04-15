@@ -378,7 +378,7 @@ const csStyles = StyleSheet.create({
     borderRadius: 16, overflow: 'hidden',
     elevation: 3, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8,
   },
-  itemImage: { width: '100%', height: 130 },
+  itemImage: { width: '100%', height: 160, backgroundColor: '#F8F9FA' },
   imagePlaceholder: { backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
   cardInfo: { padding: 12, paddingBottom: 8 },
   itemName: { fontSize: 14, fontWeight: '700', marginBottom: 4 },

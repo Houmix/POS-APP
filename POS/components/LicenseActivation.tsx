@@ -105,8 +105,8 @@ export default function LicenseActivation({ onActivated }: Props) {
         >
             <View style={styles.card}>
                 {/* Logo / Titre */}
-                <Text style={styles.logo}>🍔</Text>
-                <Text style={styles.title}>Do-Eat</Text>
+                <Text style={styles.logo}>🖥️</Text>
+                <Text style={styles.title}>ClickGo Borne</Text>
                 <Text style={styles.subtitle}>Activez votre borne de commande</Text>
 
                 {/* Champ clé */}

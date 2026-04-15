@@ -55,13 +55,16 @@ class User(AbstractUser):
                 self.username = self.phone
             if not self.email:
                 self.email = f"{self.phone}@born.dz"
-     
-            # Vérification de la longueur avant le hachage
-            if self.password and not (self.password.startswith('pbkdf2_') or self.password.startswith('bcrypt')):
-                if len(self.password) != 6:
+
+            # Hachage du mot de passe si pas encore hashé
+            if self.password and not is_password_usable(self.password):
+                self.set_password(self.password)
+            elif self.password and not (self.password.startswith('pbkdf2_') or self.password.startswith('bcrypt') or self.password.startswith('argon2')):
+                # PIN 6 chiffres pour les employés (pas les superusers)
+                if not self.is_superuser and len(self.password) != 6:
                     raise ValueError("Le mot de passe doit faire exactement 6 caractères.")
                 self.set_password(self.password)
-                
+
             super().save(*args, **kwargs)
 
 

@@ -116,8 +116,8 @@ export default function TabLayout() {
         name="manageTerminal"
         options={{
           title: 'Stocks',
-          // Si staff (Manager/Owner/Cashier) -> Visible, sinon (Customer) -> Caché
-          href: isStaff ? undefined : null,
+          // Masqué en V2 — géré via ClickGo Manager
+          href: null,
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? "cube" : "cube-outline"} size={24} color={color} />
           ),

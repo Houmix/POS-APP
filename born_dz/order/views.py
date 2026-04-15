@@ -664,7 +664,7 @@ class KDSOrderGet(APIView):
                 "cash":                order.cash,
                 "paid":                order.paid,
                 "take_away":           order.take_away,
-                "created_at":          order.created_at.isoformat() + "+01:00",
+                "created_at":          order.created_at.isoformat(),
                 "total_price":         float(order.total_price()),
                 "items":               order_items,
                 "cancelled":           order.cancelled,
@@ -972,7 +972,7 @@ class KpiView(APIView):
 
 def generate_order_qr(order_id):
     data = f"ORDER-{order_id}"
-    qr = qrcode.QRCode(version=1, box_size=10, border=4)
+    qr = qrcode.QRCode(version=1, box_size=20, border=2)
     qr.add_data(data)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")

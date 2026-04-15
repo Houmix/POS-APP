@@ -217,11 +217,16 @@ class SyncManager {
                         // Appliquer chaque changement via le Django local
                         for (const change of pullData.changes) {
                             try {
+                                // Pour les suppressions, s'assurer que l'id est dans data
+                                let applyData = change.data || {};
+                                if (change.action === 'delete' && change.record_id) {
+                                    applyData = { ...applyData, id: change.record_id };
+                                }
                                 await this._httpRequestRaw(
                                     `${this.localApiUrl}/api/sync/apply/`, 'POST', {
                                         table: change.table,
                                         action: change.action,
-                                        data: change.data,
+                                        data: applyData,
                                     }
                                 );
                             } catch (applyErr) {

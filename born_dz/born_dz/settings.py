@@ -269,8 +269,18 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:60457",
     "http://127.0.0.1:8080",
     "http://localhost:8000",
+    "http://127.0.0.1:8000",
     "http://localhost:8082",
     "http://localhost:5173",
+    # ClickGo KDS (Electron — port 8766)
+    "http://127.0.0.1:8766",
+    "http://localhost:8766",
+    # ClickGo Display (Electron — port 8767)
+    "http://127.0.0.1:8767",
+    "http://localhost:8767",
+    # ClickGo Server (Electron — port 8768)
+    "http://127.0.0.1:8768",
+    "http://localhost:8768",
     "http://menugo-dz.com",
     "http://www.menugo-dz.com",
     "https://borndz-production.up.railway.app",
