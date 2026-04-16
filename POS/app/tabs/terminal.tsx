@@ -407,7 +407,9 @@ export default function MenuScreen() {
           onPress={() => handleAddToCart(item)}
           activeOpacity={0.85}
         >
-          <Image source={imageSource} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#ffffff' }]}>
+            <Image source={imageSource} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+          </View>
           <View style={{ position: "absolute", top: 10, left: 10, right: 10, backgroundColor: "rgba(15,23,42,0.65)", borderRadius: 100, paddingVertical: 7, paddingHorizontal: 12 }}>
             <Text style={{ color: "white", fontWeight: "700", fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
           </View>
@@ -423,7 +425,7 @@ export default function MenuScreen() {
       );
     }
 
-    // gradient (défaut)
+    // gradient (défaut) — image contain sur fond blanc, texte dans bande basse
     return (
       <TouchableOpacity
         key={item.id}
@@ -431,14 +433,16 @@ export default function MenuScreen() {
         onPress={() => handleAddToCart(item)}
         activeOpacity={0.85}
       >
-        <Image source={imageSource} style={StyleSheet.absoluteFill} resizeMode="cover" />
-        <LinearGradient colors={["transparent", "rgba(0,0,0,0.85)"]} style={styles.cardOverlay}>
-          <Text style={styles.cardText} numberOfLines={2}>{item.name}</Text>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <View style={{ flex: 6, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 8 }}>
+          <Image source={imageSource} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+        </View>
+        <View style={{ flex: 4, paddingHorizontal: 10, paddingTop: 8, paddingBottom: 10, justifyContent: 'space-between', backgroundColor: theme.cardBgColor, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' }}>
+          <Text style={{ color: theme.textColor, fontWeight: '800', fontSize: 12, lineHeight: 16 }} numberOfLines={2}>{item.name}</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
             <Text style={{ color: theme.secondaryColor, fontWeight: "900", fontSize: 15 }}>{price} DA</Text>
             <View style={[styles.addBtn, { backgroundColor: theme.secondaryColor }]}><Feather name="plus" size={16} color="white" /></View>
           </View>
-        </LinearGradient>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -499,7 +503,7 @@ export default function MenuScreen() {
                   <Image
                     source={{ uri: category.photo_url }}
                     style={styles.catImage}
-                    resizeMode="cover"
+                    resizeMode="contain"
                   />
                 )}
                 <Text style={[styles.catText, { color: isSelected ? theme.selectedCategoryTextColor : theme.categoryTextColor }]} numberOfLines={3}>
@@ -605,7 +609,9 @@ export default function MenuScreen() {
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setIsModalVisible(false)}>
           <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
             {selectedItem?.photo_url && (
-              <Image source={{ uri: selectedItem.photo_url }} style={styles.modalImage} resizeMode="cover" />
+              <View style={styles.modalImageWrap}>
+                <Image source={{ uri: selectedItem.photo_url }} style={styles.modalImage} resizeMode="contain" />
+              </View>
             )}
             <View style={styles.modalBody}>
               <Text style={styles.modalTitle}>{selectedItem?.name}</Text>
@@ -760,8 +766,8 @@ export default function MenuScreen() {
                 return (
                   <View key={item.id} style={[styles.csCard, { backgroundColor: theme.cardBgColor }]}>
                     {item.photo_url
-                      ? <Image source={{ uri: item.photo_url }} style={styles.csImage} resizeMode="cover" />
-                      : <View style={[styles.csImage, { backgroundColor: "#F1F5F9", justifyContent: "center", alignItems: "center" }]}><Ionicons name="fast-food" size={28} color={MUTED} /></View>
+                      ? <Image source={{ uri: item.photo_url }} style={styles.csImage} resizeMode="contain" />
+                      : <View style={[styles.csImage, { justifyContent: "center", alignItems: "center" }]}><Ionicons name="fast-food" size={28} color={MUTED} /></View>
                     }
                     <View style={{ padding: 10 }}>
                       <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textColor }} numberOfLines={2}>{item.name}</Text>
@@ -828,7 +834,7 @@ const styles = StyleSheet.create({
     borderRadius: 8, borderLeftWidth: 3, borderLeftColor: "transparent", alignItems: "center",
     minHeight: 48, justifyContent: "center",
   },
-  catImage: { width: 44, height: 44, borderRadius: 8, marginBottom: 4, backgroundColor: '#f8fafc' },
+  catImage: { width: 44, height: 44, borderRadius: 8, marginBottom: 4, backgroundColor: '#ffffff' },
   catText: { fontSize: 10, fontWeight: "600", textAlign: "center" },
 
   // Menu grid
@@ -869,7 +875,8 @@ const styles = StyleSheet.create({
   // Modals
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
   modalCard: { backgroundColor: "white", borderRadius: 24, width: "65%", maxWidth: 700, overflow: "hidden", elevation: 20 },
-  modalImage: { width: "100%", height: 220 },
+  modalImageWrap: { width: "100%", height: 260, backgroundColor: "#ffffff", alignItems: "center", justifyContent: "center", padding: 12 },
+  modalImage: { width: "100%", height: "100%" },
   modalBody: { padding: 24 },
   modalTitle: { fontSize: 28, fontWeight: "900", color: "#1e293b", marginBottom: 10 },
   modalDesc: { fontSize: 15, color: MUTED, lineHeight: 22, marginBottom: 24 },
@@ -889,7 +896,7 @@ const styles = StyleSheet.create({
   csSubtitle: { fontSize: 13, color: MUTED },
   csGrid: { flexDirection: "row", flexWrap: "wrap", gap: 14, padding: 16 },
   csCard: { width: 160, borderRadius: 14, overflow: "hidden", elevation: 3 },
-  csImage: { width: "100%", height: 110 },
+  csImage: { width: "100%", height: 110, backgroundColor: "#ffffff" },
   csAddBtn: { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 8, flexDirection: "row", justifyContent: "center", alignItems: "center" },
   csQtyRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#F1F5F9", borderRadius: 8, padding: 2 },
   csFooter: { flexDirection: "row", gap: 12, padding: 16, borderTopWidth: 1, borderTopColor: "#F1F5F9" },
