@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { 
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+    View, Text, StyleSheet, ScrollView, TouchableOpacity,
     TextInput, Image, ActivityIndicator, Dimensions, Modal, Platform
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import * as ImagePicker from 'expo-image-picker'; 
-import { 
-    LayoutGrid, Utensils, Settings2, Store, 
-    Plus, Trash2, Save, Edit, Eye, EyeOff, X, Camera, Upload, AlertTriangle, CheckCircle 
-} from 'lucide-react-native'; 
+import * as ImagePicker from 'expo-image-picker';
+import {
+    LayoutGrid, Utensils, Settings2, Store,
+    Plus, Trash2, Save, Edit, Eye, EyeOff, X, Camera, Upload, AlertTriangle, CheckCircle,
+    ZoomIn, ZoomOut, Info, RefreshCw
+} from 'lucide-react-native';
 import axios from 'axios';
 import { getPosUrl } from '@/utils/serverConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -135,6 +136,33 @@ export default function MenuAdminPage() {
     // 🔄 SYNC DEPUIS LE CLOUD
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncMessage, setSyncMessage] = useState('');
+
+    // 🖼️ CROP / ZOOM MODAL STATES
+    const [cropModalVisible, setCropModalVisible] = useState(false);
+    const [cropSourceUri, setCropSourceUri] = useState<string | null>(null);
+    const [cropSourceSize, setCropSourceSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+    const [cropTargetSetter, setCropTargetSetter] = useState<Function | null>(null);
+    const [cropZoom, setCropZoom] = useState(1);
+    const [cropOffset, setCropOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+    const [cropBgColor, setCropBgColor] = useState<string>('#FFFFFF');
+    const [cropIsApplying, setCropIsApplying] = useState(false);
+    const cropDragRef = useRef<{ dragging: boolean; startX: number; startY: number; baseX: number; baseY: number }>({
+        dragging: false, startX: 0, startY: 0, baseX: 0, baseY: 0
+    });
+
+    // Dimensions cibles de l'image exportée (ratio 4:3, optimisé pour les bornes)
+    const CROP_OUTPUT_WIDTH = 800;
+    const CROP_OUTPUT_HEIGHT = 600;
+    // Taille du cadre affiché dans la modale de recadrage
+    const CROP_FRAME_WIDTH = 360;
+    const CROP_FRAME_HEIGHT = 270;
+
+    const BG_COLOR_PRESETS = [
+        { label: 'Blanc', value: '#FFFFFF' },
+        { label: 'Gris clair', value: '#F1F5F9' },
+        { label: 'Beige', value: '#FAF3E0' },
+        { label: 'Noir', value: '#111827' },
+    ];
 
     useEffect(() => { fetchInitialData(); }, []);
 
@@ -281,28 +309,201 @@ export default function MenuAdminPage() {
                 return;
             }
 
+            // Pas de crop natif : on récupère l'image brute pour notre recadrage custom
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
-                allowsEditing: true,
-                aspect: [4, 3],
-                quality: 0.8,
+                allowsEditing: false,
+                quality: 1,
             });
 
             if (!result.canceled && result.assets[0]) {
                 const asset = result.assets[0];
-                const MIN_WIDTH = 500;
-                const MIN_HEIGHT = 500;
+                const MIN_WIDTH = 300;
+                const MIN_HEIGHT = 300;
 
-                if (asset.width < MIN_WIDTH || asset.height < MIN_HEIGHT) {
-                    showError('Qualité insuffisante', `L'image est trop pixelisée. Min: ${MIN_WIDTH}x${MIN_HEIGHT}px.`);
+                if ((asset.width || 0) < MIN_WIDTH || (asset.height || 0) < MIN_HEIGHT) {
+                    showError(
+                        'Qualité insuffisante',
+                        `L'image doit faire au moins ${MIN_WIDTH}×${MIN_HEIGHT}px.\nFormat conseillé : ${CROP_OUTPUT_WIDTH}×${CROP_OUTPUT_HEIGHT}px, fond uni.`
+                    );
                     return;
                 }
 
-                setter({ uri: asset.uri, type: 'image/jpeg', name: `photo_${Date.now()}.jpg` });
+                // Ouvre la modale de recadrage / zoom / fond
+                setCropSourceUri(asset.uri);
+                setCropSourceSize({ w: asset.width || 0, h: asset.height || 0 });
+                setCropTargetSetter(() => setter);
+                // Centre l'image, zoom qui couvre le cadre (fit cover)
+                const initialZoom = computeCoverZoom(asset.width || 1, asset.height || 1);
+                setCropZoom(initialZoom);
+                setCropOffset({ x: 0, y: 0 });
+                setCropBgColor('#FFFFFF');
+                setCropModalVisible(true);
             }
         } catch (error) {
             showError('Erreur', 'Impossible de sélectionner l\'image');
         }
+    };
+
+    // Calcule le zoom minimum qui rempli le cadre (cover)
+    const computeCoverZoom = (srcW: number, srcH: number) => {
+        const frameRatio = CROP_FRAME_WIDTH / CROP_FRAME_HEIGHT;
+        const imgRatio = srcW / srcH;
+        // Base affichée = image mise en "contain" dans le cadre
+        let baseW: number, baseH: number;
+        if (imgRatio > frameRatio) {
+            // image + large → contain donne baseH = frame height
+            baseH = CROP_FRAME_HEIGHT;
+            baseW = baseH * imgRatio;
+        } else {
+            baseW = CROP_FRAME_WIDTH;
+            baseH = baseW / imgRatio;
+        }
+        // Zoom nécessaire pour couvrir
+        return Math.max(CROP_FRAME_WIDTH / baseW, CROP_FRAME_HEIGHT / baseH, 1);
+    };
+
+    // Dimensions de base (avant zoom) de l'image dans le cadre (contain)
+    const getDisplayedBaseSize = (): { w: number; h: number } => {
+        const { w, h } = cropSourceSize;
+        if (!w || !h) return { w: CROP_FRAME_WIDTH, h: CROP_FRAME_HEIGHT };
+        const frameRatio = CROP_FRAME_WIDTH / CROP_FRAME_HEIGHT;
+        const imgRatio = w / h;
+        if (imgRatio > frameRatio) {
+            const baseH = CROP_FRAME_HEIGHT;
+            return { w: baseH * imgRatio, h: baseH };
+        }
+        const baseW = CROP_FRAME_WIDTH;
+        return { w: baseW, h: baseW / imgRatio };
+    };
+
+    const clampOffset = (x: number, y: number, zoom: number): { x: number; y: number } => {
+        const base = getDisplayedBaseSize();
+        const displayedW = base.w * zoom;
+        const displayedH = base.h * zoom;
+        // L'image doit toujours recouvrir le cadre → offset borné
+        const maxX = Math.max(0, (displayedW - CROP_FRAME_WIDTH) / 2);
+        const maxY = Math.max(0, (displayedH - CROP_FRAME_HEIGHT) / 2);
+        return {
+            x: Math.max(-maxX, Math.min(maxX, x)),
+            y: Math.max(-maxY, Math.min(maxY, y)),
+        };
+    };
+
+    const adjustZoom = (delta: number) => {
+        setCropZoom((prev) => {
+            const minZoom = computeCoverZoom(cropSourceSize.w || 1, cropSourceSize.h || 1);
+            const newZoom = Math.max(minZoom, Math.min(4, prev + delta));
+            // Recadrer l'offset pour éviter les bandes
+            setCropOffset((off) => clampOffset(off.x, off.y, newZoom));
+            return newZoom;
+        });
+    };
+
+    const resetCrop = () => {
+        const z = computeCoverZoom(cropSourceSize.w || 1, cropSourceSize.h || 1);
+        setCropZoom(z);
+        setCropOffset({ x: 0, y: 0 });
+    };
+
+    // Gestion du drag (web + mobile via onStartShouldSetResponder)
+    const handleDragStart = (pageX: number, pageY: number) => {
+        cropDragRef.current = {
+            dragging: true,
+            startX: pageX,
+            startY: pageY,
+            baseX: cropOffset.x,
+            baseY: cropOffset.y,
+        };
+    };
+    const handleDragMove = (pageX: number, pageY: number) => {
+        if (!cropDragRef.current.dragging) return;
+        const dx = pageX - cropDragRef.current.startX;
+        const dy = pageY - cropDragRef.current.startY;
+        const next = clampOffset(
+            cropDragRef.current.baseX + dx,
+            cropDragRef.current.baseY + dy,
+            cropZoom
+        );
+        setCropOffset(next);
+    };
+    const handleDragEnd = () => {
+        cropDragRef.current.dragging = false;
+    };
+
+    // Applique le recadrage : génère une image finale avec fond uni
+    const applyCrop = async () => {
+        if (!cropSourceUri || !cropTargetSetter) {
+            setCropModalVisible(false);
+            return;
+        }
+        setCropIsApplying(true);
+        try {
+            const outUri = await renderCroppedImage();
+            cropTargetSetter({ uri: outUri, type: 'image/jpeg', name: `photo_${Date.now()}.jpg` });
+            setCropModalVisible(false);
+            setCropSourceUri(null);
+            setCropTargetSetter(null);
+        } catch (e: any) {
+            showError('Recadrage impossible', e.message || 'Erreur pendant le recadrage.');
+        } finally {
+            setCropIsApplying(false);
+        }
+    };
+
+    // Rendu via canvas HTML (web / Electron). Sur natif pur, on retourne l'URI source.
+    const renderCroppedImage = async (): Promise<string> => {
+        if (Platform.OS !== 'web' && Platform.OS !== 'windows' && Platform.OS !== 'macos') {
+            // Fallback natif : on retourne l'image d'origine (zoom/fond non appliqués)
+            return cropSourceUri!;
+        }
+
+        return new Promise((resolve, reject) => {
+            try {
+                // @ts-ignore - document dispo en web/Electron
+                const canvas: HTMLCanvasElement = document.createElement('canvas');
+                canvas.width = CROP_OUTPUT_WIDTH;
+                canvas.height = CROP_OUTPUT_HEIGHT;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return reject(new Error('Canvas 2D indisponible'));
+
+                // Fond uni
+                ctx.fillStyle = cropBgColor;
+                ctx.fillRect(0, 0, CROP_OUTPUT_WIDTH, CROP_OUTPUT_HEIGHT);
+
+                const img: HTMLImageElement = new (window as any).Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    // Dimensions de base telles qu'affichées dans la modale
+                    const base = getDisplayedBaseSize();
+                    const displayedW = base.w * cropZoom;
+                    const displayedH = base.h * cropZoom;
+
+                    // Ratio image affichée → canvas final
+                    const scale = CROP_OUTPUT_WIDTH / CROP_FRAME_WIDTH;
+                    const destW = displayedW * scale;
+                    const destH = displayedH * scale;
+                    // Offset dans le cadre affiché : l'image est centrée, puis translatée de cropOffset
+                    const centerX = CROP_OUTPUT_WIDTH / 2 + cropOffset.x * scale;
+                    const centerY = CROP_OUTPUT_HEIGHT / 2 + cropOffset.y * scale;
+                    const destX = centerX - destW / 2;
+                    const destY = centerY - destH / 2;
+
+                    ctx.drawImage(img, destX, destY, destW, destH);
+
+                    // Convertir en JPEG (plus léger que PNG pour des photos)
+                    canvas.toBlob((blob) => {
+                        if (!blob) return reject(new Error('Export blob échoué'));
+                        const url = URL.createObjectURL(blob);
+                        resolve(url);
+                    }, 'image/jpeg', 0.92);
+                };
+                img.onerror = () => reject(new Error('Impossible de charger l\'image source'));
+                img.src = cropSourceUri!;
+            } catch (err: any) {
+                reject(err);
+            }
+        });
     };
 
     const removeImage = (setter: Function) => setter(null);
@@ -566,12 +767,22 @@ export default function MenuAdminPage() {
             <View style={styles.photoPreviewContainer}>
                 {photo || currentPhotoUrl ? (
                     <View style={styles.photoWrapper}>
-                        <Image source={{ uri: photo ? photo.uri : currentPhotoUrl }} style={styles.photoPreview} />
+                        <Image
+                            source={{ uri: photo ? photo.uri : currentPhotoUrl }}
+                            style={styles.photoPreview}
+                            resizeMode="contain"
+                        />
                         {photo && <TouchableOpacity style={styles.removePhotoBtn} onPress={() => removeImage(setPhoto)}><X size={16} color="white" /></TouchableOpacity>}
                     </View>
                 ) : (
                     <View style={styles.photoPlaceholder}><Camera size={40} color={COLORS.muted} /><Text style={styles.photoPlaceholderText}>Aucune photo</Text></View>
                 )}
+            </View>
+            <View style={styles.photoHintBox}>
+                <Info size={14} color={COLORS.primary} />
+                <Text style={styles.photoHintText}>
+                    Format recommandé : {CROP_OUTPUT_WIDTH}×{CROP_OUTPUT_HEIGHT}px, ratio 4:3, fond uni.
+                </Text>
             </View>
             <TouchableOpacity style={styles.selectPhotoBtn} onPress={() => pickImage(setPhoto)}>
                 <Upload size={18} color={COLORS.primary} /><Text style={styles.selectPhotoText}>{photo ? 'Changer la photo' : 'Sélectionner une photo'}</Text>
@@ -598,7 +809,7 @@ export default function MenuAdminPage() {
             <Text style={styles.listHeader}>Groupes existants ({groups.length})</Text>
             {groups.map((g: any) => (
                 <View key={g.id} style={styles.listItem}>
-                    {g.photo_url && <Image source={{ uri: g.photo_url }} style={styles.listItemPhoto} />}
+                    {g.photo_url && <Image source={{ uri: g.photo_url }} style={styles.listItemPhoto} resizeMode="contain" />}
                     <View style={styles.listItemInfo}>
                         <Text style={styles.itemTitle}>{g.name}</Text>
                         <Text style={styles.itemSubTitle}>{g.description}</Text>
@@ -647,7 +858,7 @@ export default function MenuAdminPage() {
             <Text style={styles.listHeader}>Articles existants ({menus.length})</Text>
             {menus.map((m: any) => (
                 <View key={m.id} style={styles.menuListItem}>
-                    {m.photo_url && <Image source={{ uri: m.photo_url }} style={styles.menuPhoto} />}
+                    {m.photo_url && <Image source={{ uri: m.photo_url }} style={styles.menuPhoto} resizeMode="contain" />}
                     <View style={styles.menuListHeader}>
                         <View style={{flex: 1}}>
                             <Text style={styles.itemTitle}>{m.name}</Text>
@@ -687,7 +898,7 @@ export default function MenuAdminPage() {
             <Text style={styles.listHeader}>Options existantes ({options.length})</Text>
             {options.map((o: any) => (
                 <View key={o.id} style={styles.listItem}>
-                    {o.photo_url && <Image source={{ uri: o.photo_url }} style={styles.listItemPhoto} />}
+                    {o.photo_url && <Image source={{ uri: o.photo_url }} style={styles.listItemPhoto} resizeMode="contain" />}
                     <View style={styles.listItemInfo}>
                         <Text style={styles.itemTitle}>{o.name}</Text>
                         <Text style={styles.itemSubTitle}>{o.type} • {o.extra_price > 0 ? `+${o.extra_price} DA` : 'Inclus'}</Text>
@@ -861,7 +1072,7 @@ export default function MenuAdminPage() {
                                 {/* Image du terminal */}
                                 <View style={styles.terminalImageContainer}>
                                     {menuFormPhoto ? (
-                                        <Image source={{ uri: menuFormPhoto.uri }} style={styles.terminalImage} resizeMode="cover" />
+                                        <Image source={{ uri: menuFormPhoto.uri }} style={styles.terminalImage} resizeMode="contain" />
                                     ) : (
                                         <View style={[styles.terminalImage, {backgroundColor: '#EEE', justifyContent:'center', alignItems:'center'}]}>
                                             <Utensils size={40} color="#94a3b8" />
@@ -905,6 +1116,126 @@ export default function MenuAdminPage() {
                                     <>
                                         <CheckCircle size={20} color="white" />
                                         <Text style={styles.btnText}>Valider et Mettre en Ligne</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* 🖼️🖼️ MODALE DE RECADRAGE / ZOOM / FOND UNI */}
+            <Modal visible={cropModalVisible} transparent animationType="fade" onRequestClose={() => setCropModalVisible(false)}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.cropModalContent}>
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Recadrer la photo</Text>
+                            <TouchableOpacity onPress={() => setCropModalVisible(false)}>
+                                <X size={24} color={COLORS.secondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={styles.cropHint}>
+                            Glissez l'image pour la déplacer, utilisez les boutons zoom. Le fond sera appliqué aux bords.
+                        </Text>
+
+                        {/* Cadre de recadrage */}
+                        <View
+                            style={[styles.cropFrame, { backgroundColor: cropBgColor, width: CROP_FRAME_WIDTH, height: CROP_FRAME_HEIGHT }]}
+                            onStartShouldSetResponder={() => true}
+                            onMoveShouldSetResponder={() => true}
+                            onResponderGrant={(e: any) => handleDragStart(e.nativeEvent.pageX, e.nativeEvent.pageY)}
+                            onResponderMove={(e: any) => handleDragMove(e.nativeEvent.pageX, e.nativeEvent.pageY)}
+                            onResponderRelease={handleDragEnd}
+                            onResponderTerminate={handleDragEnd}
+                            // Web drag fallback
+                            // @ts-ignore
+                            onMouseDown={(e: any) => handleDragStart(e.pageX, e.pageY)}
+                            // @ts-ignore
+                            onMouseMove={(e: any) => handleDragMove(e.pageX, e.pageY)}
+                            // @ts-ignore
+                            onMouseUp={handleDragEnd}
+                            // @ts-ignore
+                            onMouseLeave={handleDragEnd}
+                        >
+                            {cropSourceUri && (() => {
+                                const base = getDisplayedBaseSize();
+                                const displayedW = base.w * cropZoom;
+                                const displayedH = base.h * cropZoom;
+                                return (
+                                    <Image
+                                        source={{ uri: cropSourceUri }}
+                                        style={{
+                                            position: 'absolute',
+                                            width: displayedW,
+                                            height: displayedH,
+                                            left: (CROP_FRAME_WIDTH - displayedW) / 2 + cropOffset.x,
+                                            top: (CROP_FRAME_HEIGHT - displayedH) / 2 + cropOffset.y,
+                                        }}
+                                        resizeMode="stretch"
+                                    />
+                                );
+                            })()}
+                        </View>
+
+                        {/* Contrôles zoom */}
+                        <View style={styles.cropControls}>
+                            <TouchableOpacity style={styles.cropZoomBtn} onPress={() => adjustZoom(-0.15)}>
+                                <ZoomOut size={18} color={COLORS.secondary} />
+                            </TouchableOpacity>
+                            <Text style={styles.cropZoomLabel}>{Math.round(cropZoom * 100)}%</Text>
+                            <TouchableOpacity style={styles.cropZoomBtn} onPress={() => adjustZoom(0.15)}>
+                                <ZoomIn size={18} color={COLORS.secondary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.cropResetBtn} onPress={resetCrop}>
+                                <RefreshCw size={14} color={COLORS.secondary} />
+                                <Text style={styles.cropResetText}>Réinitialiser</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Fond uni */}
+                        <Text style={styles.cropSectionLabel}>Couleur de fond</Text>
+                        <View style={styles.cropBgRow}>
+                            {BG_COLOR_PRESETS.map((bg) => (
+                                <TouchableOpacity
+                                    key={bg.value}
+                                    onPress={() => setCropBgColor(bg.value)}
+                                    style={[
+                                        styles.cropBgSwatch,
+                                        { backgroundColor: bg.value },
+                                        cropBgColor === bg.value && styles.cropBgSwatchActive,
+                                    ]}
+                                >
+                                    <Text style={[
+                                        styles.cropBgSwatchLabel,
+                                        { color: bg.value === '#111827' ? '#FFF' : '#111827' }
+                                    ]}>
+                                        {bg.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        {/* Actions */}
+                        <View style={styles.cropActions}>
+                            <TouchableOpacity
+                                style={[styles.cancelButton, { flex: 1, marginRight: 10 }]}
+                                onPress={() => setCropModalVisible(false)}
+                                disabled={cropIsApplying}
+                            >
+                                <Text style={styles.cancelButtonText}>Annuler</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.submitBtn, { marginTop: 0, flex: 1, height: 46 }]}
+                                onPress={applyCrop}
+                                disabled={cropIsApplying}
+                            >
+                                {cropIsApplying ? (
+                                    <ActivityIndicator color="#FFF" />
+                                ) : (
+                                    <>
+                                        <CheckCircle size={18} color="#FFF" />
+                                        <Text style={styles.btnText}>Appliquer</Text>
                                     </>
                                 )}
                             </TouchableOpacity>
@@ -965,14 +1296,14 @@ const styles = StyleSheet.create({
     
     listHeader: { fontSize: 18, fontWeight: '700', marginBottom: 15, color: COLORS.muted },
     listItem: { backgroundColor: COLORS.card, padding: 20, borderRadius: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
-    listItemPhoto: { width: 60, height: 60, borderRadius: 8, marginRight: 15 },
+    listItemPhoto: { width: 60, height: 60, borderRadius: 8, marginRight: 15, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: COLORS.border },
     listItemInfo: { flex: 1 },
     itemTitle: { fontWeight: '700', fontSize: 17, color: COLORS.secondary },
     itemSubTitle: { color: COLORS.muted, fontSize: 14, marginTop: 4 },
     actionButtons: { flexDirection: 'row', alignItems: 'center' },
     
     menuListItem: { backgroundColor: COLORS.card, padding: 18, borderRadius: 16, marginBottom: 12, borderLeftWidth: 5, borderLeftColor: COLORS.primary },
-    menuPhoto: { width: '100%', height: 150, borderRadius: 12, marginBottom: 12 },
+    menuPhoto: { width: '100%', height: 150, borderRadius: 12, marginBottom: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: COLORS.border },
     menuListHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
     priceTag: { fontWeight: '800', color: COLORS.primary, fontSize: 16 },
     menuActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -1011,7 +1342,9 @@ const styles = StyleSheet.create({
     photoLabel: { fontSize: 14, fontWeight: '600', color: COLORS.secondary, marginBottom: 10 },
     photoPreviewContainer: { marginBottom: 10 },
     photoWrapper: { position: 'relative' },
-    photoPreview: { width: '100%', height: 200, borderRadius: 12, backgroundColor: COLORS.bg },
+    photoPreview: { width: '100%', height: 200, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: COLORS.border },
+    photoHintBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#EEF2FF', borderRadius: 8, padding: 10, marginTop: 10, marginBottom: 10 },
+    photoHintText: { fontSize: 12, color: COLORS.secondary, flex: 1, lineHeight: 16 },
     photoPlaceholder: { width: '100%', height: 200, borderRadius: 12, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: COLORS.border, borderStyle: 'dashed' },
     photoPlaceholderText: { color: COLORS.muted, marginTop: 10, fontSize: 14 },
     removePhotoBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: COLORS.danger, width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
@@ -1080,12 +1413,109 @@ const styles = StyleSheet.create({
         fontWeight: "800",
     },
     terminalAddButton: {
-        backgroundColor: "#ff69b4", 
+        backgroundColor: "#ff69b4",
         width: 36,
         height: 36,
         borderRadius: 18,
         justifyContent: 'center',
         alignItems: 'center',
         elevation: 2,
+    },
+
+    // ======== STYLES MODALE CROP ========
+    cropModalContent: {
+        backgroundColor: COLORS.card,
+        width: '100%',
+        maxWidth: 460,
+        borderRadius: 20,
+        padding: 20,
+        elevation: 10,
+    },
+    cropHint: {
+        fontSize: 13,
+        color: COLORS.muted,
+        marginBottom: 15,
+        lineHeight: 18,
+    },
+    cropFrame: {
+        alignSelf: 'center',
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 2,
+        borderColor: COLORS.primary,
+        marginBottom: 15,
+        position: 'relative',
+        ...(Platform.OS === 'web' ? { cursor: 'grab' as any } : {}),
+    },
+    cropControls: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        marginBottom: 15,
+    },
+    cropZoomBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 10,
+        backgroundColor: '#F1F5F9',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    cropZoomLabel: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: COLORS.secondary,
+        minWidth: 50,
+        textAlign: 'center',
+    },
+    cropResetBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        backgroundColor: '#F1F5F9',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    cropResetText: {
+        fontSize: 12,
+        color: COLORS.secondary,
+        fontWeight: '600',
+    },
+    cropSectionLabel: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: COLORS.secondary,
+        marginBottom: 8,
+    },
+    cropBgRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: 18,
+    },
+    cropBgSwatch: {
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 8,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    cropBgSwatchActive: {
+        borderColor: COLORS.primary,
+    },
+    cropBgSwatchLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    cropActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
     },
 });
