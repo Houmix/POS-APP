@@ -67,6 +67,12 @@ class GroupMenuCreate(APIView):
             
             if serializer.is_valid():
                 print("   Serializer validé")
+                print(f"   validated_data keys: {list(serializer.validated_data.keys())}")
+                if 'photo' in serializer.validated_data:
+                    p = serializer.validated_data['photo']
+                    print(f"   photo in validated_data: {p} (type={type(p).__name__}, size={getattr(p, 'size', '?')})")
+                else:
+                    print("    'photo' ABSENT de validated_data — le fichier n'a pas été parsé!")
                 instance = serializer.save()
                 print(f"   GroupMenu créé: ID={instance.id}, Nom={instance.name}")
                 

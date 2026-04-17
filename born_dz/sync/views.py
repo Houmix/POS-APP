@@ -484,9 +484,25 @@ def apply_snapshot_data(body):
 
     with transaction.atomic():
         if restaurant_id:
+            # ── Sauvegarder les chemins locaux des photos AVANT suppression ──
+            # Permet de réutiliser les fichiers locaux existants si le téléchargement échoue
+            _existing_photos = {}
+            for gm in GroupMenu.objects.filter(restaurant_id=restaurant_id).values('id', 'photo'):
+                if gm['photo']:
+                    _existing_photos[('group_menu', gm['id'])] = str(gm['photo'])
+            for m in Menu.objects.filter(group_menu__restaurant_id=restaurant_id).values('id', 'photo'):
+                if m['photo']:
+                    _existing_photos[('menu', m['id'])] = str(m['photo'])
             step_ids = list(Step.objects.filter(restaurant_id=restaurant_id).values_list('id', flat=True))
+            option_ids_qs = StepOption.objects.filter(step_id__in=step_ids).values_list('option_id', flat=True).distinct()
+            option_ids = list(option_ids_qs)
+            for o in Option.objects.filter(id__in=option_ids).values('id', 'photo'):
+                if o['photo']:
+                    _existing_photos[('option', o['id'])] = str(o['photo'])
+
+            logger.info(f'[SNAPSHOT] Sauvegarde de {len(_existing_photos)} chemins photo locaux avant suppression')
+
             menu_ids = list(Menu.objects.filter(group_menu__restaurant_id=restaurant_id).values_list('id', flat=True))
-            option_ids = list(StepOption.objects.filter(step_id__in=step_ids).values_list('option_id', flat=True).distinct())
             StepOption.objects.filter(step_id__in=step_ids).delete()
             MenuStep.objects.filter(step_id__in=step_ids).delete()
             MenuStep.objects.filter(menu_id__in=menu_ids).delete()
@@ -601,6 +617,16 @@ def apply_snapshot_data(body):
             count = 0
             for item_data in items:
                 try:
+                    # Enrichir avec le chemin photo local existant si disponible
+                    if restaurant_id and table_name in TABLES_WITH_PHOTO:
+                        item_id = item_data.get('id')
+                        saved_photo = _existing_photos.get((table_name, item_id))
+                        if saved_photo and not saved_photo.startswith('http'):
+                            # Vérifier que le fichier local existe toujours
+                            local_file = Path(dj_settings.MEDIA_ROOT) / saved_photo
+                            if local_file.exists() and local_file.stat().st_size > 0:
+                                item_data['_local_photo_fallback'] = saved_photo
+
                     _apply_change(table_name, 'create', item_data)
                     count += 1
                 except Exception as row_err:
@@ -754,6 +780,9 @@ def _apply_change(table_name, action, data, restaurant_id=None):
     clean_data.pop('created_at', None)
     clean_data.pop('updated_at', None)
 
+    # ── Récupérer le fallback photo local (injecté par apply_snapshot_data) ──
+    local_photo_fallback = clean_data.pop('_local_photo_fallback', None)
+
     # ── Télécharger les photos distantes en local ──
     if table_name in TABLES_WITH_PHOTO and 'photo' in clean_data:
         photo_val = clean_data.get('photo') or ''
@@ -761,9 +790,15 @@ def _apply_change(table_name, action, data, restaurant_id=None):
             local_rel = _download_photo_locally(photo_val, table_name)
             if local_rel:
                 clean_data['photo'] = local_rel
+            elif local_photo_fallback:
+                # Téléchargement échoué mais on a un fichier local existant → le réutiliser
+                logger.info(f'[PHOTO-SYNC] Réutilisation du fichier local existant: {local_photo_fallback}')
+                clean_data['photo'] = local_photo_fallback
             else:
-                # Téléchargement échoué — ne pas écraser un éventuel fichier local existant
-                clean_data.pop('photo', None)
+                # Téléchargement échoué, pas de fallback local — garder l'URL cloud
+                # pour que _resolve_photo_url() puisse servir l'image depuis le cloud
+                logger.warning(f'[PHOTO-SYNC] Téléchargement échoué, URL cloud conservée: {photo_val}')
+                clean_data['photo'] = photo_val
 
     with sync_apply_guard():
         if action == 'create':
