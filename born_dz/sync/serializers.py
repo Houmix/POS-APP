@@ -178,6 +178,8 @@ def serialize_kiosk_config(obj, base_url=''):
         'kitchen_printer_ip':         obj.kitchen_printer_ip,
         'kitchen_printer_port':       obj.kitchen_printer_port,
         'kitchen_printer_enabled':    obj.kitchen_printer_enabled,
+        'show_refresh_button':        obj.show_refresh_button,
+        'show_inline_cart':           obj.show_inline_cart,
     }
 
 

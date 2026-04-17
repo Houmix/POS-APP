@@ -5,6 +5,7 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getPosUrl, getRestaurantId } from '@/utils/serverConfig';
 import { useKioskTheme } from '@/contexts/KioskThemeContext';
 
@@ -158,10 +159,15 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       const resId = getRestaurantId();
-      const r = await fetch(`${getPosUrl()}/api/kiosk/config/?restaurant_id=${resId}`, {
+      const token = await AsyncStorage.getItem('token');
+      const r = await fetch(`${getPosUrl()}/api/kiosk/config/`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
+          restaurant_id:           resId,
           kitchen_printer_ip:      config.kitchen_printer_ip,
           kitchen_printer_port:    parseInt(config.kitchen_printer_port) || 9100,
           kitchen_printer_enabled: config.kitchen_printer_enabled,
@@ -175,7 +181,10 @@ export default function SettingsPage() {
         }),
       });
       if (r.ok) Alert.alert('Succès', 'Paramètres sauvegardés');
-      else Alert.alert('Erreur', 'Impossible de sauvegarder');
+      else {
+        const err = await r.json().catch(() => null);
+        Alert.alert('Erreur', err?.error || 'Impossible de sauvegarder');
+      }
     } catch { Alert.alert('Erreur', 'Connexion impossible'); }
     setSaving(false);
   };
