@@ -890,25 +890,7 @@ export default function OrderScreen() {
             </>
           )}
 
-          {/* Colonne "En préparation" : marquer comme prête */}
-          {(order.kds_status === "new" || order.kds_status === "in_progress") && (
-            <>
-              <TouchableOpacity
-                style={[styles.actionButton, { backgroundColor: "#28a745" }]}
-                onPress={() => handleAction(order.order_id, "Prête")}
-              >
-                <MaterialCommunityIcons name="check-circle" size={18} color="#fff" />
-                <Text style={styles.actionButtonText}>Prête</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.cancelButton]}
-                onPress={() => handleAction(order.order_id, "Annuler")}
-              >
-                <MaterialCommunityIcons name="close-circle" size={18} color="#fff" />
-                <Text style={styles.actionButtonText}>Annuler</Text>
-              </TouchableOpacity>
-            </>
-          )}
+          {/* Colonne "En préparation" : géré par le KDS, pas d'action côté POS */}
 
           {/* Colonne "Prête" : imprimer + livrer */}
           {order.kds_status === "done" && (
@@ -1148,25 +1130,13 @@ export default function OrderScreen() {
                         <Text style={[styles.modalStatusText, { color: "#dc3545" }]}>Annulée</Text>
                       </View>
                     ) : (
-                      <>
-                        {/* Bouton "Prête" si la commande est en préparation */}
-                        {(selectedOrder.kds_status === "new" || selectedOrder.kds_status === "in_progress") && (
-                          <TouchableOpacity
-                            style={[styles.modalActionButton, { backgroundColor: "#28a745" }]}
-                            onPress={() => handleAction(selectedOrder.order_id, "Prête")}
-                          >
-                            <MaterialCommunityIcons name="check-circle" size={22} color="#fff" />
-                            <Text style={styles.modalActionText}>Prête</Text>
-                          </TouchableOpacity>
-                        )}
-                        <TouchableOpacity
-                          style={[styles.modalActionButton, { backgroundColor: "#dc3545" }]}
-                          onPress={() => confirmRefund(selectedOrder.order_id)}
-                        >
-                          <MaterialCommunityIcons name="undo" size={22} color="#fff" />
-                          <Text style={styles.modalActionText}>Rembourser</Text>
-                        </TouchableOpacity>
-                      </>
+                      <TouchableOpacity
+                        style={[styles.modalActionButton, { backgroundColor: "#dc3545" }]}
+                        onPress={() => confirmRefund(selectedOrder.order_id)}
+                      >
+                        <MaterialCommunityIcons name="undo" size={22} color="#fff" />
+                        <Text style={styles.modalActionText}>Rembourser</Text>
+                      </TouchableOpacity>
                     )
                   ) : selectedOrder.cancelled ? (
                     <View style={styles.modalStatusBadge}>

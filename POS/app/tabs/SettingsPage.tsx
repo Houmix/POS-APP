@@ -17,6 +17,8 @@ interface Config {
   ticket_footer: string;
   ticket_show_tva: boolean;
   delivery_modes: 'both' | 'sur_place_only' | 'emporter_only';
+  show_refresh_button: boolean;
+  show_inline_cart: boolean;
 }
 
 const DELIVERY_OPTIONS = [
@@ -36,6 +38,8 @@ export default function SettingsPage() {
     ticket_footer: '',
     ticket_show_tva: false,
     delivery_modes: 'both',
+    show_refresh_button: false,
+    show_inline_cart: false,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -67,6 +71,8 @@ export default function SettingsPage() {
           ticket_footer:           data.ticket_footer || '',
           ticket_show_tva:         data.ticket_show_tva || false,
           delivery_modes:          data.delivery_modes || 'both',
+          show_refresh_button:     data.show_refresh_button || false,
+          show_inline_cart:        data.show_inline_cart || false,
         });
       }
     } catch {}
@@ -164,6 +170,8 @@ export default function SettingsPage() {
           ticket_footer:           config.ticket_footer,
           ticket_show_tva:         config.ticket_show_tva,
           delivery_modes:          config.delivery_modes,
+          show_refresh_button:     config.show_refresh_button,
+          show_inline_cart:        config.show_inline_cart,
         }),
       });
       if (r.ok) Alert.alert('Succès', 'Paramètres sauvegardés');
@@ -329,6 +337,38 @@ export default function SettingsPage() {
               <Text style={[s.optionLabel, { color: theme.textColor }]}>{opt.label}</Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        {/* ── Options borne tactile ──────────────────── */}
+        <View style={s.card}>
+          <View style={s.cardHeader}>
+            <Ionicons name="tablet-portrait" size={22} color={theme.primaryColor} />
+            <Text style={[s.cardTitle, { color: theme.textColor }]}>Options de la borne tactile</Text>
+          </View>
+
+          <View style={s.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.label, { color: theme.textColor, fontWeight: '600' }]}>Bouton rafraîchir le menu</Text>
+              <Text style={[s.label, { fontSize: 12, color: '#94a3b8' }]}>Affiche un bouton sur la borne pour recharger le menu</Text>
+            </View>
+            <Switch
+              value={config.show_refresh_button}
+              onValueChange={v => setConfig(c => ({ ...c, show_refresh_button: v }))}
+              trackColor={{ true: theme.primaryColor }}
+            />
+          </View>
+
+          <View style={s.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.label, { color: theme.textColor, fontWeight: '600' }]}>Panier en bas de page (inline)</Text>
+              <Text style={[s.label, { fontSize: 12, color: '#94a3b8' }]}>Affiche un résumé du panier en bas de l'écran menu</Text>
+            </View>
+            <Switch
+              value={config.show_inline_cart}
+              onValueChange={v => setConfig(c => ({ ...c, show_inline_cart: v }))}
+              trackColor={{ true: theme.primaryColor }}
+            />
+          </View>
         </View>
 
         {/* ── Synchronisation cloud ───────────────────── */}
