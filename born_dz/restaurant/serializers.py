@@ -57,6 +57,7 @@ class KioskConfigSerializer(serializers.ModelSerializer):
             'category_display_mode',
             'tva_rate', 'ticket_header', 'ticket_footer', 'ticket_show_tva',
             'delivery_modes',
+            'show_refresh_button', 'show_inline_cart',
             'kitchen_printer_ip', 'kitchen_printer_port', 'kitchen_printer_enabled',
         ]
 

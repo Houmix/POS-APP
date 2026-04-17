@@ -17,6 +17,45 @@ def _cache_bust(url, obj):
     return url
 
 
+def _resolve_photo_url(obj, request):
+    """
+    Résout l'URL de la photo d'un objet Menu/GroupMenu/Option.
+    Gère 3 cas :
+      1. Chemin relatif local → build_absolute_uri (URL locale)
+      2. URL cloud, mais fichier existe localement → URL locale
+      3. URL cloud, fichier absent localement → URL cloud (fallback)
+    """
+    import os
+    from django.conf import settings as _settings
+
+    if not obj.photo:
+        return None
+
+    photo_name = str(obj.photo)
+
+    # Cas 1 : chemin relatif local
+    if not photo_name.startswith('http://') and not photo_name.startswith('https://'):
+        if request:
+            return _cache_bust(request.build_absolute_uri(obj.photo.url), obj)
+        return _cache_bust(obj.photo.url, obj)
+
+    # Cas 2 & 3 : URL distante — vérifier si le fichier existe localement
+    # Extraire le chemin relatif depuis l'URL cloud (ex: .../media/restaurant/menu/burger.jpg → restaurant/menu/burger.jpg)
+    clean_url = photo_name.split('?')[0]  # retirer ?v=xxx
+    if '/media/' in clean_url:
+        relative = clean_url.split('/media/')[-1]
+        local_path = os.path.join(_settings.MEDIA_ROOT, relative)
+        if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+            # Fichier disponible localement → servir en local
+            local_url = f"{_settings.MEDIA_URL}{relative}"
+            if request:
+                return _cache_bust(request.build_absolute_uri(local_url), obj)
+            return _cache_bust(local_url, obj)
+
+    # Fallback : URL cloud (si la borne a internet, ça marchera)
+    return _cache_bust(photo_name, obj)
+
+
 class GroupMenuSerializer(serializers.ModelSerializer):
     photo = serializers.FileField(required=False, allow_null=True)
     photo_url = serializers.SerializerMethodField()
@@ -27,15 +66,7 @@ class GroupMenuSerializer(serializers.ModelSerializer):
                   "avalaible", "extra", "position"]
 
     def get_photo_url(self, obj):
-        if obj.photo:
-            photo_name = str(obj.photo)
-            if photo_name.startswith('http://') or photo_name.startswith('https://'):
-                return _cache_bust(photo_name, obj)
-            request = self.context.get('request')
-            if request:
-                return _cache_bust(request.build_absolute_uri(obj.photo.url), obj)
-            return _cache_bust(obj.photo.url, obj)
-        return None
+        return _resolve_photo_url(obj, self.context.get('request'))
 
     def update(self, instance, validated_data):
         if 'photo' not in validated_data or validated_data.get('photo') is None:
@@ -54,19 +85,11 @@ class MenuSerializer(serializers.ModelSerializer):
             "id", "name", "description", "price", "promo_price", "promo_percentage",
             "promo_display", "group_menu", "group_menu_name",
             "avalaible", "extra", "solo_price", "photo", "photo_url", "type", "position",
-            "show_in_crosssell", "offer_menu_choice"
+            "show_in_crosssell", "offer_menu_choice", "skip_kds"
         ]
 
     def get_photo_url(self, obj):
-        if obj.photo:
-            photo_name = str(obj.photo)
-            if photo_name.startswith('http://') or photo_name.startswith('https://'):
-                return _cache_bust(photo_name, obj)
-            request = self.context.get('request')
-            if request:
-                return _cache_bust(request.build_absolute_uri(obj.photo.url), obj)
-            return _cache_bust(obj.photo.url, obj)
-        return None
+        return _resolve_photo_url(obj, self.context.get('request'))
 
     def update(self, instance, validated_data):
         if 'photo' not in validated_data or validated_data.get('photo') is None:
@@ -83,15 +106,7 @@ class OptionSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'type', 'avalaible', "extra_price", 'photo', 'photo_url']
 
     def get_photo_url(self, obj):
-        if obj.photo:
-            photo_name = str(obj.photo)
-            if photo_name.startswith('http://') or photo_name.startswith('https://'):
-                return _cache_bust(photo_name, obj)
-            request = self.context.get('request')
-            if request:
-                return _cache_bust(request.build_absolute_uri(obj.photo.url), obj)
-            return _cache_bust(obj.photo.url, obj)
-        return None
+        return _resolve_photo_url(obj, self.context.get('request'))
 
     def update(self, instance, validated_data):
         if 'photo' not in validated_data or validated_data.get('photo') is None:

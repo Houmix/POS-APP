@@ -84,6 +84,10 @@ class KioskConfig(models.Model):
     ]
     delivery_modes       = models.CharField(max_length=20, choices=DELIVERY_MODE_CHOICES, default='both')
 
+    # UX Borne — options d'affichage
+    show_refresh_button  = models.BooleanField(default=False, help_text="Afficher un bouton de rafraîchissement du menu sur la borne")
+    show_inline_cart     = models.BooleanField(default=False, help_text="Afficher le panier en bas de la page menu (sans naviguer vers la page panier)")
+
     # Imprimante cuisine réseau (ESC/POS over TCP)
     kitchen_printer_ip      = models.CharField(max_length=15, blank=True, default='')
     kitchen_printer_port    = models.IntegerField(default=9100)

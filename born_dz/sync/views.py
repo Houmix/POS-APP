@@ -10,10 +10,16 @@
 #   POST /api/sync/apply/        → endpoint LOCAL pour appliquer les changements reçus
 
 import json
+import logging
+import os
 import time
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone as dt_timezone
 from decimal import Decimal
+from pathlib import Path
 
+from django.conf import settings as dj_settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -26,6 +32,69 @@ from .serializers import (
     get_serializer_for_table,
     TABLE_REGISTRY,
 )
+
+logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────
+#  Téléchargement local des photos distantes
+# ──────────────────────────────────────────
+# Tables dont le champ 'photo' peut contenir une URL distante
+# après un sync cloud → local.  On télécharge le fichier et on
+# remplace l'URL par un chemin relatif local dans MEDIA_ROOT.
+TABLES_WITH_PHOTO = {'group_menu', 'menu', 'option'}
+
+# Sous-dossiers MEDIA_ROOT par table (cohérent avec upload_to des FileField)
+_PHOTO_UPLOAD_DIRS = {
+    'group_menu': 'restaurant/menugroup',
+    'menu':       'restaurant/menu',
+    'option':     'option/photo',
+}
+
+
+def _download_photo_locally(remote_url: str, table_name: str) -> str | None:
+    """
+    Télécharge une image distante et la stocke dans MEDIA_ROOT.
+    Retourne le chemin relatif (ex: 'restaurant/menu/burger_42.jpg')
+    ou None en cas d'échec.
+    """
+    if not remote_url:
+        return None
+
+    # Nettoyer l'URL (retirer le cache-buster ?v=xxx)
+    clean_url = remote_url.split('?')[0]
+
+    # Extraire le nom de fichier depuis l'URL
+    filename = os.path.basename(clean_url)
+    if not filename or '.' not in filename:
+        filename = f'photo_{int(time.time())}.jpg'
+
+    sub_dir = _PHOTO_UPLOAD_DIRS.get(table_name, 'sync_photos')
+    local_dir = Path(dj_settings.MEDIA_ROOT) / sub_dir
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    local_path = local_dir / filename
+    relative_path = f'{sub_dir}/{filename}'
+
+    # Si le fichier existe déjà localement, pas besoin de re-télécharger
+    if local_path.exists() and local_path.stat().st_size > 0:
+        return relative_path
+
+    try:
+        req = urllib.request.Request(remote_url, headers={
+            'User-Agent': 'ClickGo-Sync/1.0',
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = resp.read()
+            if len(data) < 100:
+                # Réponse trop petite — probablement une erreur 404 HTML
+                logger.warning(f'[PHOTO-SYNC] Fichier trop petit ({len(data)} bytes), ignoré: {remote_url}')
+                return None
+            local_path.write_bytes(data)
+        logger.info(f'[PHOTO-SYNC] Téléchargé {filename} ({len(data)} bytes) → {relative_path}')
+        return relative_path
+    except (urllib.error.URLError, OSError, Exception) as e:
+        logger.warning(f'[PHOTO-SYNC] Échec téléchargement {remote_url}: {e}')
+        return None
 
 
 def _log_sync_metric(sync_type, restaurant_id, records_count=0, errors_count=0,
@@ -685,17 +754,52 @@ def _apply_change(table_name, action, data, restaurant_id=None):
     clean_data.pop('created_at', None)
     clean_data.pop('updated_at', None)
 
+    # ── Télécharger les photos distantes en local ──
+    if table_name in TABLES_WITH_PHOTO and 'photo' in clean_data:
+        photo_val = clean_data.get('photo') or ''
+        if isinstance(photo_val, str) and (photo_val.startswith('http://') or photo_val.startswith('https://')):
+            local_rel = _download_photo_locally(photo_val, table_name)
+            if local_rel:
+                clean_data['photo'] = local_rel
+            else:
+                # Téléchargement échoué — ne pas écraser un éventuel fichier local existant
+                clean_data.pop('photo', None)
+
     with sync_apply_guard():
         if action == 'create':
             # KioskConfig : pas d'id dans les données, clé = restaurant_id
             if table_name == 'kiosk_config':
                 resto_id = clean_data.pop('restaurant_id', None)
                 if resto_id:
-                    # Retirer les champs fichier (ne pas écraser un FileField local avec une URL distante)
-                    clean_data.pop('logo', None)
-                    clean_data.pop('screensaver_video', None)
-                    clean_data.pop('screensaver_image', None)
-                    # logo_remote_url / screensaver_image_remote_url / screensaver_video_remote_url restent dans clean_data
+                    # Télécharger les médias distants en local
+                    _KIOSK_MEDIA = {
+                        'logo_remote_url':               ('logo', 'kiosk/logos'),
+                        'screensaver_image_remote_url':  ('screensaver_image', 'kiosk/screensaver'),
+                        'screensaver_video_remote_url':  ('screensaver_video', 'kiosk/videos'),
+                    }
+                    for remote_field, (local_field, sub_dir) in _KIOSK_MEDIA.items():
+                        remote_val = clean_data.get(remote_field) or ''
+                        if isinstance(remote_val, str) and (remote_val.startswith('http://') or remote_val.startswith('https://')):
+                            local_dir = Path(dj_settings.MEDIA_ROOT) / sub_dir
+                            local_dir.mkdir(parents=True, exist_ok=True)
+                            filename = os.path.basename(remote_val.split('?')[0]) or f'{local_field}_{int(time.time())}.jpg'
+                            local_path = local_dir / filename
+                            relative_path = f'{sub_dir}/{filename}'
+                            if not local_path.exists() or local_path.stat().st_size == 0:
+                                try:
+                                    req = urllib.request.Request(remote_val, headers={'User-Agent': 'ClickGo-Sync/1.0'})
+                                    with urllib.request.urlopen(req, timeout=15) as resp:
+                                        local_path.write_bytes(resp.read())
+                                    logger.info(f'[PHOTO-SYNC] KioskConfig {local_field}: {filename}')
+                                except Exception as e:
+                                    logger.warning(f'[PHOTO-SYNC] KioskConfig {local_field} échec: {e}')
+                                    relative_path = None
+                            if relative_path:
+                                clean_data[local_field] = relative_path
+                            else:
+                                clean_data.pop(local_field, None)
+                        else:
+                            clean_data.pop(local_field, None)
                     Model.objects.update_or_create(restaurant_id=resto_id, defaults=clean_data)
                 return
 

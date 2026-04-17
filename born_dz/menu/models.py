@@ -51,6 +51,7 @@ class Menu(models.Model):
     type = models.CharField(choices=TYPE, max_length=20)
     show_in_crosssell = models.BooleanField(default=False)
     offer_menu_choice = models.BooleanField(default=True)
+    skip_kds = models.BooleanField(default=False, help_text="Ne pas envoyer cet article à l'écran cuisine (KDS). Ex : boissons, articles sans préparation.")
     # Versioning pour la resolution de conflits de synchronisation
     version = models.IntegerField(default=1, help_text="Incremente a chaque modification pour detecter les conflits")
     updated_at = models.DateTimeField(auto_now=True, help_text="Derniere modification")

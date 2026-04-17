@@ -35,11 +35,10 @@ export default function LocationScreen() {
                 Alert.alert(t('error'), t('errors.no_order'));
                 return;
             }
-            const orderData = JSON.parse(stored);
-            orderData.takeaway = deliveryType !== 'sur_place';
-            orderData.delivery_type = deliveryType;
-            orderData.customer_identifier = customerIdentifier.trim();
-            await AsyncStorage.setItem("pendingOrder", JSON.stringify(orderData));
+            // Stocker le type de service dans des clés séparées (pas dans pendingOrder qui est un tableau d'items)
+            await AsyncStorage.setItem("orderTakeaway", deliveryType !== 'sur_place' ? "true" : "false");
+            await AsyncStorage.setItem("orderDeliveryType", deliveryType);
+            await AsyncStorage.setItem("orderCustomerIdentifier", customerIdentifier.trim());
             router.push("/order/pay");
         } catch (err) {
             console.error("Erreur location :", err);

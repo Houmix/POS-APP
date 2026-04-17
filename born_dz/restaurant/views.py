@@ -263,23 +263,37 @@ class RestaurantDeleteView(APIView):
 
 def _resolve_media_url(request, file_field, remote_url_fallback=None):
     """
-    Retourne l'URL d'un média :
-    - Si le champ contient déjà une URL absolue (sync cloud) → retourner telle quelle
-    - Si le fichier existe physiquement sur le disque → URL absolue locale
-    - Sinon → remote_url_fallback (URL stockée lors de la sync cloud→local)
+    Retourne l'URL d'un média, en privilégiant TOUJOURS le fichier local :
+    1. Chemin relatif local + fichier existe → URL locale
+    2. URL cloud, mais fichier existe localement (téléchargé par sync) → URL locale
+    3. Sinon → remote_url_fallback (dernier recours si la borne a internet)
     """
+    import os
+    from django.conf import settings as _settings
+
     if file_field:
         name = str(file_field)
-        if name.startswith('http://') or name.startswith('https://'):
+
+        # Cas 1 : chemin relatif local
+        if not name.startswith('http://') and not name.startswith('https://'):
+            try:
+                file_path = os.path.join(_settings.MEDIA_ROOT, name)
+                if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                    return request.build_absolute_uri(file_field.url)
+            except Exception:
+                pass
+        else:
+            # Cas 2 : URL cloud — vérifier si le fichier a été téléchargé localement
+            clean_url = name.split('?')[0]
+            if '/media/' in clean_url:
+                relative = clean_url.split('/media/')[-1]
+                local_path = os.path.join(_settings.MEDIA_ROOT, relative)
+                if os.path.exists(local_path) and os.path.getsize(local_path) > 0:
+                    local_url = f"{_settings.MEDIA_URL}{relative}"
+                    return request.build_absolute_uri(local_url)
+            # Fallback : retourner l'URL cloud telle quelle
             return name
-        try:
-            import os
-            from django.conf import settings as _settings
-            file_path = os.path.join(_settings.MEDIA_ROOT, name)
-            if os.path.exists(file_path):
-                return request.build_absolute_uri(file_field.url)
-        except Exception:
-            pass
+
     return remote_url_fallback or None
 
 
@@ -314,6 +328,14 @@ class KioskConfigView(APIView):
             'composition_mode':     config.composition_mode,
             'loyalty_enabled':      config.loyalty_enabled,
             'loyalty_points_rate':  config.loyalty_points_rate,
+            'category_display_mode': config.category_display_mode,
+            'tva_rate':             str(config.tva_rate),
+            'ticket_header':        config.ticket_header,
+            'ticket_footer':        config.ticket_footer,
+            'ticket_show_tva':      config.ticket_show_tva,
+            'delivery_modes':       config.delivery_modes,
+            'show_refresh_button':  config.show_refresh_button,
+            'show_inline_cart':     config.show_inline_cart,
         })
 
     def put(self, request):

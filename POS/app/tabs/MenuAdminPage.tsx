@@ -611,11 +611,12 @@ export default function MenuAdminPage() {
             formData.append('avalaible', 'true');
             formData.append('extra', 'false');
             formData.append('position', '0');
-            
+            formData.append('skip_kds', menuForm.skip_kds ? 'true' : 'false');
+
             if (menuFormPhoto) {
                 await appendImageToFormData(formData, 'photo', menuFormPhoto);
             }
-            
+
             const response = await fetch(`${getPosUrl()}/menu/api/createMenu/`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
@@ -624,7 +625,7 @@ export default function MenuAdminPage() {
     
             if (response.ok) {
                 showSuccess("Succès", "Article ajouté au menu");
-                setMenuForm({ name: '', price: '', solo_price: '', group_menu: '', type: 'burger', description: '', avalaible: true });
+                setMenuForm({ name: '', price: '', solo_price: '', group_menu: '', type: 'burger', description: '', avalaible: true, skip_kds: false });
                 setMenuFormPhoto(null);
                 setPreviewModalVisible(false); // Fermer la modal
                 fetchInitialData();
@@ -661,7 +662,8 @@ export default function MenuAdminPage() {
             formData.append('solo_price', (editingMenu.solo_price || '0').toString());
             formData.append('type', editingMenu.type);
             formData.append('avalaible', editingMenu.avalaible.toString());
-            if (editingMenu.group_menu) formData.append('group_menu', editingMenu.group_menu); 
+            formData.append('skip_kds', editingMenu.skip_kds ? 'true' : 'false');
+            if (editingMenu.group_menu) formData.append('group_menu', editingMenu.group_menu);
             if (selectedMenuPhoto) await appendImageToFormData(formData, 'photo', selectedMenuPhoto);
             
             const response = await fetch(`${getPosUrl()}/menu/api/updateMenu/`, {
@@ -849,7 +851,18 @@ export default function MenuAdminPage() {
                     </View>
                 </View>
                 {renderPhotoPicker(menuFormPhoto, setMenuFormPhoto)}
-                
+
+                <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 8 }}
+                    onPress={() => setMenuForm({...menuForm, skip_kds: !menuForm.skip_kds})}
+                    activeOpacity={0.7}
+                >
+                    <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: menuForm.skip_kds ? '#ef4444' : '#cbd5e1', backgroundColor: menuForm.skip_kds ? '#ef4444' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                        {menuForm.skip_kds && <Text style={{ color: 'white', fontSize: 14, fontWeight: '900' }}>✓</Text>}
+                    </View>
+                    <Text style={{ color: '#475569', fontSize: 13, fontWeight: '600', flex: 1 }}>Ne pas envoyer en cuisine (KDS)</Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity style={styles.submitBtn} onPress={handlePreCreateMenu}>
                     <Eye size={20} color="white" />
                     <Text style={styles.btnText}>Prévisualiser & Enregistrer</Text>
@@ -1015,6 +1028,16 @@ export default function MenuAdminPage() {
                                 </Picker>
                             </View>
                             {renderPhotoPicker(selectedMenuPhoto, setSelectedMenuPhoto, editingMenu?.photo_url)}
+                            <TouchableOpacity
+                                style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 8 }}
+                                onPress={() => setEditingMenu({...editingMenu, skip_kds: !editingMenu?.skip_kds})}
+                                activeOpacity={0.7}
+                            >
+                                <View style={{ width: 22, height: 22, borderRadius: 4, borderWidth: 2, borderColor: editingMenu?.skip_kds ? '#ef4444' : '#cbd5e1', backgroundColor: editingMenu?.skip_kds ? '#ef4444' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                                    {editingMenu?.skip_kds && <Text style={{ color: 'white', fontSize: 14, fontWeight: '900' }}>✓</Text>}
+                                </View>
+                                <Text style={{ color: '#475569', fontSize: 13, fontWeight: '600', flex: 1 }}>Ne pas envoyer en cuisine (KDS)</Text>
+                            </TouchableOpacity>
                             <TouchableOpacity style={styles.submitBtn} onPress={handleUpdateMenu}><Save size={20} color="white" /><Text style={styles.btnText}>Enregistrer</Text></TouchableOpacity>
                         </View>
                     </ScrollView>

@@ -644,6 +644,9 @@ class KDSOrderGet(APIView):
         for order in orders:
             order_items = []
             for item in order.items.all():
+                # Exclure les articles marqués skip_kds (boissons, etc.)
+                if item.menu and getattr(item.menu, 'skip_kds', False):
+                    continue
                 options = []
                 for option_relation in item.options.all():
                     so = option_relation.option
@@ -659,6 +662,10 @@ class KDSOrderGet(APIView):
                     "extra":       item.extra,
                     "composition": options,
                 })
+            # Si tous les items sont skip_kds, ne pas afficher la commande au KDS
+            if not order_items:
+                continue
+
             # Timestamp UNIX en secondes (infaillible, pas d'ambiguïté de parsing)
             created_ts = order.created_at.timestamp() if order.created_at else 0
 

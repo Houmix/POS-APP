@@ -59,13 +59,19 @@ export default function PaymentScreen() {
             const Employee_id = await AsyncStorage.getItem("Employee_id");
             const restaurantId = getRestaurantId();
 
+            // Lire le type de service depuis des clés AsyncStorage séparées (fiable)
+            const takeawayValue = await AsyncStorage.getItem("orderTakeaway");
+            const isTakeaway = takeawayValue === "true";
+            const deliveryType = await AsyncStorage.getItem("orderDeliveryType") || 'sur_place';
+            const customerIdentifier = await AsyncStorage.getItem("orderCustomerIdentifier") || '';
+
             const dataToSend = {
                 user: Employee_id,
                 items: order,
                 restaurant: parseInt(restaurantId || "0", 10),
-                takeaway: (order as any).takeaway || false,
-                delivery_type: (order as any).delivery_type || 'sur_place',
-                customer_identifier: (order as any).customer_identifier || '',
+                takeaway: isTakeaway,
+                delivery_type: deliveryType,
+                customer_identifier: customerIdentifier,
             };
 
             console.log("Données à envoyer :", dataToSend);
@@ -84,6 +90,9 @@ export default function PaymentScreen() {
 
             if (response.status === 200 || response.status === 201) {
                 await AsyncStorage.removeItem("pendingOrder");
+                await AsyncStorage.removeItem("orderTakeaway");
+                await AsyncStorage.removeItem("orderDeliveryType");
+                await AsyncStorage.removeItem("orderCustomerIdentifier");
                 await AsyncStorage.setItem("lastOrderId", response.data.order_id.toString());
 
                 // Vérifier s'il y a des alertes stock

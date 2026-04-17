@@ -94,6 +94,7 @@ def serialize_menu(obj, base_url=''):
         'promo_price': str(obj.promo_price) if obj.promo_price is not None else None,
         'show_in_crosssell': obj.show_in_crosssell,
         'offer_menu_choice': obj.offer_menu_choice,
+        'skip_kds': obj.skip_kds,
     }
 
 def serialize_option(obj, base_url=''):

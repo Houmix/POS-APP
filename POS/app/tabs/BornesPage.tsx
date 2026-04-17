@@ -16,6 +16,7 @@ interface BorneInfo {
 const COMMANDS = [
   { key: 'update_all',    label: 'Mettre à jour tout',   icon: 'refresh-circle',    color: '#3b82f6' },
   { key: 'update_images', label: 'Mettre à jour images',  icon: 'image',             color: '#8b5cf6' },
+  { key: 'reset_data',    label: 'Réinitialiser données', icon: 'trash',             color: '#dc2626' },
   { key: 'reboot',        label: 'Redémarrer',            icon: 'power',             color: '#f59e0b' },
   { key: 'disable',       label: 'Désactiver',            icon: 'eye-off',           color: '#ef4444' },
   { key: 'enable',        label: 'Activer',               icon: 'eye',               color: '#10b981' },

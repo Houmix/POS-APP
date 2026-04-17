@@ -642,22 +642,24 @@ export default function MenuScreen() {
         <View style={compStyles.overlay}>
           <View style={compStyles.card}>
             {/* Header */}
-            <View style={[compStyles.header, { backgroundColor: theme.primaryColor }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={compStyles.headerTitle} numberOfLines={1}>
-                  {compIsSolo ? `${compItem?.name} (Solo)` : compItem?.name}
-                </Text>
-                <Text style={compStyles.headerSub}>
-                  {compDoneCount}/{compSteps.length} étape{compSteps.length > 1 ? 's' : ''} complète{compSteps.length > 1 ? 's' : ''}
-                </Text>
+            {compSteps.length > 0 ? (
+              <View style={[compStyles.header, { backgroundColor: theme.primaryColor }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={compStyles.headerTitle} numberOfLines={1}>
+                    {compIsSolo ? `${compItem?.name} (Solo)` : compItem?.name}
+                  </Text>
+                  <Text style={compStyles.headerSub}>
+                    {compDoneCount}/{compSteps.length} étape{compSteps.length > 1 ? 's' : ''} complète{compSteps.length > 1 ? 's' : ''}
+                  </Text>
+                </View>
+                <View style={compStyles.priceBadge}>
+                  <Text style={[compStyles.priceText, { color: theme.primaryColor }]}>{compTotalPrice.toFixed(0)} DA</Text>
+                </View>
+                <TouchableOpacity onPress={() => setCompVisible(false)} style={compStyles.closeBtn}>
+                  <Feather name="x" size={20} color="white" />
+                </TouchableOpacity>
               </View>
-              <View style={compStyles.priceBadge}>
-                <Text style={[compStyles.priceText, { color: theme.primaryColor }]}>{compTotalPrice.toFixed(0)} DA</Text>
-              </View>
-              <TouchableOpacity onPress={() => setCompVisible(false)} style={compStyles.closeBtn}>
-                <Feather name="x" size={20} color="white" />
-              </TouchableOpacity>
-            </View>
+            ) : null}
 
             {/* Progress bar */}
             {compSteps.length > 0 && (
@@ -675,9 +677,24 @@ export default function MenuScreen() {
                 <Text style={{ color: MUTED, marginTop: 12 }}>Chargement des options...</Text>
               </View>
             ) : compSteps.length === 0 ? (
-              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <Ionicons name="checkmark-circle" size={48} color={SUCCESS} />
-                <Text style={{ color: MUTED, marginTop: 12, fontSize: 15 }}>Aucune option à configurer</Text>
+              /* Article sans options — affichage type fiche produit */
+              <View style={{ flex: 1 }}>
+                <View style={{ backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center', paddingVertical: 24, paddingHorizontal: 16, flex: 1 }}>
+                  {compItem?.photo_url ? (
+                    <Image source={{ uri: compItem.photo_url }} style={{ width: '70%', height: '100%', maxHeight: 280 }} resizeMode="contain" />
+                  ) : (
+                    <View style={{ width: 160, height: 160, borderRadius: 20, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' }}>
+                      <Ionicons name="fast-food-outline" size={64} color={MUTED} />
+                    </View>
+                  )}
+                </View>
+                <View style={{ paddingHorizontal: 20, paddingVertical: 16 }}>
+                  <Text style={{ fontSize: 22, fontWeight: '800', color: theme.textColor }}>{compItem?.name}</Text>
+                  {compItem?.description ? (
+                    <Text style={{ fontSize: 14, color: MUTED, marginTop: 4 }}>{compItem.description}</Text>
+                  ) : null}
+                  <View style={{ height: 1, backgroundColor: '#E2E8F0', marginVertical: 16 }} />
+                </View>
               </View>
             ) : (
               <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 24 }} showsVerticalScrollIndicator={false}>
@@ -732,16 +749,36 @@ export default function MenuScreen() {
 
             {/* Footer */}
             <View style={compStyles.footer}>
-              <TouchableOpacity
-                style={[compStyles.addBtn, { backgroundColor: compIsComplete ? SUCCESS : '#CBD5E1' }]}
-                onPress={handleCompConfirm}
-                disabled={!compIsComplete}
-              >
-                <Feather name="shopping-cart" size={20} color="white" />
-                <Text style={compStyles.addBtnText}>
-                  {compIsComplete ? `Ajouter au panier — ${compTotalPrice.toFixed(0)} DA` : `Complétez toutes les étapes (${compDoneCount}/${compSteps.length})`}
-                </Text>
-              </TouchableOpacity>
+              {compSteps.length === 0 ? (
+                /* Articles sans options — boutons Annuler / Ajouter au panier côte à côte */
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <TouchableOpacity
+                    style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1.5, borderColor: '#E2E8F0', backgroundColor: 'white' }}
+                    onPress={() => setCompVisible(false)}
+                  >
+                    <Feather name="x" size={18} color={MUTED} />
+                    <Text style={{ color: MUTED, fontWeight: '700', fontSize: 15 }}>Annuler</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: SUCCESS }}
+                    onPress={handleCompConfirm}
+                  >
+                    <Feather name="shopping-cart" size={18} color="white" />
+                    <Text style={{ color: 'white', fontWeight: '800', fontSize: 15 }}>Ajouter — {compTotalPrice.toFixed(0)} DA</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[compStyles.addBtn, { backgroundColor: compIsComplete ? SUCCESS : '#CBD5E1' }]}
+                  onPress={handleCompConfirm}
+                  disabled={!compIsComplete}
+                >
+                  <Feather name="shopping-cart" size={20} color="white" />
+                  <Text style={compStyles.addBtnText}>
+                    {compIsComplete ? `Ajouter au panier — ${compTotalPrice.toFixed(0)} DA` : `Complétez toutes les étapes (${compDoneCount}/${compSteps.length})`}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
